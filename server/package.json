@@ -1,0 +1,63 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dev": "nodemon src/server.js",
+    "start": "NODE_ENV=production node src/server.js",
+    "seed:admin": "node src/scripts/seedAdmin.js",
+    "audit": "npm audit --audit-level=high || true",
+    "lint:deps": "npm outdated || true",
+    "ci:security": "npm run audit && echo 'Run SAST in CI (CodeQL/Semgrep)'"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "engines": {
+    "node": ">=20 <23"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "bcryptjs": "^3.0.2",
+    "bullmq": "^5.58.5",
+    "canvas": "^3.2.0",
+    "cloudinary": "^2.7.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.4.0",
+    "google-auth-library": "^9.15.1",
+    "helmet": "^7.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.17.2",
+    "multer": "^2.0.2",
+    "node-cron": "^3.0.3",
+    "node-fetch": "^3.3.2",
+    "nodemailer": "^6.9.16",
+    "openai": "^4.77.0",
+    "@sentry/node": "^7.118.0",
+    "prom-client": "^15.1.0",
+    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^3.11.174",
+    "pino": "^9.9.0",
+    "pino-http": "^10.5.0",
+    "rate-limit-redis": "^4.2.2",
+    "redis": "^5.8.2",
+    "redis-cli": "^2.1.2",
+    "streamifier": "^0.1.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^10.1.4",
+    "nodemon": "^3.1.10",
+    "supertest": "^7.0.0",
+    "vitest": "^2.1.3"
+  }
+}

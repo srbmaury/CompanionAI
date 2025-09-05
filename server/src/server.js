@@ -1,0 +1,185 @@
+import dotenv from "dotenv";
+import connectDB from "./config/db.js";
+import app from "./app.js";
+import { verifySmtp } from "./utils/mailer.js";
+import cron from "node-cron";
+import cloudinary from "./config/cloudinaryConfig.js";
+import Resume from "./models/Resume.js";
+import { createWorker } from "./queues/index.js";
+import prepareQuestionsProcessor from "./queues/workers/prepareQuestions.js";
+import bulkFeedbackProcessor from "./queues/workers/bulkFeedback.js";
+import { z } from "zod";
+import mongoose from "mongoose";
+import getRedisClient from "./config/redis.js";
+import * as Sentry from "@sentry/node";
+import { startOtlpPush } from "./metrics/otlpPush.js";
+
+dotenv.config();
+
+// Initialize Sentry if configured
+try {
+    if (process.env.SENTRY_DSN) {
+        Sentry.init({
+            dsn: process.env.SENTRY_DSN,
+            environment: process.env.NODE_ENV || "development",
+            tracesSampleRate: Number(process.env.SENTRY_TRACES_SAMPLE_RATE || 0),
+        });
+        // Expose for error handler
+        // @ts-ignore
+        global.Sentry = Sentry;
+        console.log("Sentry initialized");
+    }
+} catch (e) {
+    console.warn("Sentry init failed:", e?.message || e);
+}
+
+// Validate critical runtime configuration (prod)
+try {
+    if (process.env.NODE_ENV === "production") {
+        // Redis must be configured for session/refresh token management and rate limiting
+        if (!process.env.REDIS_URL) {
+            console.error("REDIS_URL is required in production for session and rate limit management.");
+            process.exit(1);
+        }
+        // Protect metrics endpoint with token
+        if (!process.env.METRICS_TOKEN) {
+            console.error("METRICS_TOKEN is required in production to protect /metrics endpoint.");
+            process.exit(1);
+        }
+        // Mandatory features: CAPTCHA in prod
+        if (process.env.CAPTCHA_ENABLED !== "true" || !process.env.CAPTCHA_SECRET) {
+            console.error("CAPTCHA must be enabled in production: set CAPTCHA_ENABLED=true and CAPTCHA_SECRET.");
+            process.exit(1);
+        }
+        // STT feature requires OpenAI key if enabled
+        if ((process.env.ENABLE_STT || "true").toLowerCase() === "true") {
+            if (!process.env.OPENAI_API_KEY) {
+                console.error("OPENAI_API_KEY is required when STT is enabled in production.");
+                process.exit(1);
+            }
+        }
+        // Code execution feature requires Judge0 URL allowlist
+        if ((process.env.ENABLE_CODE_EXEC || "true").toLowerCase() === "true") {
+            if (!process.env.JUDGE0_URL) {
+                console.error("JUDGE0_URL is required when code execution is enabled in production.");
+                process.exit(1);
+            }
+        }
+        // Validate Judge0 URL host allowlist if configured
+        if (process.env.JUDGE0_URL) {
+            try {
+                const u = new URL(process.env.JUDGE0_URL);
+                const allowedHosts = (process.env.ALLOWED_JUDGE0_HOSTS || "")
+                    .split(",")
+                    .map((s) => s.trim().toLowerCase())
+                    .filter(Boolean);
+                if (allowedHosts.length > 0 && !allowedHosts.includes(u.hostname.toLowerCase())) {
+                    console.error("JUDGE0_URL host not in ALLOWED_JUDGE0_HOSTS allowlist:", u.hostname);
+                    process.exit(1);
+                }
+            } catch (e) {
+                console.error("Invalid JUDGE0_URL:", e?.message || e);
+                process.exit(1);
+            }
+        }
+    }
+} catch {}
+
+// Startup env validation (fail fast in production)
+const EnvSchema = z.object({
+    NODE_ENV: z.string().optional(),
+    PORT: z.string().optional(),
+    JWT_SECRET: z.string().min(10, "JWT_SECRET is required"),
+    MONGO_URI: z.string().min(1, "MONGO_URI is required"),
+    ALLOWED_ORIGINS: z.string().optional(),
+    CLIENT_ORIGIN: z.string().optional(),
+    SERVER_ORIGIN: z.string().optional(),
+    COOKIE_DOMAIN: z.string().optional(),
+});
+try {
+    const parsed = EnvSchema.safeParse(process.env);
+    if (!parsed.success && process.env.NODE_ENV === "production") {
+        console.error("Invalid environment configuration:", parsed.error?.errors || parsed.error);
+        process.exit(1);
+    }
+} catch {}
+connectDB();
+
+const PORT = process.env.PORT || 5000;
+const server = app.listen(PORT, async () => {
+    console.log(`Server running on port ${PORT}`);
+    // Try SMTP verification on boot to catch misconfig early
+    const hasSmtpConfig = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
+    if (hasSmtpConfig) {
+        try {
+            await verifySmtp();
+        } catch {
+            // already logged
+        }
+    } else {
+        console.log("SMTP not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS.");
+    }
+
+    // Start workers if Redis configured
+    if (process.env.REDIS_URL) {
+        try {
+            await createWorker("prepare-questions", prepareQuestionsProcessor);
+            console.log("[Workers] prepare-questions worker started");
+            await createWorker("bulk-feedback", bulkFeedbackProcessor);
+            console.log("[Workers] bulk-feedback worker started");
+        } catch (e) {
+            console.warn("[Workers] Failed to start prepare-questions worker", e?.message || e);
+        }
+    } else {
+        console.log("[Workers] REDIS_URL not set, background workers disabled");
+    }
+
+    // Daily cleanup: remove Cloudinary raw assets with no DB reference
+    try {
+        cron.schedule("0 3 * * *", async () => {
+            if (!process.env.CLOUDINARY_CLOUD_NAME) return;
+            console.log("[CLEANUP] Starting orphan Cloudinary resume cleanup...");
+            try {
+                const { resources = [], next_cursor } = await cloudinary.api.resources({
+                    type: "upload",
+                    resource_type: "raw",
+                    prefix: "resumes/",
+                    max_results: 500,
+                });
+                const publicIds = resources.map((r) => r.public_id);
+                if (publicIds.length === 0) return console.log("[CLEANUP] No raw resources found");
+                const existing = await Resume.find({ publicId: { $in: publicIds } }).select("publicId").lean();
+                const existingSet = new Set(existing.map((r) => r.publicId));
+                const orphans = publicIds.filter((pid) => !existingSet.has(pid));
+                if (orphans.length === 0) return console.log("[CLEANUP] No orphans found");
+                const chunks = (arr, n) => Array.from({ length: Math.ceil(arr.length / n) }, (_, i) => arr.slice(i * n, (i + 1) * n));
+                for (const batch of chunks(orphans, 100)) {
+                    try {
+                        await cloudinary.api.delete_resources(batch, { resource_type: "raw" });
+                        console.log(`[CLEANUP] Deleted ${batch.length} orphan(s)`);
+                    } catch (e) {
+                        console.warn("[CLEANUP] Batch delete failed", e?.message || e);
+                    }
+                }
+                if (next_cursor) console.log("[CLEANUP] More assets exist beyond first page; consider increasing pagination");
+            } catch (e) {
+                console.warn("[CLEANUP] Failed:", e?.message || e);
+            }
+        });
+    } catch {}
+
+    // Start OTLP push if configured
+    try { startOtlpPush(); } catch {}
+});
+
+// Graceful shutdown
+const shutdown = async (signal) => {
+    try { console.log(`[${signal}] shutting down...`); } catch {}
+    try { server.close(() => {}); } catch {}
+    try { await mongoose.connection.close().catch(() => {}); } catch {}
+    try { const r = await getRedisClient(); if (r && r.isOpen) await r.quit(); } catch {}
+    try { process.exit(0); } catch { process.exit(1); }
+};
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

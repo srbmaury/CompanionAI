@@ -1,0 +1,110 @@
+import { normalize } from "./textUtils.js";
+
+export const STOPWORDS = new Set([
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "of",
+    "to",
+    "in",
+    "on",
+    "for",
+    "with",
+    "by",
+    "at",
+    "from",
+    "as",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "this",
+    "that",
+    "these",
+    "those",
+    "i",
+    "me",
+    "my",
+    "we",
+    "our",
+    "you",
+    "your",
+    "they",
+    "their",
+    "he",
+    "she",
+    "it",
+    "its",
+    "but",
+    "so",
+    "if",
+    "not",
+    "can",
+    "could",
+    "would",
+    "should",
+]);
+
+export const GENERIC_TOPICS = new Set([
+    "technical",
+    "technology",
+    "technologies",
+    "tech",
+    "phone",
+    "phones",
+    "mobile",
+    "mobiles",
+    "contact",
+    "contacts",
+    "email",
+    "emails",
+    "address",
+    "addresses",
+    "call",
+    "calls",
+    "experience",
+    "experiences",
+    "project",
+    "projects",
+    "work",
+    "works",
+    "task",
+    "tasks",
+    "role",
+    "roles",
+    "responsibility",
+    "responsibilities",
+    "background",
+    "knowledge",
+    "skill",
+    "skills",
+    "tool",
+    "tools",
+    "framework",
+    "frameworks",
+    "language",
+    "languages",
+    "domain",
+    "domains",
+    "platform",
+    "platforms",
+]);
+
+export const filterKeywords = (keywords) => {
+    const input = keywords instanceof Set ? keywords : new Set(keywords || []);
+    const out = new Set();
+    for (const kw of input) {
+        const n = normalize(kw);
+        if (!n) continue;
+        if (n.length < 3) continue;
+        if (STOPWORDS.has(n)) continue;
+        if (GENERIC_TOPICS.has(n)) continue;
+        out.add(n);
+    }
+    return out;
+};
