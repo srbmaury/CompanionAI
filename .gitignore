@@ -1,0 +1,79 @@
+# Node dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build outputs
+dist/
+build/
+client/dist/
+client/build/
+server/dist/
+server/build/
+
+# Vite cache
+.vite/
+.vite-cache/
+client/.vite/
+client/.vite-cache/
+
+# Test coverage and caches
+coverage/
+.nyc_output/
+.jest/
+.eslintcache
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+.cache/
+
+# Logs
+logs/
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files (keep examples tracked)
+.env
+.env.*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env.local
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+.history/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Uploads or generated assets (if any)
+uploads/
+server/uploads/
+client/uploads/
+
+# Runtime PIDs
+pids/
+*.pid
+*.pid.lock
+
+# Project-specific
+cookies.txt
+client/cookies.txt
+server/cookies.txt
+
+# direnv and local env tools
+.direnv/
+.envrc
