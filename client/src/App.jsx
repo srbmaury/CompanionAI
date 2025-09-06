@@ -1,4 +1,5 @@
 import { Route, Routes, Navigate } from "react-router-dom";
+import { useState } from "react";
 
 import Header from "./components/Header";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -16,10 +17,39 @@ import ExperiencesPage from "./pages/ExperiencesPage.jsx";
 import ResumeReviewPage from "./pages/ResumeReviewPage.jsx";
 
 function App() {
+    const [showSkip, setShowSkip] = useState(false);
+    const hiddenStyle = {
+        position: "absolute",
+        left: "-10000px",
+        top: "auto",
+        width: 1,
+        height: 1,
+        overflow: "hidden",
+        zIndex: 10000,
+    };
+    const visibleStyle = {
+        position: "absolute",
+        left: 8,
+        top: 8,
+        background: "#fff",
+        color: "#000",
+        padding: "8px 12px",
+        borderRadius: 4,
+        boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
+        zIndex: 10000,
+    };
     return (
         <div className="min-h-screen">
+            <a
+                href="#main-content"
+                onFocus={() => setShowSkip(true)}
+                onBlur={() => setShowSkip(false)}
+                style={showSkip ? visibleStyle : hiddenStyle}
+            >
+                Skip to main content
+            </a>
             <Header />
-            <main className="p-8 max-w-2xl mx-auto">
+            <main id="main-content" className="p-8 max-w-2xl mx-auto">
                 <Routes>
                 {/* Public routes */}
                 <Route path="/login" element={<LoginPage />} />

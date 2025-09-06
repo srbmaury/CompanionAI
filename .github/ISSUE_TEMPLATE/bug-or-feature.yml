@@ -1,0 +1,78 @@
+name: 🐞 Bug or 💡 Feature Request
+description: Report a bug or request a new feature
+title: "[Bug/Feature]: "
+labels: ["triage"]
+assignees: []
+
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Issue Category
+      description: Please select the category that best matches your issue.
+      options:
+        - UI
+        - Backend
+        - Database
+        - Performance
+        - Security
+        - Feature Request
+        - Improvement
+        - Test Failure
+        - Missing Tests
+        - README
+        - Usage Docs
+        - Deployment
+        - CI/CD
+        - Question
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Provide a detailed explanation of the issue or feature.
+      placeholder: "A clear and concise description of what the issue or feature is."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce (for bugs)
+      description: "List steps to reproduce the behavior. Leave blank if not applicable."
+      placeholder: |
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+
+  - type: input
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+
+  - type: input
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, browser, Node version, etc.
+      placeholder: "e.g., macOS Ventura, Chrome 124, Node 20.2.0"
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our Code of Conduct.
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true

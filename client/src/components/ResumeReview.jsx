@@ -197,16 +197,17 @@ const ResumeReview = ({ value, onChange, title = "Resume Review" }) => {
             </Stack>
 
             {/* Notifications */}
-            <Snackbar
-                open={snack.open}
-                autoHideDuration={3000}
-                onClose={() => setSnack((s) => ({ ...s, open: false }))}
-                anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-            >
-                <Alert onClose={() => setSnack((s) => ({ ...s, open: false }))} severity={snack.severity} sx={{ width: "100%" }}>
+            {snack.open && (
+                <Alert
+                    severity={snack.severity}
+                    aria-live={snack.severity === "error" ? undefined : "polite"}
+                    role={snack.severity === "error" ? "alert" : undefined}
+                    sx={{ mb: 2 }}
+                    onClose={() => setSnack((s) => ({ ...s, open: false }))}
+                >
                     {snack.message}
                 </Alert>
-            </Snackbar>
+            )}
 
             {/* PDF preview dialog */}
             <Dialog
@@ -215,8 +216,9 @@ const ResumeReview = ({ value, onChange, title = "Resume Review" }) => {
                 fullWidth
                 maxWidth="xl"
                 PaperProps={{ sx: { height: "92vh" } }}
+                aria-labelledby="resume-preview-title"
             >
-                <DialogTitle>Preview</DialogTitle>
+                <DialogTitle id="resume-preview-title">Preview</DialogTitle>
                 <DialogContent dividers sx={{ p: 0, height: "100%" }}>
                     {previewUrl ? (
                         <iframe

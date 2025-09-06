@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import api from "../api/axios";
 import { isVoskAvailable, startListeningWithVosk } from "../stt/vosk";
 
-import { Alert, Box, Button, Chip, Divider, Drawer, IconButton, Snackbar, Stack, Typography, Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
+import { Alert, Box, Button, Chip, Divider, Drawer, IconButton, Stack, Typography, Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import HelpPopover from "../components/HelpPopover";
 import VoiceControls from "../components/VoiceControls";
@@ -32,12 +32,7 @@ const InterviewPage = () => {
     const [roundLocked, setRoundLocked] = useState(false);
     const [oaFeedbackProgress, setOaFeedbackProgress] = useState(0);
     const [convFeedbackProgress, setConvFeedbackProgress] = useState(0);
-    const [toast, setToast] = useState({
-        open: false,
-        severity: "info",
-        message: "",
-        sticky: false,
-    });
+    const [inlineStatus, setInlineStatus] = useState({ open: false, severity: "info", message: "" });
     const [convSubmitting, setConvSubmitting] = useState(false);
     const [convRoundSubmitting, setConvRoundSubmitting] = useState(false);
     const [roundsOpen, setRoundsOpen] = useState(false);
@@ -126,8 +121,10 @@ const InterviewPage = () => {
         },
     };
 
-    const showToast = useCallback((severity, message, sticky = false) => {
-        setToast({ open: true, severity, message, sticky });
+    const showToast = useCallback((severity, message) => {
+        setInlineStatus({ open: true, severity, message });
+        // auto clear non-error after a short delay to avoid clutter
+        if (severity !== "error") setTimeout(() => setInlineStatus((s) => ({ ...s, open: false })), 4000);
     }, []);
 
     // Helper to clear all saved drafts for a round (placed before callbacks that depend on it)
@@ -975,6 +972,17 @@ const InterviewPage = () => {
 
                 {/* Right: Selected Round Details */}
                 <Box sx={{ flexGrow: 1 }}>
+                    {inlineStatus.open && (
+                        <Alert
+                            severity={inlineStatus.severity}
+                            aria-live={inlineStatus.severity === "error" ? undefined : "polite"}
+                            role={inlineStatus.severity === "error" ? "alert" : undefined}
+                            sx={{ mb: 2 }}
+                            onClose={() => setInlineStatus((s) => ({ ...s, open: false }))}
+                        >
+                            {inlineStatus.message}
+                        </Alert>
+                    )}
                     {!selectedRound ? (
                         <Typography>Select a round to view details</Typography>
                     ) : (
@@ -1157,8 +1165,9 @@ const InterviewPage = () => {
                 fullWidth
                 maxWidth="xl"
                 PaperProps={{ sx: { height: "92vh" } }}
+                aria-labelledby="resume-dialog-title"
             >
-                <DialogTitle>Resume</DialogTitle>
+                <DialogTitle id="resume-dialog-title">Resume</DialogTitle>
                 <DialogContent dividers sx={{ p: 0, height: "100%" }}>
                     {resumePreviewUrl && resumeFileType === "application/pdf" ? (
                         <iframe
@@ -1186,24 +1195,7 @@ const InterviewPage = () => {
                 </DialogActions>
             </Dialog>
 
-            <Snackbar
-                open={toast.open}
-                autoHideDuration={toast.sticky ? null : 3000}
-                onClose={(_e, reason) => {
-                    if (reason === "clickaway") return;
-                    setToast((t) => ({ ...t, open: false }));
-                }}
-                anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-            >
-                <Alert
-                    onClose={() => setToast((t) => ({ ...t, open: false }))}
-                    onClick={() => setToast((t) => ({ ...t, open: false }))}
-                    severity={toast.severity}
-                    sx={{ width: "100%" }}
-                >
-                    {toast.message}
-                </Alert>
-            </Snackbar>
+            {null}
         </>
     );
 };

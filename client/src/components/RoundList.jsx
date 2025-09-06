@@ -1,4 +1,4 @@
-import { Card, CardContent, LinearProgress, Stack, Tooltip, Typography } from "@mui/material";
+import { Card, CardActionArea, CardContent, LinearProgress, Stack, Tooltip, Typography } from "@mui/material";
 import { memo } from "react";
 
 const RoundList = ({ interview, selectedRoundId, onSelect, showOnMobile = false }) => {
@@ -16,12 +16,11 @@ const RoundList = ({ interview, selectedRoundId, onSelect, showOnMobile = false 
                         key={round._id}
                         variant="outlined"
                         sx={{
-                            cursor: locked ? "not-allowed" : "pointer",
                             border: selectedRoundId === round._id ? "2px solid blue" : "1px solid grey",
                             opacity: locked ? 0.6 : 1,
                         }}
-                        onClick={() => !locked && onSelect?.(round)}
                     >
+                        <CardActionArea disabled={locked} onClick={() => !locked && onSelect?.(round)}>
                         <CardContent>
                             <Stack spacing={0.5}>
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -40,6 +39,7 @@ const RoundList = ({ interview, selectedRoundId, onSelect, showOnMobile = false 
                                 )}
                             </Stack>
                         </CardContent>
+                        </CardActionArea>
                     </Card>
                 );
             })}

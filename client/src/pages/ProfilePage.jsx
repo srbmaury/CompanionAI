@@ -21,7 +21,6 @@ import {
     InputAdornment,
     MenuItem,
     Select,
-    Snackbar,
     Stack,
     Switch,
     TextField,
@@ -570,20 +569,20 @@ const ProfilePage = () => {
                     )}
                 </CardContent>
             </Card>
-            <Snackbar
-                open={profileMsgOpen}
-                autoHideDuration={3000}
-                onClose={() => setProfileMsgOpen(false)}
-                anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-            >
-                <Alert severity="info" sx={{ width: "100%" }} onClose={() => setProfileMsgOpen(false)}>
+            {profileMsgOpen && (
+                <Alert
+                    severity="info"
+                    aria-live="polite"
+                    sx={{ position: "fixed", top: 16, right: 16, zIndex: 1400 }}
+                    onClose={() => setProfileMsgOpen(false)}
+                >
                     {profileMsg}
                 </Alert>
-            </Snackbar>
+            )}
 
             {/* Edit resume dialog */}
-            <Dialog open={editOpen} onClose={() => setEditOpen(false)} fullWidth maxWidth="sm">
-                <DialogTitle>Edit Resume</DialogTitle>
+            <Dialog open={editOpen} onClose={() => setEditOpen(false)} fullWidth maxWidth="sm" aria-labelledby="edit-resume-title">
+                <DialogTitle id="edit-resume-title">Edit Resume</DialogTitle>
                 <DialogContent dividers>
                     <Stack spacing={2} sx={{ mt: 1 }}>
                         <TextField
@@ -623,8 +622,9 @@ const ProfilePage = () => {
                 fullWidth
                 maxWidth="xl"
                 PaperProps={{ sx: { height: "92vh" } }}
+                aria-labelledby="resume-preview-title"
             >
-                <DialogTitle>Preview</DialogTitle>
+                <DialogTitle id="resume-preview-title">Preview</DialogTitle>
                 <DialogContent dividers sx={{ p: 0, height: "100%" }}>
                     {previewUrl ? (
                         <iframe

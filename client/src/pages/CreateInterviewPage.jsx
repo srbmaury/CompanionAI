@@ -229,6 +229,19 @@ const CreateInterviewPage = () => {
                 Start a New Interview
             </Typography>
 
+            {/* Inline notifications */}
+            {snack.open && (
+                <Alert
+                    severity={snack.severity}
+                    aria-live={snack.severity === "error" ? undefined : "polite"}
+                    role={snack.severity === "error" ? "alert" : undefined}
+                    sx={{ mb: 2 }}
+                    onClose={() => setSnack((s) => ({ ...s, open: false }))}
+                >
+                    {snack.message}
+                </Alert>
+            )}
+
             <form onSubmit={handleSubmit}>
                 <Stack spacing={2}>
                     <TextField
@@ -378,20 +391,7 @@ const CreateInterviewPage = () => {
                     </Button>
                 </Stack>
             </form>
-            <Snackbar
-                open={snack.open}
-                autoHideDuration={3000}
-                onClose={() => setSnack((s) => ({ ...s, open: false }))}
-                anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-            >
-                <Alert
-                    onClose={() => setSnack((s) => ({ ...s, open: false }))}
-                    severity={snack.severity}
-                    sx={{ width: "100%" }}
-                >
-                    {snack.message}
-                </Alert>
-            </Snackbar>
+            {null}
 
             {/* PDF preview dialog */}
             <Dialog
@@ -400,8 +400,9 @@ const CreateInterviewPage = () => {
                 fullWidth
                 maxWidth="xl"
                 PaperProps={{ sx: { height: "92vh" } }}
+                aria-labelledby="resume-preview-title"
             >
-                <DialogTitle>Preview</DialogTitle>
+                <DialogTitle id="resume-preview-title">Preview</DialogTitle>
                 <DialogContent dividers sx={{ p: 0, height: "100%" }}>
                     {previewUrl ? (
                         <iframe

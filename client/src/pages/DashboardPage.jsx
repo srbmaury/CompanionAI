@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { AuthContext } from "../context/AuthContext";
 
-import { Box, Card, CardContent, CircularProgress, Pagination, Stack, Typography, ToggleButton, ToggleButtonGroup, Chip } from "@mui/material";
+import { Box, Card, CardActionArea, CardContent, CircularProgress, Pagination, Stack, Typography, ToggleButton, ToggleButtonGroup, Chip } from "@mui/material";
 
 const DashboardPage = () => {
     const { user } = useContext(AuthContext);
@@ -74,12 +74,11 @@ const DashboardPage = () => {
                             key={interview._id}
                             variant="outlined"
                             sx={{
-                                cursor: "pointer",
                                 borderColor: interview.isCompleted ? "success.main" : "warning.main",
                                 borderWidth: 2,
                             }}
-                            onClick={() => navigate(`/interviews/${interview._id}`)}
                         >
+                            <CardActionArea onClick={() => navigate(`/interviews/${interview._id}`)}>
                             <CardContent>
                                 <Typography variant="h6">{interview.company}</Typography>
                                 <Typography variant="body2">{interview.jobRole}</Typography>
@@ -95,6 +94,7 @@ const DashboardPage = () => {
                                     )}
                                 </Stack>
                             </CardContent>
+                            </CardActionArea>
                         </Card>
                     ))}
                 </Stack>
