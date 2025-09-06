@@ -65,7 +65,7 @@ const saveRefresh = async (hashed, userId, meta) => {
     await client.set(key, payload, { EX: REFRESH_TTL_SECONDS });
     await client.zAdd(userSetKey(userId), [{ score: now, value: hashed }]);
     // Enforce per-user session limit
-    const maxSessions = Number(process.env.MAX_SESSIONS_PER_USER || 5);
+    const maxSessions = Math.max(Number(process.env.MAX_SESSIONS_PER_USER || 1), 1);
     try {
         const count = await client.zCard(userSetKey(userId));
         if (count > maxSessions) {

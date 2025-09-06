@@ -23,8 +23,19 @@ const ResetPasswordPage = () => {
     const [error, setError] = useState("");
     const [captchaToken, setCaptchaToken] = useState("");
 
+    const passwordPolicyError = (pwd) => {
+        if (!pwd) return "Password is required";
+        if (pwd.length < 8) return "Password must be at least 8 characters";
+        if (!/[a-z]/.test(pwd)) return "Must include a lowercase letter";
+        if (!/[A-Z]/.test(pwd)) return "Must include an uppercase letter";
+        if (!/\d/.test(pwd)) return "Must include a digit";
+        if (!/[^A-Za-z0-9]/.test(pwd)) return "Must include a special character";
+        return "";
+    };
+
     const disabled = useMemo(() => {
-        if (!newPassword || newPassword.length < 6) return true;
+        if (!newPassword) return true;
+        if (passwordPolicyError(newPassword)) return true;
         if (newPassword !== confirmPassword) return true;
         return submitting;
     }, [newPassword, confirmPassword, submitting]);
@@ -63,8 +74,8 @@ const ResetPasswordPage = () => {
                                 value={newPassword}
                                 onChange={(e) => setNewPassword(e.target.value)}
                                 required
-                                helperText={newPassword && newPassword.length < 6 ? "At least 6 characters" : " "}
-                                error={!!newPassword && newPassword.length < 6}
+                                helperText={newPassword ? (passwordPolicyError(newPassword) || " ") : " "}
+                                error={!!newPassword && !!passwordPolicyError(newPassword)}
                                 InputProps={{
                                     endAdornment: (
                                         <InputAdornment position="end">

@@ -77,6 +77,16 @@ const ProfilePage = () => {
 
     const fileInputRef = useRef(null);
 
+    const passwordPolicyError = (pwd) => {
+        if (!pwd) return "Password is required";
+        if (pwd.length < 8) return "Password must be at least 8 characters";
+        if (!/[a-z]/.test(pwd)) return "Must include a lowercase letter";
+        if (!/[A-Z]/.test(pwd)) return "Must include an uppercase letter";
+        if (!/\d/.test(pwd)) return "Must include a digit";
+        if (!/[^A-Za-z0-9]/.test(pwd)) return "Must include a special character";
+        return "";
+    };
+
     useEffect(() => {
         const fetchResumes = async () => {
             try {
@@ -102,9 +112,9 @@ const ProfilePage = () => {
     const nameChanged = profileName.trim() !== (user?.name || "");
     const wantsPasswordChange = changePassword && newPassword.length > 0;
     const passwordMismatch = wantsPasswordChange && newPassword !== confirmPassword;
-    const passwordTooShort = wantsPasswordChange && newPassword.length < 6;
+    const newPasswordInvalid = wantsPasswordChange && !!passwordPolicyError(newPassword);
     const needsCurrent = wantsPasswordChange && currentPassword.length === 0;
-    const profileHasErrors = passwordMismatch || passwordTooShort || needsCurrent || profileName.trim().length === 0;
+    const profileHasErrors = passwordMismatch || newPasswordInvalid || needsCurrent || profileName.trim().length === 0;
     const langChanged = preferredProgrammingLanguage !== (user?.preferredProgrammingLanguage || "cpp");
     const canSave = (nameChanged || wantsPasswordChange || langChanged) && !profileHasErrors && !saving;
 
@@ -291,8 +301,8 @@ const ProfilePage = () => {
                                         value={newPassword}
                                         onChange={(e) => setNewPassword(e.target.value)}
                                         size="small"
-                                        error={passwordTooShort}
-                                        helperText={passwordTooShort ? "At least 6 characters" : " "}
+                                        error={newPasswordInvalid}
+                                        helperText={newPassword ? (passwordPolicyError(newPassword) || " ") : " "}
                                         InputProps={{
                                             endAdornment: (
                                                 <InputAdornment position="end">
