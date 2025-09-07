@@ -1,31 +1,112 @@
 import axios from "axios";
 
+// Resolve API base URL (supports local proxy and absolute prod URL)
+const resolveBaseUrl = () => {
+    const envUrl = import.meta?.env?.VITE_API_BASE_URL;
+    try {
+        if (typeof window !== "undefined") {
+            const hostname = window.location.hostname;
+            const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+            if (isLocal && (!envUrl || envUrl.startsWith("/"))) return "/api";
+        }
+    } catch { /* ignore */ }
+    return envUrl || "/api";
+};
+
 const api = axios.create({
-    baseURL: import.meta?.env?.VITE_API_BASE_URL || "/api",
+    baseURL: resolveBaseUrl(),
     withCredentials: true,
 });
 
-// Prime CSRF cookie early (non-blocking). Any GET under /api will set it.
-try {
-    api.get(`/auth/profile`).catch(() => { /* ignore */ }); // 401 is fine; seeds CSRF cookie
-} catch { /* ignore */ }
+// Cache latest CSRF token seen in headers as a fallback when cookie is unavailable cross-site
+let latestCsrfToken = null;
+let csrfPrimePromise = null;
 
-// Attach CSRF token from cookie to header for state-changing requests
-api.interceptors.request.use((config) => {
+const readCookieToken = () => {
+    try {
+        const match = document.cookie.match(/(?:^|; )csrfToken=([^;]+)/);
+        return match ? decodeURIComponent(match[1]) : null;
+    } catch {
+        return null;
+    }
+};
+
+const getAbsoluteApiUrl = (path) => {
+    try {
+        const base = resolveBaseUrl();
+        const baseTrimmed = String(base || "").replace(/\/+$/, "");
+        const pathWithSlash = path.startsWith("/") ? path : `/${path}`;
+        if (/^https?:\/\//i.test(baseTrimmed)) {
+            return `${baseTrimmed}${pathWithSlash}`;
+        }
+        const origin = typeof window !== "undefined" ? window.location.origin : "";
+        return `${origin}${baseTrimmed}${pathWithSlash}`;
+    } catch {
+        return path;
+    }
+};
+
+const primeAndGetCsrfToken = async () => {
+    // Fast path from cookie or cached header
+    const cookieToken = readCookieToken();
+    if (cookieToken) return cookieToken;
+    if (latestCsrfToken) return latestCsrfToken;
+
+    // Debounce concurrent priming
+    if (!csrfPrimePromise) {
+        csrfPrimePromise = (async () => {
+            try {
+                const url = getAbsoluteApiUrl("/auth/profile");
+                const resp = await window.fetch(url, {
+                    method: "GET",
+                    credentials: "include",
+                    headers: {
+                        Accept: "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                });
+                const headerToken = resp.headers.get("x-csrf-token") || resp.headers.get("X-CSRF-Token");
+                if (headerToken) latestCsrfToken = headerToken;
+            } catch { void 0; }
+            try { await new Promise((r) => setTimeout(r, 0)); } catch { void 0; }
+            return latestCsrfToken || readCookieToken();
+        })().finally(() => {
+            setTimeout(() => { csrfPrimePromise = null; }, 0);
+        });
+    }
+    try {
+        const token = await csrfPrimePromise;
+        return token || null;
+    } catch {
+        return null;
+    }
+};
+
+// Prime CSRF early (non-blocking)
+try { api.get(`/auth/profile`).catch(() => { /* ignore */ }); } catch { /* ignore */ }
+
+// Attach CSRF token for state-changing requests
+api.interceptors.request.use(async (config) => {
     const method = (config.method || "get").toLowerCase();
     if (["post", "put", "patch", "delete"].includes(method)) {
-        const match = document.cookie.match(/(?:^|; )csrfToken=([^;]+)/);
-        const csrfToken = match ? decodeURIComponent(match[1]) : null;
-        if (csrfToken) {
-            config.headers["X-CSRF-Token"] = csrfToken;
+        const token = readCookieToken() || latestCsrfToken || (await primeAndGetCsrfToken());
+        if (token) {
+            config.headers["X-CSRF-Token"] = token;
+            config.headers["X-XSRF-Token"] = token;
         }
     }
     return config;
 });
 
-// If a request fails due to missing/invalid CSRF, fetch a fresh token and retry once
+// Capture header token and retry once on CSRF failures
 api.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        try {
+            const headerToken = response?.headers?.["x-csrf-token"] || response?.headers?.["X-CSRF-Token"];
+            if (headerToken) latestCsrfToken = headerToken;
+        } catch { /* ignore */ }
+        return response;
+    },
     async (error) => {
         const response = error?.response;
         const originalConfig = error?.config;
@@ -38,17 +119,14 @@ api.interceptors.response.use(
 
         if (isCsrfError && !originalConfig.__retriedAfterCsrf) {
             try {
-                // GET to seed CSRF cookie (401 is expected without auth)
-                await api.get(`/auth/profile`);
+                await primeAndGetCsrfToken();
             } catch { /* ignore */ }
-
-            // Re-apply latest CSRF token and retry once
-            const match = document.cookie.match(/(?:^|; )csrfToken=([^;]+)/);
-            const csrfToken = match ? decodeURIComponent(match[1]) : null;
+            const csrfToken = readCookieToken() || latestCsrfToken;
             originalConfig.__retriedAfterCsrf = true;
             if (csrfToken) {
                 originalConfig.headers = originalConfig.headers || {};
                 originalConfig.headers["X-CSRF-Token"] = csrfToken;
+                originalConfig.headers["X-XSRF-Token"] = csrfToken;
             }
             return api.request(originalConfig);
         }
