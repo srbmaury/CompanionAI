@@ -49,7 +49,15 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         const init = async () => {
             setLoading(true);
-            await fetchProfile();
+            try {
+                const stored = typeof window !== "undefined" ? window.localStorage.getItem("accessToken") : null;
+                if (stored) {
+                    // token will be attached by axios interceptor
+                    await fetchProfile();
+                } else {
+                    setUser(null);
+                }
+            } catch { setUser(null); }
             setLoading(false);
         };
         init();
@@ -60,10 +68,18 @@ export const AuthProvider = ({ children }) => {
     }, [user, loadResumes]);
 
     // —— auth
+    const setToken = (token) => {
+        try { if (token) window.localStorage.setItem("accessToken", token); } catch {}
+    };
+    const clearToken = () => {
+        try { window.localStorage.removeItem("accessToken"); } catch {}
+    };
+
     const login = async (email, password, captchaToken) => {
         const payload = { email, password };
         if (captchaToken) payload.captchaToken = captchaToken;
-        await api.post(`/auth/login`, payload);
+        const { data } = await api.post(`/auth/login`, payload);
+        if (data?.token) setToken(data.token);
         await fetchProfile();
         await loadResumes();
     };
@@ -77,7 +93,8 @@ export const AuthProvider = ({ children }) => {
     };
 
     const googleLogin = async (idToken) => {
-        await api.post(`/auth/google`, { idToken });
+        const { data } = await api.post(`/auth/google`, { idToken });
+        if (data?.token) setToken(data.token);
         await fetchProfile();
         await loadResumes();
     };
@@ -102,7 +119,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     const logout = async () => {
-        await api.post(`/auth/logout`, {});
+        clearToken();
         setUser(null);
         setResumes([]);
         setActiveResumeId(null);
@@ -153,6 +170,7 @@ export const AuthProvider = ({ children }) => {
     // —— profile update
     const updateProfile = async ({ name, currentPassword, newPassword, preferredProgrammingLanguage }) => {
         const { data } = await api.put(`/auth/profile`, { name, currentPassword, newPassword, preferredProgrammingLanguage });
+        if (data?.token) setToken(data.token);
         if (data?.user) setUser(data.user);
         return data;
     };

@@ -1,10 +1,10 @@
 import express from "express";
 import cors from "cors";
-import cookieParser from "cookie-parser";
+// cookie-parser removed for pure JWT auth
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import swaggerUi from "swagger-ui-express";
-import csrf from "./middleware/csrf.js";
+// csrf middleware removed
 import { RedisStore } from "rate-limit-redis";
 import getRedisClient from "./config/redis.js";
 import mongoose from "mongoose";
@@ -34,7 +34,7 @@ const app = express();
 // Middleware
 app.set("trust proxy", 1); // required for secure cookies behind proxies
 app.use(express.json({ limit: "200kb" }));
-app.use(cookieParser());
+// No cookie parsing required in JWT header mode
 const isLocalhostOrigin = (origin) => {
     try {
         const { hostname, protocol } = new URL(origin);
@@ -67,14 +67,14 @@ const corsOptions =
               },
               credentials: true,
               optionsSuccessStatus: 204,
-              allowedHeaders: ["Content-Type", "Accept", "X-CSRF-Token", "X-XSRF-Token"],
+              allowedHeaders: ["Content-Type", "Accept", "Authorization"],
               methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
           }
         : {
               origin: true, // reflect request origin in dev
               credentials: true,
               optionsSuccessStatus: 204,
-              allowedHeaders: ["Content-Type", "Accept", "X-CSRF-Token", "X-XSRF-Token"],
+              allowedHeaders: ["Content-Type", "Accept", "Authorization"],
               methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
           };
 
@@ -161,9 +161,7 @@ app.use(requestId());
 // Structured logging
 app.use(httpLogger);
 
-// CSRF protection (after cookies, before routes)
-app.use(csrf());
-// Origin/Referer check for state-changing requests
+// Origin/Referer check for state-changing requests (defense-in-depth)
 app.use(originCheck());
 
 // Basic rate limiting for API (use Redis store in production)

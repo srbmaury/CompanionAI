@@ -85,9 +85,15 @@ const primeAndGetCsrfToken = async () => {
 // Prime CSRF early (non-blocking)
 try { api.get(`/auth/profile`).catch(() => { /* ignore */ }); } catch { /* ignore */ }
 
-// Attach CSRF token for state-changing requests
+// Attach Authorization bearer (if available) and CSRF token for state-changing requests
 api.interceptors.request.use(async (config) => {
     const method = (config.method || "get").toLowerCase();
+    try {
+        const token = typeof window !== "undefined" ? window.localStorage.getItem("accessToken") : null;
+        if (token) {
+            config.headers["Authorization"] = `Bearer ${token}`;
+        }
+    } catch { /* ignore */ }
     if (["post", "put", "patch", "delete"].includes(method)) {
         const token = readCookieToken() || latestCsrfToken || (await primeAndGetCsrfToken());
         if (token) {

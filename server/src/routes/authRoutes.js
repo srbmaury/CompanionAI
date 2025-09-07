@@ -10,7 +10,6 @@ import {
     forgotPassword,
     resetPassword,
 } from "../controllers/authController.js";
-import { listSessions, revokeSession, revokeAllSessions } from "../controllers/sessionController.js";
 import protect from "../middleware/authMiddleware.js";
 import {
     loginLimiter,
@@ -35,7 +34,6 @@ import {
 import { loginAttemptCheck } from "../middleware/loginLockout.js";
 import captcha from "../middleware/captcha.js";
 
-// Only require CAPTCHA on login when explicitly enabled
 const loginCaptcha = (req, res, next) => {
     if ((process.env.CAPTCHA_LOGIN_ENABLED || "").toLowerCase() === "true") {
         return captcha()(req, res, next);
@@ -43,7 +41,6 @@ const loginCaptcha = (req, res, next) => {
     return next();
 };
 
-// Only require CAPTCHA on register when explicitly enabled (default off until widget is wired)
 const registerCaptcha = (req, res, next) => {
     if ((process.env.CAPTCHA_REGISTER_ENABLED || "false").toLowerCase() === "true") {
         return captcha()(req, res, next);
@@ -99,7 +96,7 @@ const router = express.Router();
  *                 format: password
  *     responses:
  *       200:
- *         description: Logged in successfully; jwt cookie set
+ *         description: Logged in successfully
  *       401:
  *         description: Invalid credentials
  *
@@ -107,8 +104,6 @@ const router = express.Router();
  *   post:
  *     tags: [Auth]
  *     summary: Logout current user
- *     security:
- *       - cookieAuth: []
  *     responses:
  *       200:
  *         description: Logged out
@@ -119,8 +114,6 @@ const router = express.Router();
  *   get:
  *     tags: [Auth]
  *     summary: Get current user profile
- *     security:
- *       - cookieAuth: []
  *     responses:
  *       200:
  *         description: Current user profile
@@ -130,8 +123,6 @@ const router = express.Router();
  *   put:
  *     tags: [Auth]
  *     summary: Update current user profile (name and/or password)
- *     security:
- *       - cookieAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -213,7 +204,7 @@ const router = express.Router();
  *                 type: string
  *     responses:
  *       200:
- *         description: Logged in successfully; jwt cookie set
+ *         description: Logged in successfully
  *       401:
  *         description: Invalid Google token
  *
@@ -278,10 +269,5 @@ router.get("/profile", protect, (req, res) => {
     res.json(req.user);
 });
 router.put("/profile", protect, validate(UpdateProfileSchema), updateProfile);
-
-// Sessions management
-router.get("/sessions", protect, listSessions);
-router.delete("/sessions", protect, revokeAllSessions);
-router.delete("/sessions/:id", protect, revokeSession);
 
 export default router;

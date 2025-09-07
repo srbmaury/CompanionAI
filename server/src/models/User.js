@@ -53,6 +53,10 @@ const userSchema = new mongoose.Schema(
             enum: ["javascript", "python", "cpp", "java"],
             default: "cpp",
         },
+        tokenVersion: {
+            type: Number,
+            default: 0,
+        },
     },
     { timestamps: true }
 );

@@ -1,25 +1,21 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
-import { rotateRefresh } from "../utils/tokens.js";
 
 const protect = async (req, res, next) => {
     try {
-        const access = req.cookies.accessToken;
-        if (access) {
-            try {
-                const decoded = jwt.verify(access, process.env.JWT_SECRET);
-                req.user = await User.findById(decoded.id).select("-password");
-                if (!req.user) return res.status(401).json({ message: "User not found" });
-                return next();
-            } catch (e) {
-                // fall through to refresh on expiration/invalid
-            }
+        const authHeader = req.get("authorization") || req.get("Authorization");
+        if (!authHeader || !/^bearer\s+/i.test(authHeader)) {
+            return res.status(401).json({ message: "Not authorized" });
         }
-
-        // Try rotating refresh token to obtain new access
-        const userId = await rotateRefresh(req, res);
-        if (!userId) return res.status(401).json({ message: "Not authorized" });
-        req.user = await User.findById(userId).select("-password");
+        const token = authHeader.slice(7).trim();
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded.id).select("-password tokenVersion");
+        if (!user) return res.status(401).json({ message: "User not found" });
+        // Enforce max 1 session by comparing tokenVersion if present in token
+        if (decoded.tokenVersion != null && user.tokenVersion !== decoded.tokenVersion) {
+            return res.status(401).json({ message: "Session expired" });
+        }
+        req.user = user;
         if (!req.user) return res.status(401).json({ message: "User not found" });
         return next();
     } catch (error) {

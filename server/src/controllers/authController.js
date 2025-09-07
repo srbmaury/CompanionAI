@@ -1,6 +1,13 @@
 import crypto from "crypto";
 import User from "../models/User.js";
-import { issueAuthCookies, revokeRefreshFromRequest, clearAuthCookies, revokeAllSessionsForUser } from "../utils/tokens.js";
+import { bumpTokenVersion } from "../utils/tokens.js";
+import jwt from "jsonwebtoken";
+const jwtSignWithVersion = (userId, tokenVersion) => {
+    const ACCESS_TTL_SECONDS = Number(process.env.ACCESS_TOKEN_TTL_SECONDS || 15 * 60);
+    const payload = { id: userId };
+    if (tokenVersion != null) payload.tokenVersion = tokenVersion;
+    return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: `${ACCESS_TTL_SECONDS}s` });
+};
 import { OAuth2Client } from "google-auth-library";
 import metrics from "../metrics/index.js";
 import { sendMail, buildVerificationEmail } from "../utils/mailer.js";
@@ -83,8 +90,11 @@ export const loginUser = async (req, res) => {
             return res.status(403).json({ message: "Email not verified" });
         }
         if (user && (await user.matchPassword(password))) {
-            await issueAuthCookies(req, res, user._id);
-            res.json({ _id: user._id, name: user.name, email: user.email });
+            // Enforce max 1: bump tokenVersion so any previous tokens become invalid
+            await bumpTokenVersion(user._id);
+            const fresh = await User.findById(user._id).select("tokenVersion");
+            const token = jwtSignWithVersion(user._id, fresh?.tokenVersion);
+            res.json({ token, user: { _id: user._id, name: user.name, email: user.email } });
             try { await clearLoginFailures((email || "").toLowerCase()); } catch {}
             try { metrics.authLoginAttemptsTotal.labels("local", "success").inc(); } catch {}
             try { await AuditLog.create({ user: user._id, action: "auth.login", ip: req.ip, userAgent: req.get("user-agent"), requestId: req.id }); } catch {}
@@ -100,8 +110,6 @@ export const loginUser = async (req, res) => {
 
 // Logout
 export const logoutUser = async (req, res) => {
-    try { await revokeRefreshFromRequest(req); } catch {}
-    try { clearAuthCookies(res); } catch {}
     res.status(200).json({ message: "Logged out successfully" });
     try { metrics.authLogoutTotal.inc(); } catch {}
     try { AuditLog.create({ user: req.user?._id, action: "auth.logout", ip: req.ip, userAgent: req.get("user-agent"), requestId: req.id }).catch(() => {}); } catch {}
@@ -189,9 +197,11 @@ export const googleSignIn = async (req, res) => {
             await user.save();
         }
 
-        await issueAuthCookies(req, res, user._id);
+        await bumpTokenVersion(user._id);
+        const fresh = await User.findById(user._id).select("tokenVersion");
+        const token = jwtSignWithVersion(user._id, fresh?.tokenVersion);
         try { metrics.authLoginAttemptsTotal.labels("google", "success").inc(); } catch {}
-        return res.json({ _id: user._id, name: user.name, email: user.email });
+        return res.json({ token, user: { _id: user._id, name: user.name, email: user.email } });
     } catch (err) {
         try { metrics.authLoginAttemptsTotal.labels("google", "failure").inc(); } catch {}
         return res.status(401).json({ message: "Invalid Google token" });
@@ -233,11 +243,12 @@ export const updateProfile = async (req, res) => {
 
         await user.save();
         try { metrics.securityPasswordChangeTotal.labels("success").inc(); } catch {}
-        try { await revokeAllSessionsForUser(user._id); } catch {}
-        try { await issueAuthCookies(req, res, user._id); } catch {}
-
+        // Issue fresh access token rather than cookies
+        await bumpTokenVersion(user._id);
+        const fresh = await User.findById(user._id).select("tokenVersion");
+        const token = jwtSignWithVersion(user._id, fresh?.tokenVersion);
         const safe = await User.findById(user._id).select("-password").lean();
-        return res.json({ message: "Profile updated", user: safe });
+        return res.json({ message: "Profile updated", token, user: safe });
     } catch (err) {
         try { metrics.securityPasswordChangeTotal.labels("failure").inc(); } catch {}
         return res.status(500).json({ message: err.message });
@@ -255,7 +266,7 @@ export const forgotPassword = async (req, res) => {
         user.resetPasswordToken = crypto.createHash("sha256").update(token).digest("hex");
         user.resetPasswordExpires = new Date(Date.now() + 1000 * 60 * 30); // 30 min
         await user.save();
-        try { await revokeAllSessionsForUser(user._id); } catch {}
+        // Stateless JWT: no server-side session store to revoke
 
         const baseUrl = process.env.CLIENT_ORIGIN || "http://localhost:5173";
         const resetUrl = `${baseUrl}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
