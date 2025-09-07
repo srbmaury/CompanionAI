@@ -67,14 +67,32 @@ const corsOptions =
               },
               credentials: true,
               optionsSuccessStatus: 204,
-              allowedHeaders: ["Content-Type", "Accept", "Authorization"],
+              allowedHeaders: [
+                  "Content-Type",
+                  "Accept",
+                  "Authorization",
+                  "X-Requested-With",
+                  "X-CSRF-Token",
+                  "X-XSRF-Token",
+                  "X-Captcha-Token",
+              ],
+              exposedHeaders: ["X-CSRF-Token", "X-XSRF-Token"],
               methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
           }
         : {
               origin: true, // reflect request origin in dev
               credentials: true,
               optionsSuccessStatus: 204,
-              allowedHeaders: ["Content-Type", "Accept", "Authorization"],
+              allowedHeaders: [
+                  "Content-Type",
+                  "Accept",
+                  "Authorization",
+                  "X-Requested-With",
+                  "X-CSRF-Token",
+                  "X-XSRF-Token",
+                  "X-Captcha-Token",
+              ],
+              exposedHeaders: ["X-CSRF-Token", "X-XSRF-Token"],
               methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
           };
 

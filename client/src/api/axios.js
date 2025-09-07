@@ -62,7 +62,6 @@ const primeAndGetCsrfToken = async () => {
                     credentials: "include",
                     headers: {
                         Accept: "application/json",
-                        "X-Requested-With": "XMLHttpRequest",
                     },
                 });
                 const headerToken = resp.headers.get("x-csrf-token") || resp.headers.get("X-CSRF-Token");
