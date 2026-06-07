@@ -43,6 +43,9 @@ export const registerUser = async (req, res) => {
             const baseUrl = process.env.CLIENT_ORIGIN || "http://localhost:5173";
             const verifyUrl = `${baseUrl}/verify-email?token=${verificationTokenRaw}&email=${encodeURIComponent(email)}`;
             const mail = buildVerificationEmail(user.name || "there", verifyUrl);
+            if (process.env.NODE_ENV !== "production") {
+                console.log(`\n[DEV] Verification URL for ${email}:\n  ${verifyUrl}\n`);
+            }
             try {
                 await sendMail({ to: email, ...mail });
             } catch (e) {
@@ -150,6 +153,9 @@ export const resendVerification = async (req, res) => {
             const baseUrl = process.env.CLIENT_ORIGIN || "http://localhost:5173";
             const verifyUrl = `${baseUrl}/verify-email?token=${verificationToken}&email=${encodeURIComponent(email)}`;
             const mail = buildVerificationEmail(user.name || "there", verifyUrl);
+            if (process.env.NODE_ENV !== "production") {
+                console.log(`\n[DEV] Resend verification URL for ${email}:\n  ${verifyUrl}\n`);
+            }
             try {
                 await sendMail({ to: email, ...mail });
             } catch (e) {

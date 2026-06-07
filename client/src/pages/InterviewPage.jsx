@@ -35,8 +35,11 @@ const InterviewPage = () => {
     const [inlineStatus, setInlineStatus] = useState({ open: false, severity: "info", message: "" });
     const [convSubmitting, setConvSubmitting] = useState(false);
     const [convRoundSubmitting, setConvRoundSubmitting] = useState(false);
+    const [prepError, setPrepError] = useState(null); // error message if question prep failed
+    const [prepRetryKey, setPrepRetryKey] = useState(0);
     const [roundsOpen, setRoundsOpen] = useState(false);
     const [resumeOpen, setResumeOpen] = useState(false);
+    const [resumeBlobUrl, setResumeBlobUrl] = useState("");
     const pendingSavesRef = useRef(new Set());
 
     // Local persistence helpers
@@ -121,10 +124,11 @@ const InterviewPage = () => {
         },
     };
 
-    const showToast = useCallback((severity, message) => {
+    const showToast = useCallback((severity, message, persistent = false) => {
         setInlineStatus({ open: true, severity, message });
-        // auto clear non-error after a short delay to avoid clutter
-        if (severity !== "error") setTimeout(() => setInlineStatus((s) => ({ ...s, open: false })), 4000);
+        if (!persistent && severity !== "error") {
+            setTimeout(() => setInlineStatus((s) => ({ ...s, open: false })), 4000);
+        }
     }, []);
 
     // Helper to clear all saved drafts for a round (placed before callbacks that depend on it)
@@ -434,9 +438,28 @@ const InterviewPage = () => {
 
     const resumeUrl = useMemo(() => interview?.resume?.fileUrl || "", [interview]);
     const resumeFileType = useMemo(() => interview?.resume?.fileType || "", [interview]);
-    const resumePreviewUrl = useMemo(() => (
-        interview?.resume?._id ? `/api/resumes/${interview.resume._id}/preview` : ""
+    const resumePreviewPath = useMemo(() => (
+        interview?.resume?._id ? `/resumes/${interview.resume._id}/preview` : ""
     ), [interview]);
+
+    // Fetch PDF via axios (adds auth header) and create a blob URL for the iframe
+    useEffect(() => {
+        if (!resumeOpen || !resumePreviewPath || resumeFileType !== "application/pdf") return;
+        let cancelled = false;
+        let objectUrl = "";
+        api.get(resumePreviewPath, { responseType: "blob" })
+            .then((res) => {
+                if (cancelled) return;
+                objectUrl = URL.createObjectURL(res.data);
+                setResumeBlobUrl(objectUrl);
+            })
+            .catch(() => { if (!cancelled) setResumeBlobUrl(""); });
+        return () => {
+            cancelled = true;
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            setResumeBlobUrl("");
+        };
+    }, [resumeOpen, resumePreviewPath, resumeFileType]);
     const allRoundsCompleted = useMemo(
         () => Array.isArray(interview?.rounds) && interview.rounds.length > 0
             ? interview.rounds.every((r) => r?.round?.status === "completed")
@@ -551,8 +574,10 @@ const InterviewPage = () => {
                 setLoadingRound(false);
                 return;
             }
-            if (selectedRound.questions && selectedRound.questions.length > 0)
+            if (selectedRound.questions && selectedRound.questions.length > 0) {
+                setPrepError(null);
                 return;
+            }
             try {
                 // Gate: prevent preparing if previous round is not completed
                 const order = interview?.rounds || [];
@@ -617,15 +642,19 @@ const InterviewPage = () => {
                 // removed next round scheduling
             } catch (e) {
                 console.error("prepare round failed", e);
+                const msg = e?.response?.data?.message || "Failed to prepare questions.";
+                setPrepError(msg);
+                showToast("error", msg);
             } finally {
                 setLoadingRound(false);
                 setRoundPrepareProgress(0);
             }
             prepareNextRound(selectedRound);
         };
+        setPrepError(null);
         prepareIfNeeded();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedRound?._id]);
+    }, [selectedRound?._id, prepRetryKey]);
 
     const prepareNextRound = useCallback((round) => {
         if (!round) return;
@@ -1022,6 +1051,13 @@ const InterviewPage = () => {
                                 <Typography>
                                     Preparing questions{roundPrepareProgress ? `… ${Math.min(100, Math.max(0, Math.round(roundPrepareProgress)))}%` : "..."}
                                 </Typography>
+                            ) : prepError ? (
+                                <Stack spacing={1}>
+                                    <Alert severity="error">{prepError}</Alert>
+                                    <Button variant="outlined" onClick={() => setPrepRetryKey((k) => k + 1)}>
+                                        Retry
+                                    </Button>
+                                </Stack>
                             ) : isConversational ? (
                                 selectedRound.status === "completed" ? (
                                     (convRoundSubmitting || hasAnsweredMissingFeedback) ? (
@@ -1169,14 +1205,20 @@ const InterviewPage = () => {
             >
                 <DialogTitle id="resume-dialog-title">Resume</DialogTitle>
                 <DialogContent dividers sx={{ p: 0, height: "100%" }}>
-                    {resumePreviewUrl && resumeFileType === "application/pdf" ? (
-                        <iframe
-                            src={resumePreviewUrl}
-                            title="Resume Preview"
-                            width="100%"
-                            height="100%"
-                            style={{ border: 0 }}
-                        />
+                    {resumeFileType === "application/pdf" ? (
+                        resumeBlobUrl ? (
+                            <iframe
+                                src={resumeBlobUrl}
+                                title="Resume Preview"
+                                width="100%"
+                                height="100%"
+                                style={{ border: 0 }}
+                            />
+                        ) : (
+                            <Box sx={{ p: 2 }}>
+                                <Typography color="text.secondary">Loading resume…</Typography>
+                            </Box>
+                        )
                     ) : (
                         <Box sx={{ p: 2 }}>
                             <Typography>Preview available for PDFs only.</Typography>

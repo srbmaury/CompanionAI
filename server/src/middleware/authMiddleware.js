@@ -9,7 +9,7 @@ const protect = async (req, res, next) => {
         }
         const token = authHeader.slice(7).trim();
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id).select("-password tokenVersion");
+        const user = await User.findById(decoded.id).select("-password");
         if (!user) return res.status(401).json({ message: "User not found" });
         // Enforce max 1 session by comparing tokenVersion if present in token
         if (decoded.tokenVersion != null && user.tokenVersion !== decoded.tokenVersion) {

@@ -135,6 +135,20 @@ api.interceptors.response.use(
             }
             return api.request(originalConfig);
         }
+
+        // Session expiry: 401 while a token exists → clear and redirect to login
+        if (response.status === 401) {
+            try {
+                const hasToken = typeof window !== "undefined" && window.localStorage.getItem("accessToken");
+                if (hasToken) {
+                    window.localStorage.removeItem("accessToken");
+                    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+                        window.location.href = "/login";
+                    }
+                }
+            } catch { /* ignore */ }
+        }
+
         return Promise.reject(error);
     }
 );

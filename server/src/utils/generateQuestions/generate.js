@@ -139,19 +139,16 @@ export const generateQuestionsForRound = async ({
             if (!s) continue;
             const key = normalize(s).slice(0, 200);
             if (seen.has(key)) continue;
-            if (roundKeywords.size > 0 && !containsAllowed(s, roundKeywords))
-                continue;
+            // Soft keyword relevance check: skip only when BOTH round and candidate keywords
+            // exist and the question matches neither — this lets behavioral/HR questions
+            // through even when they don't literally contain keyword tokens.
             if (
+                roundKeywords.size > 0 &&
                 candidateKeywords.size > 0 &&
-                !containsAllowed(s, allowedKeywords)
+                !containsAllowed(s, roundKeywords) &&
+                !containsAllowed(s, candidateKeywords)
             ) {
-                if (
-                    !(
-                        roundKeywords.size > 0 &&
-                        containsAllowed(s, roundKeywords)
-                    )
-                )
-                    continue;
+                continue;
             }
             const looksDSA =
                 isDSAQuestion(s) ||

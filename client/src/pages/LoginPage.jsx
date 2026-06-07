@@ -78,6 +78,10 @@ const LoginPage = () => {
         };
     }, []);
 
+    // Stable ref so the GIS effect doesn't re-run when googleLogin identity changes
+    const googleLoginRef = useRef(googleLogin);
+    useEffect(() => { googleLoginRef.current = googleLogin; }, [googleLogin]);
+
     // Google Identity Services button
     useEffect(() => {
         const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
@@ -87,7 +91,7 @@ const LoginPage = () => {
                 client_id: clientId,
                 callback: async (response) => {
                     try {
-                        await googleLogin(response.credential);
+                        await googleLoginRef.current(response.credential);
                         navigate("/dashboard");
                     } catch (e) {
                         console.error(e);
@@ -106,7 +110,7 @@ const LoginPage = () => {
         } catch (e) {
             console.error("GIS button render error", e);
         }
-    }, [gsiReady, googleLogin, navigate]);
+    }, [gsiReady, navigate]);
 
     // no manual click handler; rely on the rendered Google button only
 

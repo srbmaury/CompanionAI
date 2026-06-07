@@ -1,6 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+import { generateJSON } from "./generateQuestions/aiClient.js";
 
 // Fallback rounds if generation fails
 const DEFAULT_ROUNDS = [
@@ -119,11 +117,6 @@ export const suggestRounds = async (company, jobRole, jobDescription) => {
             safeRole
         );
 
-        const model = genAI.getGenerativeModel({
-            model: process.env.GEMINI_MODEL_NAME,
-            generationConfig: { responseMimeType: "application/json" },
-        });
-
         const prompt = `You are generating a realistic interview process tailored to the company and role.
 
             Company: ${safeCompany}
@@ -141,32 +134,12 @@ export const suggestRounds = async (company, jobRole, jobDescription) => {
             5. Do not include company-internal secrets or speculative steps.
         `;
 
-        const result = await model.generateContent(prompt);
-        const text = result?.response?.text?.() || "";
-
-        // Primary: try to parse entire text as JSON
+        const text = (await generateJSON(prompt)) || "";
         let rounds;
         try {
             rounds = JSON.parse(text);
         } catch {
-            // Fallback: extract first [...] block
-            const match = text.match(/\[[\s\S]*\]/);
-            if (match) {
-                try {
-                    rounds = JSON.parse(match[0]);
-                } catch (err) {
-                    console.error(
-                        "Gemini JSON parse failed (block):",
-                        err,
-                        "Raw text:",
-                        text
-                    );
-                    return sanitizeRounds(DEFAULT_ROUNDS);
-                }
-            } else {
-                console.error("No JSON array found in model response.");
-                return sanitizeRounds(DEFAULT_ROUNDS);
-            }
+            return sanitizeRounds(DEFAULT_ROUNDS);
         }
 
         const finalRounds = sanitizeRounds(rounds);
