@@ -11,6 +11,7 @@ import {
     completeRound,
     skipRound,
     clarifyCurrentQuestion,
+    getFollowUp,
 } from "../controllers/questionController.js";
 
 const router = express.Router();
@@ -158,6 +159,15 @@ router.post(
     validate(z.object({ roundId: ObjectIdString }), "params"),
     audit("round.complete", { entityType: "Round", getEntityId: (req) => req.params.roundId }),
     completeRound
+);
+
+router.post(
+    "/:roundId/follow-up",
+    protect,
+    validate(z.object({ roundId: ObjectIdString }), "params"),
+    validate(z.object({ index: z.coerce.number().int().min(0), answer: z.string().max(5000) })),
+    audit("round.followup", { entityType: "Round", getEntityId: (req) => req.params.roundId }),
+    getFollowUp
 );
 
 router.post(

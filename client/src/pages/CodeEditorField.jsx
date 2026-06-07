@@ -8,6 +8,7 @@ import {
     MenuItem,
     Typography,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import CodeIcon from "@mui/icons-material/Code";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
@@ -23,30 +24,27 @@ const languages = [
 ];
 
 const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
+    const muiTheme = useTheme();
     const [useEditor, setUseEditor] = useState(false);
     const [language, setLanguage] = useState("cpp");
     const [stdin, setStdin] = useState("");
     const [isRunning, setIsRunning] = useState(false);
     const [output, setOutput] = useState("");
     const [runError, setRunError] = useState("");
-    const [execMeta, setExecMeta] = useState(null); // structured fields from backend
+    const [execMeta, setExecMeta] = useState(null);
     const editorRef = useRef(null);
     const [editorHeight, setEditorHeight] = useState(300);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const dragStateRef = useRef({ dragging: false, startY: 0, startH: 0 });
     const autoResizeRef = useRef(true);
-    const [editorTheme, setEditorTheme] = useState("vs-dark");
-
-    useEffect(() => {
+    const [editorTheme, setEditorTheme] = useState(() => {
         try {
             const saved = localStorage.getItem("codeEditorTheme");
-            if (saved === "vs-light" || saved === "vs-dark") setEditorTheme(saved);
-        } catch {
-            /* no-op */
-        }
-    }, []);
+            if (saved === "vs-light" || saved === "vs-dark") return saved;
+        } catch { /* no-op */ }
+        return muiTheme.palette.mode === "dark" ? "vs-dark" : "vs-light";
+    });
 
-    // Initialize language from preferredProgrammingLanguage if present
     useEffect(() => {
         try {
             const preferred = localStorage.getItem("preferredProgrammingLanguage");
@@ -55,6 +53,22 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
             }
         } catch { /* ignore */ }
     }, []);
+
+    // Theme-derived colors for fullscreen mode
+    const isLightTheme = editorTheme === "vs-light";
+    const fsBg = isLightTheme ? "#f8f8f8" : "#0b0f12";
+    const fsColor = isLightTheme ? "#1a1a1a" : "#e0e0e0";
+    const fsHeaderBg = isLightTheme ? "rgba(230,230,230,0.97)" : "rgba(20,22,25,0.9)";
+    const fsHeaderBorder = isLightTheme ? "#c8c8c8" : "#222";
+    const fsOutputBg = isLightTheme ? "#efefef" : "#0f1418";
+    const fsOutputBorder = isLightTheme ? "#ccc" : "#333";
+    const fsOutputColor = isLightTheme ? "#1a1a1a" : "#e0e0e0";
+
+    const toggleTheme = useCallback(() => {
+        const next = editorTheme === "vs-dark" ? "vs-light" : "vs-dark";
+        setEditorTheme(next);
+        try { localStorage.setItem("codeEditorTheme", next); } catch { /* no-op */ }
+    }, [editorTheme]);
 
     const handleRunCode = useCallback(async () => {
         if (!useEditor) return;
@@ -72,7 +86,7 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
             const response = await api.post("/run-code", {
                 language,
                 code: value,
-                stdin, // send input to backend
+                stdin,
             });
             const d = response?.data || {};
             setOutput(d?.output ?? "");
@@ -102,7 +116,7 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
         editorRef.current = editor;
         const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight) || 18;
         const minimumEditorHeight = (minRows || 6) * lineHeight + 20;
-        const maximumEditorHeight = 2000; // allow larger expansion
+        const maximumEditorHeight = 2000;
 
         const updateEditorHeight = () => {
             if (!editorRef.current) return;
@@ -115,15 +129,20 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
         };
 
         editor.onDidContentSizeChange(updateEditorHeight);
-        // Shortcuts: Run (Cmd/Ctrl+Enter), Run (F9)
-        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-            handleRunCode();
-        });
-        editor.addCommand(monaco.KeyCode.F9, () => {
-            handleRunCode();
-        });
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => { handleRunCode(); });
+        editor.addCommand(monaco.KeyCode.F9, () => { handleRunCode(); });
         updateEditorHeight();
     }, [handleRunCode, minRows]);
+
+    const outputValue = execMeta?.isError
+        ? execMeta?.errorType === "compile"
+            ? execMeta?.compileOutput || output || runError
+            : execMeta?.stderr || output || runError
+        : output;
+
+    const outputLabel = execMeta?.isError
+        ? execMeta?.errorType === "compile" ? "Compilation Error" : "Runtime/Error"
+        : "Output";
 
     return (
         <>
@@ -131,23 +150,16 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
                 <Typography variant="body2">
                     {useEditor ? "Code Editor:" : "Answer:"}
                 </Typography>
-                <IconButton
-                    onClick={() => setUseEditor(!useEditor)}
-                    size="small"
-                >
+                <IconButton onClick={() => setUseEditor(!useEditor)} size="small">
                     <CodeIcon />
                 </IconButton>
                 {useEditor && (
                     <IconButton
-                        onClick={() => {
-                            const next = editorTheme === "vs-dark" ? "vs-light" : "vs-dark";
-                            setEditorTheme(next);
-                            try { localStorage.setItem("codeEditorTheme", next); } catch { /* no-op */ }
-                        }}
+                        onClick={toggleTheme}
                         size="small"
-                        title={editorTheme === "vs-dark" ? "Switch to Light" : "Switch to Dark"}
+                        title={isLightTheme ? "Switch to Dark" : "Switch to Light"}
                     >
-                        {editorTheme === "vs-dark" ? <Brightness7Icon /> : <Brightness4Icon />}
+                        {isLightTheme ? <Brightness4Icon /> : <Brightness7Icon />}
                     </IconButton>
                 )}
                 {useEditor && (
@@ -185,7 +197,8 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
                 )}
             </Stack>
 
-            {useEditor && (
+            {/* Stdin — only visible when not in fullscreen (fullscreen has its own copy below) */}
+            {useEditor && !isFullscreen && (
                 <TextField
                     fullWidth
                     multiline
@@ -205,52 +218,101 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
                                   position: "fixed",
                                   inset: 0,
                                   zIndex: 1600,
-                                  background: "#0b0f12",
+                                  background: fsBg,
                                   padding: 16,
-                                  color: "#e0e0e0",
+                                  color: fsColor,
+                                  overflowY: "auto",
                               }
                             : {}
                     }
                 >
                     {isFullscreen && (
-                        <div style={{ position: "sticky", top: 8, display: "flex", gap: 8, alignItems: "center", marginBottom: 8, zIndex: 2, background: "rgba(20,22,25,0.9)", padding: 8, borderRadius: 8, border: "1px solid #222" }}>
-                            <Button
-                                size="small"
-                                variant="outlined"
-                                color="inherit"
-                                onClick={() => setIsFullscreen(false)}
-                                sx={{ borderColor: "#777", color: "#e0e0e0" }}
-                            >
-                                Exit Fullscreen
-                            </Button>
-                            <Select
-                                size="small"
-                                value={language}
-                                onChange={(e) => setLanguage(e.target.value)}
-                                MenuProps={{ disablePortal: true, PaperProps: { sx: { bgcolor: "#0f1418", color: "#e0e0e0" } } }}
-                                sx={{ bgcolor: "#0f1418", color: "#e0e0e0" }}
-                            >
-                                {languages.map((lang) => (
-                                    <MenuItem key={lang.value} value={lang.value}>
-                                        {lang.label}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                            <Button
-                                size="small"
-                                variant="contained"
-                                color="primary"
-                                onClick={handleRunCode}
-                                disabled={isRunning}
-                                startIcon={<PlayArrowIcon />}
-                            >
-                                {isRunning ? "Running..." : "Run"}
-                            </Button>
-                        </div>
+                        <>
+                            {/* Fullscreen toolbar */}
+                            <div style={{
+                                position: "sticky",
+                                top: 0,
+                                display: "flex",
+                                gap: 8,
+                                alignItems: "center",
+                                marginBottom: 8,
+                                zIndex: 2,
+                                background: fsHeaderBg,
+                                padding: 8,
+                                borderRadius: 8,
+                                border: `1px solid ${fsHeaderBorder}`,
+                            }}>
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="inherit"
+                                    onClick={() => setIsFullscreen(false)}
+                                    sx={{ borderColor: isLightTheme ? "#999" : "#777", color: fsColor }}
+                                >
+                                    Exit Fullscreen
+                                </Button>
+                                <IconButton
+                                    onClick={toggleTheme}
+                                    size="small"
+                                    title={isLightTheme ? "Switch to Dark" : "Switch to Light"}
+                                    sx={{ color: fsColor }}
+                                >
+                                    {isLightTheme ? <Brightness4Icon /> : <Brightness7Icon />}
+                                </IconButton>
+                                <Select
+                                    size="small"
+                                    value={language}
+                                    onChange={(e) => setLanguage(e.target.value)}
+                                    MenuProps={isLightTheme ? {} : {
+                                        disablePortal: true,
+                                        PaperProps: { sx: { bgcolor: "#0f1418", color: "#e0e0e0" } },
+                                    }}
+                                    sx={isLightTheme ? {} : { bgcolor: "#0f1418", color: "#e0e0e0" }}
+                                >
+                                    {languages.map((lang) => (
+                                        <MenuItem key={lang.value} value={lang.value}>
+                                            {lang.label}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                                <Button
+                                    size="small"
+                                    variant="contained"
+                                    color="primary"
+                                    onClick={handleRunCode}
+                                    disabled={isRunning}
+                                    startIcon={<PlayArrowIcon />}
+                                >
+                                    {isRunning ? "Running..." : "Run"}
+                                </Button>
+                            </div>
+
+                            {/* Stdin inside fullscreen */}
+                            <TextField
+                                fullWidth
+                                multiline
+                                minRows={2}
+                                placeholder="Input for your code (stdin)"
+                                value={stdin}
+                                onChange={(e) => setStdin(e.target.value)}
+                                sx={{
+                                    mb: 1,
+                                    ...(isLightTheme ? {} : {
+                                        "& .MuiOutlinedInput-root": {
+                                            color: "#e0e0e0",
+                                            "& fieldset": { borderColor: "#444" },
+                                        },
+                                        "& .MuiInputBase-inputMultiline": { color: "#e0e0e0" },
+                                    }),
+                                }}
+                                inputProps={{ style: isLightTheme ? {} : { color: "#e0e0e0" } }}
+                            />
+                        </>
                     )}
+
                     <MonacoEditor
                         width="100%"
-                        height={isFullscreen ? "60vh" : editorHeight}
+                        height={isFullscreen ? "55vh" : editorHeight}
                         language={language}
                         theme={editorTheme}
                         value={value}
@@ -269,23 +331,23 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
                         onChange={onChange}
                         editorDidMount={handleEditorDidMount}
                     />
+
+                    {/* Output section — shown inside fullscreen */}
                     {isFullscreen && (output || runError || execMeta) && (
                         <div style={{ marginTop: 12 }}>
-                            <Typography variant="caption" color="textSecondary" sx={{ display: "block", mb: 0.5 }}>
-                                {execMeta?.isError
-                                    ? execMeta?.errorType === "compile"
-                                        ? "Compilation Error"
-                                        : "Runtime/Error"
-                                    : "Output"}
+                            <Typography
+                                variant="caption"
+                                sx={{
+                                    display: "block",
+                                    mb: 0.5,
+                                    color: execMeta?.isError ? "#f44336" : fsColor,
+                                    opacity: 0.8,
+                                }}
+                            >
+                                {outputLabel}
                             </Typography>
                             <TextField
-                                value={
-                                    execMeta?.isError
-                                        ? execMeta?.errorType === "compile"
-                                            ? execMeta?.compileOutput || output || runError
-                                            : execMeta?.stderr || output || runError
-                                        : output
-                                }
+                                value={outputValue}
                                 multiline
                                 minRows={6}
                                 maxRows={12}
@@ -293,36 +355,26 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
                                 sx={{
                                     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
                                     width: "100%",
-                                    '& .MuiOutlinedInput-notchedOutline': { borderColor: '#333' },
-                                    '& .MuiInputBase-inputMultiline': { color: '#e0e0e0' },
-                                    background: '#0f1418',
+                                    "& .MuiOutlinedInput-notchedOutline": { borderColor: fsOutputBorder },
+                                    "& .MuiInputBase-inputMultiline": { color: fsOutputColor },
+                                    background: fsOutputBg,
                                 }}
                             />
                         </div>
                     )}
+
                     {!isFullscreen && (
                         <div
-                            style={{
-                                width: "100%",
-                                height: 8,
-                                cursor: "ns-resize",
-                                background: "transparent",
-                            }}
+                            style={{ width: "100%", height: 8, cursor: "ns-resize", background: "transparent" }}
                             onMouseDown={(e) => {
                                 autoResizeRef.current = false;
-                                dragStateRef.current = {
-                                    dragging: true,
-                                    startY: e.clientY,
-                                    startH: editorHeight,
-                                };
+                                dragStateRef.current = { dragging: true, startY: e.clientY, startH: editorHeight };
                                 const onMove = (ev) => {
                                     if (!dragStateRef.current.dragging) return;
                                     const delta = ev.clientY - dragStateRef.current.startY;
                                     const next = Math.max(120, dragStateRef.current.startH + delta);
                                     setEditorHeight(next);
-                                    if (editorRef.current) {
-                                        editorRef.current.layout();
-                                    }
+                                    if (editorRef.current) editorRef.current.layout();
                                 };
                                 const onUp = () => {
                                     dragStateRef.current.dragging = false;
@@ -332,7 +384,10 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
                                 window.addEventListener("mousemove", onMove);
                                 window.addEventListener("mouseup", onUp);
                             }}
-                            onDoubleClick={() => { autoResizeRef.current = true; if (editorRef.current) editorRef.current.layout(); }}
+                            onDoubleClick={() => {
+                                autoResizeRef.current = true;
+                                if (editorRef.current) editorRef.current.layout();
+                            }}
                             title="Drag to resize"
                         />
                     )}
@@ -350,51 +405,25 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
                 />
             )}
 
+            {/* Output section — shown outside fullscreen */}
             {useEditor && !isFullscreen && (output || runError || execMeta) && (
                 <Stack mt={1} spacing={0.5}>
-                    {execMeta?.isError ? (
-                        <>
-                            <Typography variant="caption" color="error">
-                                {execMeta?.errorType === "compile"
-                                    ? "Compilation Error"
-                                    : "Runtime/Error"}
-                            </Typography>
-                            <TextField
-                                value={
-                                    execMeta?.errorType === "compile"
-                                        ? execMeta?.compileOutput || output || runError
-                                        : execMeta?.stderr || output || runError
-                                }
-                                multiline
-                                minRows={3}
-                                maxRows={10}
-                                InputProps={{ readOnly: true }}
-                                sx={{
-                                    fontFamily:
-                                        "ui-monospace, SFMono-Regular, Menlo, monospace",
-                                }}
-                            />
-                        </>
-                    ) : (
-                        <>
-                            <Typography variant="caption" color="textSecondary">
-                                Output
-                            </Typography>
-                            <TextField
-                                value={output}
-                                multiline
-                                minRows={3}
-                                maxRows={10}
-                                InputProps={{ readOnly: true }}
-                                sx={{
-                                    fontFamily:
-                                        "ui-monospace, SFMono-Regular, Menlo, monospace",
-                                }}
-                            />
-                        </>
-                    )}
+                    <Typography
+                        variant="caption"
+                        color={execMeta?.isError ? "error" : "text.secondary"}
+                    >
+                        {outputLabel}
+                    </Typography>
+                    <TextField
+                        value={outputValue}
+                        multiline
+                        minRows={3}
+                        maxRows={10}
+                        InputProps={{ readOnly: true }}
+                        sx={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+                    />
                     <Typography variant="caption" color="text.secondary">
-                        Shortcuts: Run (Cmd/Ctrl+Enter or F9), Fullscreen. Language: C++ by default.
+                        Shortcuts: Run (Cmd/Ctrl+Enter or F9). Default language: C++.
                     </Typography>
                 </Stack>
             )}

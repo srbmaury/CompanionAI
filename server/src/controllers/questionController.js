@@ -4,6 +4,7 @@ import Question from "../models/Question.js";
 import Feedback from "../models/Feedback.js";
 import { generateQuestionsForRound } from "../utils/generateQuestions.js";
 import { generateClarification } from "../utils/generateQuestions/clarify.js";
+import { generateFollowUp } from "../utils/generateQuestions/followUp.js";
 import { getQueue } from "../queues/index.js";
 
 export const prepareQuestionsForRound = async (req, res) => {
@@ -280,6 +281,35 @@ export const skipRound = async (req, res) => {
         return res.json({ success: true });
     } catch (error) {
         console.error("skipRound error:", error);
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+export const getFollowUp = async (req, res) => {
+    try {
+        const { roundId } = req.params;
+        const { index, answer } = req.body || {};
+
+        const round = await Round.findById(roundId).populate("questions.question");
+        if (!round) return res.status(404).json({ message: "Round not found" });
+        if (round.deliveryMode !== "conversational")
+            return res.status(400).json({ message: "Round is not conversational" });
+
+        const idx = Number(index) || 0;
+        const questionText = round.questions?.[idx]?.question?.text || "";
+
+        const interview = await Interview.findOne({ "rounds.round": roundId }).lean();
+
+        const followUp = await generateFollowUp({
+            questionText,
+            userAnswer: (answer || "").toString().trim(),
+            jobRole: interview?.jobRole || "",
+            roundName: round.name || "",
+        });
+
+        return res.json({ followUp });
+    } catch (error) {
+        console.error("getFollowUp error:", error);
         return res.status(500).json({ message: error.message });
     }
 };

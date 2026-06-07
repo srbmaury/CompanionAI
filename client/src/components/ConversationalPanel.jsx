@@ -24,6 +24,8 @@ const ConversationalPanel = ({
     onStopListening,
     outlinedInputSx,
     savedAt,
+    pendingFollowUp,
+    onFollowUpDone,
 }) => {
     const questionNumber = useMemo(() => (convState?.index ?? 0) + 1, [convState?.index]);
     const questionText = convState?.current?.text;
@@ -39,7 +41,48 @@ const ConversationalPanel = ({
     return (
         <Card variant="outlined">
             <CardContent>
-                {convSubmitting ? (
+                {pendingFollowUp ? (
+                    <>
+                        <Chip size="small" label="Interviewer follow-up" color="secondary" sx={{ mb: 1.5 }} />
+                        <Typography gutterBottom>{pendingFollowUp.question}</Typography>
+                        <Suspense fallback={<Skeleton variant="rectangular" height={160} sx={{ borderRadius: 1, mb: 1 }} />}>
+                            <CodeEditorField
+                                value={convAnswer}
+                                onChange={setConvAnswer}
+                                outlinedInputSx={outlinedInputSx}
+                            />
+                        </Suspense>
+                        <Stack direction={{ xs: "column", md: "row" }} spacing={1} mt={2} alignItems={{ xs: "stretch", md: "center" }}>
+                            <VoiceControls
+                                target="conv"
+                                speakText={pendingFollowUp.question}
+                                supportsTTS={supportsTTS}
+                                supportsSTT={supportsSTT}
+                                listening={listening}
+                                listeningTarget={listeningTarget}
+                                onSpeak={onSpeak}
+                                onStartListening={onStartListening}
+                                onStopListening={onStopListening}
+                            />
+                            <Button
+                                variant="contained"
+                                size="small"
+                                onClick={onFollowUpDone}
+                                sx={{ width: { xs: "100%", md: "auto" } }}
+                            >
+                                Submit Follow-up
+                            </Button>
+                            <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={onFollowUpDone}
+                                sx={{ width: { xs: "100%", md: "auto" } }}
+                            >
+                                Skip
+                            </Button>
+                        </Stack>
+                    </>
+                ) : convSubmitting ? (
                     <Stack direction="row" spacing={1} alignItems="center">
                         <CircularProgress size={20} />
                         <Typography>Submitting answer…</Typography>
