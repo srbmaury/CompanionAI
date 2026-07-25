@@ -49,7 +49,7 @@ function App() {
                 Skip to main content
             </a>
             <Header />
-            <main id="main-content" className="p-8 max-w-2xl mx-auto">
+            <main id="main-content">
                 <Routes>
                 {/* Public routes */}
                 <Route path="/login" element={<LoginPage />} />

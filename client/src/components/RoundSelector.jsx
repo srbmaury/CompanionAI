@@ -10,6 +10,7 @@ import {
     Select,
     Stack,
     TextField,
+    Tooltip,
     Typography,
 } from "@mui/material";
 
@@ -49,7 +50,7 @@ const RoundsSelector = ({ suggestedRounds, selectedRounds, onToggleRound, onChan
                             />
 
                             {isSelected && (
-                                <Stack mt={2} spacing={2} direction={{ xs: "column", sm: "row" }}>
+                                <Stack mt={2} spacing={2} direction={{ xs: "column", sm: "row" }} alignItems={{ sm: "center" }}>
                                     <FormControl size="small" sx={{ minWidth: 220 }}>
                                         <InputLabel id={`mode-label-${idx}`}>Delivery Mode</InputLabel>
                                         <Select
@@ -62,6 +63,20 @@ const RoundsSelector = ({ suggestedRounds, selectedRounds, onToggleRound, onChan
                                             <MenuItem value="online-assessment">Online Assessment (all at once)</MenuItem>
                                         </Select>
                                     </FormControl>
+                                    <Tooltip title="Number of questions to ask in this round (1–20)">
+                                        <TextField
+                                            size="small"
+                                            label="Questions"
+                                            type="number"
+                                            value={selected?.questionCount ?? 5}
+                                            onChange={(e) => {
+                                                const n = Math.max(1, Math.min(20, Number(e.target.value) || 1));
+                                                onChangeCount?.(round.roundName, n);
+                                            }}
+                                            inputProps={{ min: 1, max: 20 }}
+                                            sx={{ width: 120 }}
+                                        />
+                                    </Tooltip>
                                 </Stack>
                             )}
                         </CardContent>

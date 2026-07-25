@@ -7,11 +7,10 @@ import { useOAForm }           from "../hooks/useOAForm";
 import { useVoiceInput }       from "../hooks/useVoiceInput";
 import { useResumePdf }        from "../hooks/useResumePdf";
 
-import { Alert, Box, Button, Chip, Divider, Drawer, IconButton, Stack, Typography,
+import { Alert, Box, Button, Chip, CircularProgress, Divider, Drawer, IconButton, LinearProgress, Stack, Typography,
          Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import HelpPopover   from "../components/HelpPopover";
-import VoiceControls from "../components/VoiceControls";
 
 import ConversationalPanel from "../components/ConversationalPanel";
 import FeedbackPanel       from "../components/FeedbackPanel";
@@ -82,7 +81,7 @@ const InterviewPage = () => {
 
     // ── Voice input ───────────────────────────────────────────────────────────
     const {
-        listening, listeningTarget,
+        listening, listeningTarget, interimText,
         micLevel, micPermission,
         inputDevices, selectedDeviceId, setSelectedDeviceId,
         supportsSTT, supportsTTS,
@@ -125,7 +124,7 @@ const InterviewPage = () => {
     // ── Shared voice prop bundle ──────────────────────────────────────────────
     const voiceProps = useMemo(() => ({
         supportsTTS, supportsSTT,
-        listening, listeningTarget,
+        listening, listeningTarget, interimText,
         onSpeak: speakNow,
         onStartListening: startListening,
         onStopListening: stopListening,
@@ -134,10 +133,14 @@ const InterviewPage = () => {
         onChangeDevice: setSelectedDeviceId,
         pushToTalk: false,
         outlinedInputSx,
-    }), [supportsTTS, supportsSTT, listening, listeningTarget, speakNow, startListening,
+    }), [supportsTTS, supportsSTT, listening, listeningTarget, interimText, speakNow, startListening,
         stopListening, micPermission, micLevel, inputDevices, selectedDeviceId, setSelectedDeviceId]);
 
-    if (!interview) return <Typography>Loading...</Typography>;
+    if (!interview) return (
+        <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" }}>
+            <CircularProgress />
+        </Box>
+    );
 
     return (
         <>
@@ -210,9 +213,15 @@ const InterviewPage = () => {
 
                             {/* Round body */}
                             {loadingRound ? (
-                                <Typography>
-                                    Preparing questions{roundPrepareProgress ? `… ${Math.min(100, Math.max(0, Math.round(roundPrepareProgress)))}%` : "..."}
-                                </Typography>
+                                <Stack spacing={1} sx={{ py: 2 }}>
+                                    <Typography>
+                                        Preparing questions{roundPrepareProgress ? `… ${Math.min(100, Math.max(0, Math.round(roundPrepareProgress)))}%` : "..."}
+                                    </Typography>
+                                    <LinearProgress
+                                        variant={roundPrepareProgress ? "determinate" : "indeterminate"}
+                                        value={Math.min(100, Math.max(0, roundPrepareProgress || 0))}
+                                    />
+                                </Stack>
                             ) : prepError ? (
                                 <Stack spacing={1}>
                                     <Alert severity="error">{prepError}</Alert>
@@ -221,9 +230,15 @@ const InterviewPage = () => {
                             ) : isConversational ? (
                                 selectedRound.status === "completed" ? (
                                     (convRoundSubmitting || hasAnsweredMissingFeedback) ? (
-                                        <Typography>
-                                            Generating feedback… {convFeedbackProgress ? `${Math.round(convFeedbackProgress)}%` : ""}
-                                        </Typography>
+                                        <Stack spacing={1} sx={{ py: 2 }}>
+                                            <Typography>
+                                                Generating feedback… {convFeedbackProgress ? `${Math.round(convFeedbackProgress)}%` : ""}
+                                            </Typography>
+                                            <LinearProgress
+                                                variant={convFeedbackProgress ? "determinate" : "indeterminate"}
+                                                value={convFeedbackProgress || 0}
+                                            />
+                                        </Stack>
                                     ) : (
                                         <FeedbackPanel round={selectedRound} />
                                     )
@@ -246,18 +261,30 @@ const InterviewPage = () => {
                                             {...voiceProps}
                                         />
                                         {convRoundSubmitting && (
-                                            <Typography sx={{ mt: 1 }}>
-                                                Generating feedback… {convFeedbackProgress ? `${Math.round(convFeedbackProgress)}%` : ""}
-                                            </Typography>
+                                            <Stack spacing={0.5} sx={{ mt: 1 }}>
+                                                <Typography>
+                                                    Generating feedback… {convFeedbackProgress ? `${Math.round(convFeedbackProgress)}%` : ""}
+                                                </Typography>
+                                                <LinearProgress
+                                                    variant={convFeedbackProgress ? "determinate" : "indeterminate"}
+                                                    value={convFeedbackProgress || 0}
+                                                />
+                                            </Stack>
                                         )}
                                     </>
                                 )
                             ) : (
                                 selectedRound.status === "completed" ? (
                                     hasAnsweredMissingFeedback ? (
-                                        <Typography>
-                                            Generating feedback… {oaFeedbackProgress ? `${Math.round(oaFeedbackProgress)}%` : ""}
-                                        </Typography>
+                                        <Stack spacing={1} sx={{ py: 2 }}>
+                                            <Typography>
+                                                Generating feedback… {oaFeedbackProgress ? `${Math.round(oaFeedbackProgress)}%` : ""}
+                                            </Typography>
+                                            <LinearProgress
+                                                variant={oaFeedbackProgress ? "determinate" : "indeterminate"}
+                                                value={oaFeedbackProgress || 0}
+                                            />
+                                        </Stack>
                                     ) : (
                                         <FeedbackPanel round={selectedRound} />
                                     )
@@ -273,9 +300,15 @@ const InterviewPage = () => {
                                             {...voiceProps}
                                         />
                                         {oaSubmitting && (
-                                            <Typography sx={{ mt: 1 }}>
-                                                Generating feedback… {oaFeedbackProgress ? `${Math.round(oaFeedbackProgress)}%` : ""}
-                                            </Typography>
+                                            <Stack spacing={0.5} sx={{ mt: 1 }}>
+                                                <Typography>
+                                                    Generating feedback… {oaFeedbackProgress ? `${Math.round(oaFeedbackProgress)}%` : ""}
+                                                </Typography>
+                                                <LinearProgress
+                                                    variant={oaFeedbackProgress ? "determinate" : "indeterminate"}
+                                                    value={oaFeedbackProgress || 0}
+                                                />
+                                            </Stack>
                                         )}
                                     </>
                                 )
@@ -285,35 +318,6 @@ const InterviewPage = () => {
                 </Box>
             </Box>
 
-            {/* Mobile fixed bottom bar */}
-            {selectedRound && isConversational && !convViewState?.done && !pendingFollowUp && (
-                <Box sx={{
-                    position: { xs: "fixed", md: "static" },
-                    bottom: 0, left: 0, right: 0,
-                    bgcolor: (t) => t.palette.background.paper,
-                    borderTop: { xs: "1px solid rgba(0,0,0,0.12)", md: "none" },
-                    p: { xs: 1, md: 0 },
-                    display: { xs: "block", md: "none" },
-                    zIndex: 1200,
-                }}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                        <VoiceControls
-                            target="conv"
-                            speakText={convViewState?.current?.text}
-                            {...voiceProps}
-                        />
-                        <Button
-                            variant="contained"
-                            size="large"
-                            fullWidth
-                            disabled={convSubmitting}
-                            onClick={() => handleSubmitAnswer(convAnswer)}
-                        >
-                            {convSubmitting ? "Submitting…" : "Submit"}
-                        </Button>
-                    </Stack>
-                </Box>
-            )}
 
             {/* Resume dialog */}
             <Dialog

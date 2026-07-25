@@ -31,7 +31,7 @@ const OAForm = ({
                                 Question {idx + 1}:
                             </Typography>
                             <Typography gutterBottom>
-                                {q.question?.text || q.answerGiven}
+                                {q.question?.text || "(question text unavailable)"}
                             </Typography>
 
                             <Suspense fallback={<Skeleton variant="rectangular" height={140} sx={{ borderRadius: 1 }} />}>

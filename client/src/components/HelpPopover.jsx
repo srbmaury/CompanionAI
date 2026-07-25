@@ -1,16 +1,28 @@
 import { IconButton, Popover, Stack, Typography, Divider, List, ListItem, ListItemText } from "@mui/material";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
-import { useState, memo } from "react";
+import { useState, memo, useRef, useEffect } from "react";
 
 const HelpPopover = ({ placement = { vertical: "bottom", horizontal: "right" } }) => {
     const [anchorEl, setAnchorEl] = useState(null);
     const open = Boolean(anchorEl);
     const id = open ? "help-popover" : undefined;
+    const btnRef = useRef(null);
+
+    useEffect(() => {
+        const onKey = (e) => {
+            if (e.key === "?" && !e.ctrlKey && !e.metaKey && !["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
+                setAnchorEl((prev) => prev ? null : (btnRef.current || document.body));
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, []);
 
     return (
         <>
             <IconButton
-                aria-label="Open help"
+                ref={btnRef}
+                aria-label="Open help (?)"
                 onClick={(e) => setAnchorEl(e.currentTarget)}
                 sx={{ "&:focus-visible": { outline: "3px solid rgba(25,118,210,0.6)", outlineOffset: 2 } }}
             >

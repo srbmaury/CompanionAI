@@ -6,6 +6,7 @@ import {
     Button,
     Select,
     MenuItem,
+    Tooltip,
     Typography,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
@@ -154,13 +155,11 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
                     <CodeIcon />
                 </IconButton>
                 {useEditor && (
-                    <IconButton
-                        onClick={toggleTheme}
-                        size="small"
-                        title={isLightTheme ? "Switch to Dark" : "Switch to Light"}
-                    >
-                        {isLightTheme ? <Brightness4Icon /> : <Brightness7Icon />}
-                    </IconButton>
+                    <Tooltip title={isLightTheme ? "Switch to dark theme" : "Switch to light theme"}>
+                        <IconButton onClick={toggleTheme} size="small">
+                            {isLightTheme ? <Brightness4Icon /> : <Brightness7Icon />}
+                        </IconButton>
+                    </Tooltip>
                 )}
                 {useEditor && (
                     <Select
@@ -251,14 +250,15 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
                                 >
                                     Exit Fullscreen
                                 </Button>
+                                <Tooltip title={isLightTheme ? "Switch to dark theme" : "Switch to light theme"}>
                                 <IconButton
                                     onClick={toggleTheme}
                                     size="small"
-                                    title={isLightTheme ? "Switch to Dark" : "Switch to Light"}
                                     sx={{ color: fsColor }}
                                 >
                                     {isLightTheme ? <Brightness4Icon /> : <Brightness7Icon />}
                                 </IconButton>
+                                </Tooltip>
                                 <Select
                                     size="small"
                                     value={language}
@@ -364,8 +364,15 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
                     )}
 
                     {!isFullscreen && (
+                        <Tooltip title="Drag to resize editor">
                         <div
-                            style={{ width: "100%", height: 8, cursor: "ns-resize", background: "transparent" }}
+                            style={{
+                                width: "100%",
+                                height: 8,
+                                cursor: "ns-resize",
+                                background: "linear-gradient(transparent 3px, rgba(128,128,128,0.2) 3px, rgba(128,128,128,0.2) 5px, transparent 5px)",
+                                userSelect: "none",
+                            }}
                             onMouseDown={(e) => {
                                 autoResizeRef.current = false;
                                 dragStateRef.current = { dragging: true, startY: e.clientY, startH: editorHeight };
@@ -388,8 +395,8 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
                                 autoResizeRef.current = true;
                                 if (editorRef.current) editorRef.current.layout();
                             }}
-                            title="Drag to resize"
                         />
+                        </Tooltip>
                     )}
                 </div>
             ) : (

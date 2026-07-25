@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { AuthContext } from "../context/AuthContext";
 
-import { Box, Card, CardActionArea, CardContent, CircularProgress, Pagination, Stack, Typography, ToggleButton, ToggleButtonGroup, Chip } from "@mui/material";
+import { Box, Button, Card, CardActionArea, CardContent, CircularProgress, Pagination, Stack, Typography, ToggleButton, ToggleButtonGroup, Chip } from "@mui/material";
 
 const DashboardPage = () => {
     const { user } = useContext(AuthContext);
@@ -48,7 +48,12 @@ const DashboardPage = () => {
             {loading ? (
                 <CircularProgress />
             ) : interviews.length === 0 ? (
-                <Typography>No interviews found.</Typography>
+                <Stack spacing={2} alignItems="center" sx={{ py: 6 }}>
+                    <Typography color="text.secondary">You haven't started any interviews yet.</Typography>
+                    <Button variant="contained" onClick={() => navigate("/create-interview")}>
+                        Start your first interview
+                    </Button>
+                </Stack>
             ) : (
                 <Stack spacing={2}>
                     <ToggleButtonGroup
@@ -63,13 +68,20 @@ const DashboardPage = () => {
                         <ToggleButton value="completed">Completed</ToggleButton>
                     </ToggleButtonGroup>
 
-                    {interviews
-                        .filter((it) => {
+                    {(() => {
+                        const filtered = interviews.filter((it) => {
                             if (statusFilter === "all") return true;
                             const isCompleted = Boolean(it.isCompleted);
                             return statusFilter === "completed" ? isCompleted : !isCompleted;
-                        })
-                        .map((interview) => (
+                        });
+                        if (filtered.length === 0) {
+                            return (
+                                <Typography color="text.secondary" sx={{ py: 2 }}>
+                                    No {statusFilter === "completed" ? "completed" : "in-progress"} interviews yet.
+                                </Typography>
+                            );
+                        }
+                        return filtered.map((interview) => (
                         <Card
                             key={interview._id}
                             variant="outlined"
@@ -96,7 +108,8 @@ const DashboardPage = () => {
                             </CardContent>
                             </CardActionArea>
                         </Card>
-                    ))}
+                        ));
+                    })()}
                 </Stack>
             )}
 

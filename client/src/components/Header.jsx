@@ -1,5 +1,5 @@
 import { useContext, useState } from "react";
-import { Link as RouterLink, useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useLocation } from "react-router-dom";
 
 import { AuthContext } from "../context/AuthContext";
 import { useThemeMode } from "../context/ThemeContext";
@@ -24,8 +24,12 @@ import MenuIcon from "@mui/icons-material/Menu";
 export default function Header() {
     const { user, logout } = useContext(AuthContext);
     const navigate = useNavigate();
+    const location = useLocation();
     const [menuAnchorEl, setMenuAnchorEl] = useState(null);
     const { mode, toggle } = useThemeMode();
+
+    const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + "/");
+    const activeSx = { borderBottom: "2px solid rgba(255,255,255,0.8)", borderRadius: 0 };
     // removed modal state for resume review page
 
     const handleLogout = async () => {
@@ -69,17 +73,17 @@ export default function Header() {
                         {/* Navigation links */}
                         <Box sx={{ display: { xs: "none", md: "block" } }}>
                             <Stack direction="row" spacing={2} alignItems="center">
-                                <Button component={RouterLink} to="/dashboard" color="inherit">
+                                <Button component={RouterLink} to="/dashboard" color="inherit" sx={isActive("/dashboard") ? activeSx : {}}>
                                     Dashboard
                                 </Button>
-                                <Button component={RouterLink} to="/experiences" color="inherit">
+                                <Button component={RouterLink} to="/experiences" color="inherit" sx={isActive("/experiences") ? activeSx : {}}>
                                     Experiences
                                 </Button>
-                                <Button component={RouterLink} to="/create-interview" color="inherit">
+                                <Button component={RouterLink} to="/create-interview" color="inherit" sx={isActive("/create-interview") ? activeSx : {}}>
                                     Create Interview
                                 </Button>
-                                <Button component={RouterLink} to="/resume-review" color="inherit">Resume Review</Button>
-                                <Button component={RouterLink} to="/profile" color="inherit">
+                                <Button component={RouterLink} to="/resume-review" color="inherit" sx={isActive("/resume-review") ? activeSx : {}}>Resume Review</Button>
+                                <Button component={RouterLink} to="/profile" color="inherit" sx={isActive("/profile") ? activeSx : {}}>
                                     Profile
                                 </Button>
                                 <Tooltip title={mode === "dark" ? "Switch to light" : "Switch to dark"}>
@@ -128,7 +132,22 @@ export default function Header() {
                 {/* Resume Review now a dedicated page; modal removed */}
                 </>
             ) : (
-                <></>
+                <AppBar position="static" color="primary" elevation={3}>
+                    <Toolbar sx={{ display: "flex", justifyContent: "space-between" }}>
+                        <Typography
+                            variant="h6"
+                            component={RouterLink}
+                            to="/login"
+                            sx={{ textDecoration: "none", color: "inherit", fontWeight: "bold" }}
+                        >
+                            CompanionAI
+                        </Typography>
+                        <Stack direction="row" spacing={1}>
+                            <Button component={RouterLink} to="/login" color="inherit">Login</Button>
+                            <Button component={RouterLink} to="/register" color="inherit" variant="outlined" sx={{ borderColor: "rgba(255,255,255,0.5)" }}>Register</Button>
+                        </Stack>
+                    </Toolbar>
+                </AppBar>
             )}
         </>
     );

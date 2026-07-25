@@ -253,6 +253,21 @@ const RegisterPage = () => {
                                 <FormHelperText error={!!errors.password}>
                                     {errors.password || " "}
                                 </FormHelperText>
+                                {password && (
+                                    <Stack spacing={0.25} mt={0.5}>
+                                        {[
+                                            { label: "8+ characters", ok: password.length >= 8 },
+                                            { label: "Lowercase letter", ok: /[a-z]/.test(password) },
+                                            { label: "Uppercase letter", ok: /[A-Z]/.test(password) },
+                                            { label: "Number", ok: /\d/.test(password) },
+                                            { label: "Special character", ok: /[^A-Za-z0-9]/.test(password) },
+                                        ].map(({ label, ok }) => (
+                                            <Typography key={label} variant="caption" color={ok ? "success.main" : "text.disabled"}>
+                                                {ok ? "✓" : "○"} {label}
+                                            </Typography>
+                                        ))}
+                                    </Stack>
+                                )}
                             </FormControl>
 
                             {/* CAPTCHA */}

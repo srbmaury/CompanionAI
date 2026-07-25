@@ -61,7 +61,12 @@ const VoiceControls = ({
             )}
 
             {/* Permission state */}
-            <Tooltip title={micPermission ? `Mic: ${micPermission}` : "Mic state unknown"}>
+            <Tooltip title={
+                micPermission === "granted" ? "Mic access granted" :
+                micPermission === "denied" ? "Mic access denied — check browser settings" :
+                micPermission === "prompt" ? "Browser will request mic access" :
+                "Mic access status unknown"
+            }>
                 <span>{micIndicatorIcon}</span>
             </Tooltip>
 

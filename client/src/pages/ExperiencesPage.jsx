@@ -29,8 +29,8 @@ const ExperiencesPage = () => {
             </Typography>
             <Box>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }}>
-                    <TextField size="small" label="Company" value={expCompany} onChange={(e) => setExpCompany(e.target.value)} sx={{ minWidth: 220 }} />
-                    <TextField size="small" label="Role" value={expRole} onChange={(e) => setExpRole(e.target.value)} sx={{ minWidth: 220 }} />
+                    <TextField size="small" label="Company" value={expCompany} onChange={(e) => setExpCompany(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") fetchExperiences(); }} sx={{ minWidth: 220 }} />
+                    <TextField size="small" label="Role" value={expRole} onChange={(e) => setExpRole(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") fetchExperiences(); }} sx={{ minWidth: 220 }} />
                     <Button variant="contained" onClick={fetchExperiences} disabled={expLoading || !expCompany || !expRole}>
                         {expLoading ? "Searching..." : "Search"}
                     </Button>

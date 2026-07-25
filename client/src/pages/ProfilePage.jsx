@@ -58,7 +58,9 @@ const ProfilePage = () => {
     const [showNew, setShowNew] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
     const [profileMsg, setProfileMsg] = useState("");
+    const [profileMsgSeverity, setProfileMsgSeverity] = useState("info");
     const [profileMsgOpen, setProfileMsgOpen] = useState(false);
+    const [deleteConfirmId, setDeleteConfirmId] = useState(null);
     const [changePassword, setChangePassword] = useState(false);
     // Resumes controls
     const [sort, setSort] = useState("-createdAt");
@@ -119,12 +121,16 @@ const ProfilePage = () => {
     const canSave = (nameChanged || wantsPasswordChange || langChanged) && !profileHasErrors && !saving;
 
     const handleDelete = async (id) => {
+        setDeleteConfirmId(null);
         try {
             setDeletingId(id);
             await deleteResume(id);
             setResumes((prev) => prev.filter((resume) => resume._id !== id));
         } catch (err) {
             console.error("Delete error:", err);
+            setProfileMsg("Failed to delete resume");
+            setProfileMsgSeverity("error");
+            setProfileMsgOpen(true);
         } finally {
             setDeletingId(null);
         }
@@ -363,6 +369,7 @@ const ProfilePage = () => {
                                             }
                                             const r = await updateProfile(payload);
                                             setProfileMsg(r?.message || "Saved");
+                                            setProfileMsgSeverity("success");
                                             setProfileMsgOpen(true);
                                             setCurrentPassword("");
                                             setNewPassword("");
@@ -371,6 +378,7 @@ const ProfilePage = () => {
                                             try { localStorage.setItem("preferredProgrammingLanguage", preferredProgrammingLanguage); } catch { /* ignore */ }
                                         } catch (e) {
                                             setProfileMsg(e?.response?.data?.message || "Save failed");
+                                            setProfileMsgSeverity("error");
                                             setProfileMsgOpen(true);
                                         } finally {
                                             setSaving(false);
@@ -547,11 +555,7 @@ const ProfilePage = () => {
                                                             <IconButton
                                                                 color="error"
                                                                 size="small"
-                                                                onClick={() => {
-                                                                    if (window.confirm("Delete this resume?")) {
-                                                                        handleDelete(resume._id);
-                                                                    }
-                                                                }}
+                                                                onClick={() => setDeleteConfirmId(resume._id)}
                                                                 disabled={
                                                                     deletingId ===
                                                                     resume._id
@@ -581,7 +585,7 @@ const ProfilePage = () => {
             </Card>
             {profileMsgOpen && (
                 <Alert
-                    severity="info"
+                    severity={profileMsgSeverity}
                     aria-live="polite"
                     sx={{ position: "fixed", top: 16, right: 16, zIndex: 1400 }}
                     onClose={() => setProfileMsgOpen(false)}
@@ -589,6 +593,18 @@ const ProfilePage = () => {
                     {profileMsg}
                 </Alert>
             )}
+
+            {/* Resume delete confirmation */}
+            <Dialog open={Boolean(deleteConfirmId)} onClose={() => setDeleteConfirmId(null)} aria-labelledby="delete-resume-title">
+                <DialogTitle id="delete-resume-title">Delete this resume?</DialogTitle>
+                <DialogContent>
+                    <Typography>This will permanently remove the resume from your account.</Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+                    <Button color="error" variant="contained" onClick={() => handleDelete(deleteConfirmId)}>Delete</Button>
+                </DialogActions>
+            </Dialog>
 
             {/* Edit resume dialog */}
             <Dialog open={editOpen} onClose={() => setEditOpen(false)} fullWidth maxWidth="sm" aria-labelledby="edit-resume-title">

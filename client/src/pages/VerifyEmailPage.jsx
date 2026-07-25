@@ -1,15 +1,18 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { useSearchParams, Link as RouterLink, useNavigate } from "react-router-dom";
 import { Box, Card, CardContent, Typography, Button, CircularProgress, Stack, Link } from "@mui/material";
 import api from "../api/axios";
+import { AuthContext } from "../context/AuthContext";
 
 const VerifyEmailPage = () => {
+    const { resendVerification } = useContext(AuthContext);
     const [params] = useSearchParams();
     const navigate = useNavigate();
     const token = params.get("token");
     const email = params.get("email");
     const [status, setStatus] = useState("idle"); // idle | verifying | success | error
     const [message, setMessage] = useState("");
+    const [resendMsg, setResendMsg] = useState("");
 
     useEffect(() => {
         const verify = async () => {
@@ -55,9 +58,28 @@ const VerifyEmailPage = () => {
                                     Go to Login
                                 </Button>
                                 {status === "error" && (
-                                    <Typography variant="body2" color="text.secondary">
-                                        Need a new link? <Link component={RouterLink} to="/register">Register again</Link> or contact support.
-                                    </Typography>
+                                    <Stack spacing={1} alignItems="center">
+                                        {email && (
+                                            <Button
+                                                variant="outlined"
+                                                size="small"
+                                                onClick={async () => {
+                                                    try {
+                                                        const r = await resendVerification(email);
+                                                        setResendMsg(r?.message || "Verification email sent — check your inbox.");
+                                                    } catch {
+                                                        setResendMsg("Could not resend — try registering again.");
+                                                    }
+                                                }}
+                                            >
+                                                Resend verification email
+                                            </Button>
+                                        )}
+                                        {resendMsg && <Typography variant="body2" color="text.secondary">{resendMsg}</Typography>}
+                                        <Typography variant="body2" color="text.secondary">
+                                            No account yet? <Link component={RouterLink} to="/register">Register</Link>
+                                        </Typography>
+                                    </Stack>
                                 )}
                             </>
                         )}

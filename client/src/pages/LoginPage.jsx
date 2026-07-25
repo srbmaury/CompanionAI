@@ -5,6 +5,7 @@ import Captcha from "../components/Captcha";
 
 // MUI components
 import {
+    Alert,
     Box,
     Button,
     Card,
@@ -35,8 +36,8 @@ const LoginPage = () => {
     const [gsiReady, setGsiReady] = useState(false);
     const googleDivRef = useRef(null);
 
-    // simple local validation state (optional)
     const [errors, setErrors] = useState({ email: "", password: "" });
+    const [apiError, setApiError] = useState("");
 
     const validate = () => {
         const next = { email: "", password: "" };
@@ -52,13 +53,18 @@ const LoginPage = () => {
         e.preventDefault();
         if (!validate()) return;
 
+        setApiError("");
         setSubmitting(true);
         try {
             await login(email, password, captchaToken);
             navigate("/dashboard");
         } catch (err) {
             const msg = err?.response?.data?.message || "Invalid credentials";
-            setErrors((prev) => ({ ...prev, password: msg }));
+            if (msg === "Email not verified") {
+                setErrors((prev) => ({ ...prev, password: msg }));
+            } else {
+                setApiError(msg);
+            }
         } finally {
             setSubmitting(false);
         }
@@ -146,6 +152,7 @@ const LoginPage = () => {
 
                     <Box component="form" noValidate onSubmit={handleSubmit}>
                         <Stack spacing={3} mt={3}>
+                            {apiError && <Alert severity="error" onClose={() => setApiError("")}>{apiError}</Alert>}
                             {/* Email */}
                             <FormControl fullWidth>
                                 <TextField

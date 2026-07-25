@@ -24,6 +24,7 @@ import {
     Snackbar,
     Stack,
     TextField,
+    Tooltip,
     Typography,
 } from "@mui/material";
 
@@ -361,17 +362,22 @@ const CreateInterviewPage = () => {
                     <Divider sx={{ my: 2 }} />
 
                     {/* Suggest rounds */}
-                    <Button
-                        variant="outlined"
-                        onClick={handleSuggestRounds}
-                        disabled={!isFormValid || loadingRounds}
-                    >
-                        {loadingRounds ? (
-                            <CircularProgress size={20} />
-                        ) : (
-                            "Suggest Rounds"
-                        )}
-                    </Button>
+                    <Tooltip title={!isFormValid ? "Fill in company, role, description, and select a resume first" : "AI will suggest interview rounds based on your details"}>
+                        <span>
+                            <Button
+                                variant="outlined"
+                                onClick={handleSuggestRounds}
+                                disabled={!isFormValid || loadingRounds}
+                                fullWidth
+                            >
+                                {loadingRounds ? (
+                                    <CircularProgress size={20} />
+                                ) : (
+                                    "Suggest Rounds"
+                                )}
+                            </Button>
+                        </span>
+                    </Tooltip>
 
                     {/* Show suggested rounds */}
                     <RoundSelector
@@ -391,7 +397,6 @@ const CreateInterviewPage = () => {
                     </Button>
                 </Stack>
             </form>
-            {null}
 
             {/* PDF preview dialog */}
             <Dialog

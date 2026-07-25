@@ -1,6 +1,7 @@
 import { useContext, useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
-import { Box, Card, CardContent, Stack, Typography, TextField, Button, Alert } from "@mui/material";
+import { Box, Card, CardContent, Link, Stack, Typography, TextField, Button, Alert } from "@mui/material";
 import Captcha from "../components/Captcha";
 
 const ForgotPasswordPage = () => {
@@ -51,6 +52,11 @@ const ForgotPasswordPage = () => {
                             </Button>
                             {message && <Alert severity="info">{message}</Alert>}
                             {error && <Alert severity="error">{error}</Alert>}
+                            <Typography align="center" variant="body2">
+                                <Link component={RouterLink} to="/login" underline="hover">
+                                    Back to login
+                                </Link>
+                            </Typography>
                         </Stack>
                     </form>
                 </CardContent>

@@ -10,22 +10,23 @@ const SpeechRecognitionCtor =
 const voskModelUrl = import.meta?.env?.VITE_VOSK_MODEL_URL || undefined;
 
 /**
- * Handles all voice I/O: microphone access, Whisper STT (with Vosk / Web Speech fallback),
- * audio level metering, and browser TTS.
- *
- * @param {{ onTranscript: (target: "conv" | number, text: string) => void }} params
+ * Dual-layer STT: MediaRecorder → Whisper on stop (high quality),
+ * with Web Speech API running in parallel for live interim transcript display.
+ * On stop, Whisper result wins; if Whisper fails, accumulated Web Speech finals are used.
  */
 export const useVoiceInput = ({ onTranscript }) => {
     const [listening, setListening] = useState(false);
     const [listeningTarget, setListeningTarget] = useState(null);
+    const [interimText, setInterimText] = useState("");   // live preview while speaking
     const [micLevel, setMicLevel] = useState(0);
     const [micPermission, setMicPermission] = useState("unknown");
     const [inputDevices, setInputDevices] = useState([]);
     const [selectedDeviceId, setSelectedDeviceId] = useState("default");
 
-    const recognitionRef = useRef(null);
+    const mediaRecorderRef = useRef(null);  // MediaRecorder for Whisper audio
+    const liveRecRef = useRef(null);        // Web Speech running in parallel for live preview
+    const wsFinalsRef = useRef("");         // accumulated finals from parallel Web Speech
     const voskStopRef = useRef(null);
-    const lastResultIndexRef = useRef(0);
     const audioCtxRef = useRef(null);
     const analyserRef = useRef(null);
     const rafRef = useRef(null);
@@ -45,9 +46,7 @@ export const useVoiceInput = ({ onTranscript }) => {
             } catch { void 0; }
         };
         updateDevices();
-        try {
-            navigator.mediaDevices?.addEventListener?.("devicechange", updateDevices);
-        } catch { void 0; }
+        try { navigator.mediaDevices?.addEventListener?.("devicechange", updateDevices); } catch { void 0; }
         try {
             if (navigator.permissions?.query) {
                 navigator.permissions.query({ name: "microphone" }).then((status) => {
@@ -100,48 +99,50 @@ export const useVoiceInput = ({ onTranscript }) => {
         setMicLevel(0);
     }, []);
 
+    const stopLiveRec = useCallback(() => {
+        try { liveRecRef.current?.stop(); } catch { void 0; }
+        liveRecRef.current = null;
+        setInterimText("");
+    }, []);
+
+    // Pure Web Speech fallback (used when getUserMedia is unavailable entirely)
     const fallbackSTT = useCallback(async (target) => {
-        // Try Vosk first
         if (isVoskAvailable() && voskModelUrl) {
             try {
                 const session = await startListeningWithVosk({
                     modelUrl: voskModelUrl,
-                    onResult: (text) => {
-                        if (text) onTranscriptRef.current?.(target, text.trim());
-                    },
+                    onResult: (text) => { if (text) onTranscriptRef.current?.(target, text.trim()); },
                     onError: () => { setListening(false); setListeningTarget(null); },
                 });
                 voskStopRef.current = session.stop;
                 setListening(true);
                 setListeningTarget(target);
                 return;
-            } catch (e) {
-                console.warn("Vosk fallback failed", e);
-            }
+            } catch (e) { console.warn("Vosk fallback failed", e); }
         }
-        // Web Speech API fallback
         try {
             const Rec = SpeechRecognitionCtor;
             if (!Rec) throw new Error("Web Speech not available");
-            if (recognitionRef.current) { recognitionRef.current.stop?.(); recognitionRef.current = null; }
+            if (liveRecRef.current) { liveRecRef.current.stop?.(); liveRecRef.current = null; }
             const rec = new Rec();
             rec.lang = "en-US";
             rec.continuous = true;
             rec.interimResults = true;
-            lastResultIndexRef.current = 0;
             rec.onresult = (event) => {
-                let appended = "";
-                for (let i = lastResultIndexRef.current; i < event.results.length; i++) {
-                    const res = event.results[i];
-                    if (res?.[0]) appended += res[0].transcript;
+                let finals = "";
+                let interim = "";
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const t = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) finals += t + " ";
+                    else interim += t;
                 }
-                if (appended) onTranscriptRef.current?.(target, appended.trim());
-                lastResultIndexRef.current = event.results.length;
+                if (finals.trim()) onTranscriptRef.current?.(target, finals.trim());
+                setInterimText(interim);
             };
-            rec.onend = () => { setListening(false); setListeningTarget(null); };
-            rec.onerror = () => { setListening(false); setListeningTarget(null); };
+            rec.onend = () => { setListening(false); setListeningTarget(null); setInterimText(""); };
+            rec.onerror = () => { setListening(false); setListeningTarget(null); setInterimText(""); };
             rec.start();
-            recognitionRef.current = rec;
+            liveRecRef.current = rec;
             setListening(true);
             setListeningTarget(target);
         } catch (err) {
@@ -157,20 +158,65 @@ export const useVoiceInput = ({ onTranscript }) => {
                 ? { audio: { deviceId: { exact: selectedDeviceId } }, video: false }
                 : { audio: true, video: false };
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+
+            // MediaRecorder for Whisper (collects audio chunks)
+            let mr;
+            try {
+                mr = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+            } catch {
+                mr = new MediaRecorder(stream);
+            }
             const chunks = [];
-            mediaRecorder.ondataavailable = (e) => { if (e.data?.size > 0) chunks.push(e.data); };
-            mediaRecorder.onstop = async () => {
+            wsFinalsRef.current = "";
+            mediaRecorderRef.current = mr;
+
+            // Parallel Web Speech for live interim transcript display
+            if (SpeechRecognitionCtor) {
+                try {
+                    const rec = new SpeechRecognitionCtor();
+                    rec.lang = "en-US";
+                    rec.continuous = true;
+                    rec.interimResults = true;
+                    rec.onresult = (event) => {
+                        let finals = "";
+                        let interim = "";
+                        for (let i = event.resultIndex; i < event.results.length; i++) {
+                            const t = event.results[i][0].transcript;
+                            if (event.results[i].isFinal) finals += t + " ";
+                            else interim += t;
+                        }
+                        if (finals) wsFinalsRef.current += finals;
+                        setInterimText(interim);
+                    };
+                    rec.onend = () => setInterimText("");
+                    rec.start();
+                    liveRecRef.current = rec;
+                } catch { /* Web Speech unavailable — no live preview, Whisper still works */ }
+            }
+
+            mr.ondataavailable = (e) => { if (e.data?.size > 0) chunks.push(e.data); };
+            mr.onstop = async () => {
+                stopLiveRec();
+                // Brief wait to allow the last chunk to flush
+                await new Promise((r) => setTimeout(r, 350));
                 try {
                     const blob = new Blob(chunks, { type: "audio/webm" });
-                    const form = new FormData();
-                    form.append("audio", blob, "audio.webm");
-                    const resp = await api.post("/stt/transcribe", form, { headers: { "Content-Type": "multipart/form-data" } });
-                    const text = (resp?.data?.text || "").trim();
-                    if (text) onTranscriptRef.current?.(target, text);
-                } catch (e) {
-                    console.warn("whisper transcribe failed, trying fallback", e);
-                    await fallbackSTT(target);
+                    let finalText = "";
+
+                    if (blob.size > 1000) {
+                        try {
+                            const form = new FormData();
+                            form.append("audio", blob, "audio.webm");
+                            const resp = await api.post("/stt/transcribe", form, { headers: { "Content-Type": "multipart/form-data" } });
+                            finalText = (resp?.data?.text || "").trim();
+                        } catch (e) {
+                            console.warn("Whisper transcribe failed, using Web Speech fallback", e);
+                        }
+                    }
+
+                    // Prefer Whisper; fall back to accumulated Web Speech finals
+                    if (!finalText) finalText = wsFinalsRef.current.trim();
+                    if (finalText) onTranscriptRef.current?.(target, finalText);
                 } finally {
                     setListening(false);
                     setListeningTarget(null);
@@ -178,38 +224,45 @@ export const useVoiceInput = ({ onTranscript }) => {
                     try { stream.getTracks().forEach((t) => t.stop()); } catch { void 0; }
                 }
             };
-            mediaRecorder.start();
-            recognitionRef.current = { stop: () => mediaRecorder.stop() };
+
+            mr.start(250); // chunk every 250ms like OpportunityAgent
             setListening(true);
             setListeningTarget(target);
             startMeter(stream);
         } catch (err) {
-            console.debug("whisper start error", err);
+            console.debug("getUserMedia failed, falling back to Web Speech", err);
             await fallbackSTT(target);
         }
-    }, [fallbackSTT, selectedDeviceId, startMeter, stopMeter]);
+    }, [fallbackSTT, selectedDeviceId, startMeter, stopMeter, stopLiveRec]);
 
     const stopListening = useCallback(() => {
-        if (recognitionRef.current?.stop) {
-            try { recognitionRef.current.stop(); } catch (e) { console.debug("stop error", e); }
-        }
+        stopLiveRec();
         if (voskStopRef.current) {
             try { voskStopRef.current(); } catch { void 0; }
             voskStopRef.current = null;
         }
-        recognitionRef.current = null;
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+            try { mediaRecorderRef.current.stop(); } catch (e) { console.debug("stop error", e); }
+        }
+        mediaRecorderRef.current = null;
         setListening(false);
         setListeningTarget(null);
         try { stopMeter(); } catch { void 0; }
-    }, [stopMeter]);
+    }, [stopMeter, stopLiveRec]);
 
     const speakNow = useCallback((text) => {
         try {
             if (!supportsTTS || !text) return;
             window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance(text);
-            u.rate = 1;
+            u.rate = 0.95;
             u.pitch = 1;
+            // Prefer a natural-sounding English voice if available
+            const voices = window.speechSynthesis.getVoices();
+            const preferred =
+                voices.find((v) => v.name.includes("Google") && v.lang.startsWith("en")) ||
+                voices.find((v) => v.lang.startsWith("en"));
+            if (preferred) u.voice = preferred;
             window.speechSynthesis.speak(u);
         } catch (e) {
             console.warn("speakNow error", e);
@@ -217,7 +270,7 @@ export const useVoiceInput = ({ onTranscript }) => {
     }, [supportsTTS]);
 
     return {
-        listening, listeningTarget,
+        listening, listeningTarget, interimText,
         micLevel, micPermission,
         inputDevices, selectedDeviceId, setSelectedDeviceId,
         supportsSTT, supportsTTS,

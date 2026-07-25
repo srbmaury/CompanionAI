@@ -16,7 +16,8 @@ const RoundList = ({ interview, selectedRoundId, onSelect, showOnMobile = false 
                         key={round._id}
                         variant="outlined"
                         sx={{
-                            border: selectedRoundId === round._id ? "2px solid blue" : "1px solid grey",
+                            borderColor: selectedRoundId === round._id ? "primary.main" : "divider",
+                            borderWidth: selectedRoundId === round._id ? 2 : 1,
                             opacity: locked ? 0.6 : 1,
                         }}
                     >

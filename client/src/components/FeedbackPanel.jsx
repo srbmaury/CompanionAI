@@ -55,10 +55,13 @@ const FeedbackItem = memo(({ index, item }) => {
                             <Typography color="text.primary">{feedback.comment || ""}</Typography>
                             <ScoreBar score={feedback.score} />
                             {suggestions.length > 0 && (
-                                <Stack direction="row" flexWrap="wrap" gap={1}>
-                                    {suggestions.map((s, i) => (
-                                        <Chip key={i} label={s} size="small" />
-                                    ))}
+                                <Stack spacing={0.5}>
+                                    <Typography variant="caption" color="text.secondary">Suggestions</Typography>
+                                    <Stack direction="row" flexWrap="wrap" gap={1}>
+                                        {suggestions.map((s, i) => (
+                                            <Chip key={i} label={s} size="small" />
+                                        ))}
+                                    </Stack>
                                 </Stack>
                             )}
                         </Stack>
@@ -75,7 +78,7 @@ const FeedbackPanel = ({ round }) => {
     const items = useMemo(() => (Array.isArray(round?.questions) ? round.questions : []), [round?.questions]);
     const avgScore = useMemo(() => {
         const scores = items.map((it) => Number(it?.feedback?.score)).filter((n) => Number.isFinite(n));
-        return scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : 0;
+        return scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : null;
     }, [items]);
     const scoreCount = useMemo(() => {
         return items.reduce((acc, it) => acc + (Number.isFinite(Number(it?.feedback?.score)) ? 1 : 0), 0);
@@ -92,7 +95,9 @@ const FeedbackPanel = ({ round }) => {
                                 Based on {scoreCount} answered question{scoreCount === 1 ? "" : "s"} with feedback
                             </Typography>
                         </Stack>
-                        <ScoreBar score={avgScore} />
+                        {avgScore !== null ? <ScoreBar score={avgScore} /> : (
+                            <Typography variant="body2" color="text.secondary">Feedback pending</Typography>
+                        )}
                     </Stack>
                 </CardContent>
             </Card>
