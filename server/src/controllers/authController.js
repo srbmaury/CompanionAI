@@ -1,13 +1,6 @@
 import crypto from "crypto";
 import User from "../models/User.js";
-import { bumpTokenVersion } from "../utils/tokens.js";
-import jwt from "jsonwebtoken";
-const jwtSignWithVersion = (userId, tokenVersion) => {
-    const ACCESS_TTL_SECONDS = Number(process.env.ACCESS_TOKEN_TTL_SECONDS || 15 * 60);
-    const payload = { id: userId };
-    if (tokenVersion != null) payload.tokenVersion = tokenVersion;
-    return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: `${ACCESS_TTL_SECONDS}s` });
-};
+import { bumpTokenVersion, signAccessToken, issueRefreshToken, consumeRefreshToken, revokeAllRefreshTokens } from "../utils/tokens.js";
 import { OAuth2Client } from "google-auth-library";
 import metrics from "../metrics/index.js";
 import { sendMail, buildVerificationEmail } from "../utils/mailer.js";
@@ -15,10 +8,26 @@ import bcrypt from "bcryptjs";
 import { recordLoginFailure, clearLoginFailures } from "../middleware/loginLockout.js";
 import AuditLog from "../models/AuditLog.js";
 
+const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7);
+
+const setRefreshCookie = (res, raw, expiresAt) => {
+    res.cookie("refreshToken", raw, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+        expires: expiresAt,
+        path: "/api/auth",
+    });
+};
+
+const clearRefreshCookie = (res) => {
+    res.clearCookie("refreshToken", { httpOnly: true, path: "/api/auth" });
+};
+
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Register
-export const registerUser = async (req, res) => {
+export const registerUser = async (req, res, next) => {
     const { name, email, password } = req.body;
 
     try {
@@ -63,12 +72,12 @@ export const registerUser = async (req, res) => {
         }
     } catch (error) {
         try { metrics.authRegisterTotal.labels("failure").inc(); } catch {}
-        res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
 // Login
-export const loginUser = async (req, res) => {
+export const loginUser = async (req, res, next) => {
     const { email, password } = req.body;
 
     try {
@@ -93,10 +102,11 @@ export const loginUser = async (req, res) => {
             return res.status(403).json({ message: "Email not verified" });
         }
         if (user && (await user.matchPassword(password))) {
-            // Enforce max 1: bump tokenVersion so any previous tokens become invalid
             await bumpTokenVersion(user._id);
             const fresh = await User.findById(user._id).select("tokenVersion");
-            const token = jwtSignWithVersion(user._id, fresh?.tokenVersion);
+            const token = signAccessToken(user._id, fresh?.tokenVersion);
+            const { raw, expiresAt } = await issueRefreshToken(user._id, { userAgent: req.get("user-agent"), ip: req.ip });
+            setRefreshCookie(res, raw, expiresAt);
             res.json({ token, user: { _id: user._id, name: user.name, email: user.email } });
             try { await clearLoginFailures((email || "").toLowerCase()); } catch {}
             try { metrics.authLoginAttemptsTotal.labels("local", "success").inc(); } catch {}
@@ -107,18 +117,45 @@ export const loginUser = async (req, res) => {
             res.status(401).json({ message: "Invalid email or password" });
         }
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
 // Logout
-export const logoutUser = async (req, res) => {
+export const logoutUser = async (req, res, next) => {
+    try { await revokeAllRefreshTokens(req.user?._id); } catch {}
+    clearRefreshCookie(res);
     res.status(200).json({ message: "Logged out successfully" });
     try { metrics.authLogoutTotal.inc(); } catch {}
     try { AuditLog.create({ user: req.user?._id, action: "auth.logout", ip: req.ip, userAgent: req.get("user-agent"), requestId: req.id }).catch(() => {}); } catch {}
 };
+
+// Refresh access token using httpOnly refresh cookie
+export const refreshAccessToken = async (req, res, next) => {
+    const raw = req.cookies?.refreshToken;
+    if (!raw) return res.status(401).json({ message: "No refresh token" });
+    try {
+        const userId = await consumeRefreshToken(raw);
+        if (!userId) {
+            clearRefreshCookie(res);
+            return res.status(401).json({ message: "Refresh token invalid or expired" });
+        }
+        const user = await User.findById(userId).select("tokenVersion name email");
+        if (!user) {
+            clearRefreshCookie(res);
+            return res.status(401).json({ message: "User not found" });
+        }
+        // Issue a fresh access token + rotate refresh token
+        const token = signAccessToken(user._id, user.tokenVersion);
+        const { raw: newRaw, expiresAt } = await issueRefreshToken(user._id, { userAgent: req.get("user-agent"), ip: req.ip });
+        setRefreshCookie(res, newRaw, expiresAt);
+        return res.json({ token });
+    } catch (err) {
+        return next(err instanceof Error ? err : new Error(String(err)));
+    }
+};
 // Verify email
-export const verifyEmail = async (req, res) => {
+export const verifyEmail = async (req, res, next) => {
     const { token, email } = req.body;
     try {
         const hashed = crypto.createHash("sha256").update(token).digest("hex");
@@ -135,12 +172,12 @@ export const verifyEmail = async (req, res) => {
         return res.json({ message: "Email verified. You can now log in." });
     } catch (err) {
         try { metrics.authVerifyTotal.labels("verify", "failure").inc(); } catch {}
-        return res.status(500).json({ message: err.message });
+        return next(err instanceof Error ? err : new Error(String(err)));
     }
 };
 
 // Resend verification
-export const resendVerification = async (req, res) => {
+export const resendVerification = async (req, res, next) => {
     const { email } = req.body;
     try {
         const user = await User.findOne({ email });
@@ -166,12 +203,12 @@ export const resendVerification = async (req, res) => {
         return res.json({ message: "If the email exists, a verification email has been sent" });
     } catch (err) {
         try { metrics.authVerifyTotal.labels("resend", "failure").inc(); } catch {}
-        return res.status(500).json({ message: err.message });
+        return next(err instanceof Error ? err : new Error(String(err)));
     }
 };
 
 // Google Sign-In with ID token
-export const googleSignIn = async (req, res) => {
+export const googleSignIn = async (req, res, next) => {
     const { idToken } = req.body;
     if (!idToken) return res.status(400).json({ message: "Missing idToken" });
     try {
@@ -205,7 +242,9 @@ export const googleSignIn = async (req, res) => {
 
         await bumpTokenVersion(user._id);
         const fresh = await User.findById(user._id).select("tokenVersion");
-        const token = jwtSignWithVersion(user._id, fresh?.tokenVersion);
+        const token = signAccessToken(user._id, fresh?.tokenVersion);
+        const { raw, expiresAt } = await issueRefreshToken(user._id, { userAgent: req.get("user-agent"), ip: req.ip });
+        setRefreshCookie(res, raw, expiresAt);
         try { metrics.authLoginAttemptsTotal.labels("google", "success").inc(); } catch {}
         return res.json({ token, user: { _id: user._id, name: user.name, email: user.email } });
     } catch (err) {
@@ -215,7 +254,7 @@ export const googleSignIn = async (req, res) => {
 };
 
 // Update profile (name and/or password)
-export const updateProfile = async (req, res) => {
+export const updateProfile = async (req, res, next) => {
     try {
         const { name, currentPassword, newPassword, preferredProgrammingLanguage } = req.body || {};
 
@@ -249,19 +288,18 @@ export const updateProfile = async (req, res) => {
 
         await user.save();
         try { metrics.securityPasswordChangeTotal.labels("success").inc(); } catch {}
-        // Issue fresh access token rather than cookies
         await bumpTokenVersion(user._id);
         const fresh = await User.findById(user._id).select("tokenVersion");
-        const token = jwtSignWithVersion(user._id, fresh?.tokenVersion);
+        const token = signAccessToken(user._id, fresh?.tokenVersion);
         const safe = await User.findById(user._id).select("-password").lean();
         return res.json({ message: "Profile updated", token, user: safe });
     } catch (err) {
         try { metrics.securityPasswordChangeTotal.labels("failure").inc(); } catch {}
-        return res.status(500).json({ message: err.message });
+        return next(err instanceof Error ? err : new Error(String(err)));
     }
 };
 
-export const forgotPassword = async (req, res) => {
+export const forgotPassword = async (req, res, next) => {
     const { email } = req.body;
     try {
         const user = await User.findOne({ email });
@@ -296,11 +334,11 @@ export const forgotPassword = async (req, res) => {
         return res.json({ message: "If the email exists, a reset link has been sent" });
     } catch (err) {
         try { metrics.authResetTotal.labels("forgot", "failure").inc(); } catch {}
-        return res.status(500).json({ message: err.message });
+        return next(err instanceof Error ? err : new Error(String(err)));
     }
 };
 
-export const resetPassword = async (req, res) => {
+export const resetPassword = async (req, res, next) => {
     const { token, email, newPassword } = req.body;
     try {
         const hashed = crypto.createHash("sha256").update(token).digest("hex");
@@ -321,6 +359,6 @@ export const resetPassword = async (req, res) => {
         return res.json({ message: "Password has been reset" });
     } catch (err) {
         try { metrics.authResetTotal.labels("reset", "failure").inc(); } catch {}
-        return res.status(500).json({ message: err.message });
+        return next(err instanceof Error ? err : new Error(String(err)));
     }
 };

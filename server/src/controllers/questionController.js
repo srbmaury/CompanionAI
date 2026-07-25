@@ -7,7 +7,7 @@ import { generateClarification } from "../utils/generateQuestions/clarify.js";
 import { generateFollowUp } from "../utils/generateQuestions/followUp.js";
 import { getQueue } from "../queues/index.js";
 
-export const prepareQuestionsForRound = async (req, res) => {
+export const prepareQuestionsForRound = async (req, res, next) => {
     try {
         const { interviewId, roundId } = req.params;
         const { count = 8, prefetch = false } = req.body || {};
@@ -154,11 +154,11 @@ export const prepareQuestionsForRound = async (req, res) => {
         return res.json(populated);
     } catch (error) {
         console.error("prepareQuestionsForRound error:", error);
-        return res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
-export const submitConversationalAnswer = async (req, res) => {
+export const submitConversationalAnswer = async (req, res, next) => {
     try {
         const { roundId } = req.params;
         const { index, answer } = req.body || {};
@@ -209,11 +209,11 @@ export const submitConversationalAnswer = async (req, res) => {
         return res.json({ success: true, done, nextIndex: Math.min(round.conversationalIndex, Math.min(round.questions.length, limit)), feedbackJobId });
     } catch (error) {
         console.error("submitConversationalAnswer error:", error);
-        return res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
-export const submitOAAnswers = async (req, res) => {
+export const submitOAAnswers = async (req, res, next) => {
     try {
         const { roundId } = req.params;
         const { answers } = req.body || {};
@@ -233,11 +233,11 @@ export const submitOAAnswers = async (req, res) => {
         return res.json({ success: true });
     } catch (error) {
         console.error("submitOAAnswers error:", error);
-        return res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
-export const completeRound = async (req, res) => {
+export const completeRound = async (req, res, next) => {
     try {
         const { roundId } = req.params;
         const round = await Round.findById(roundId);
@@ -247,11 +247,11 @@ export const completeRound = async (req, res) => {
         return res.json({ success: true });
     } catch (error) {
         console.error("completeRound error:", error);
-        return res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
-export const skipRound = async (req, res) => {
+export const skipRound = async (req, res, next) => {
     try {
         const { interviewId, roundId } = req.params;
         const interview = await Interview.findById(interviewId);
@@ -281,11 +281,11 @@ export const skipRound = async (req, res) => {
         return res.json({ success: true });
     } catch (error) {
         console.error("skipRound error:", error);
-        return res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
-export const getFollowUp = async (req, res) => {
+export const getFollowUp = async (req, res, next) => {
     try {
         const { roundId } = req.params;
         const { index, answer } = req.body || {};
@@ -310,11 +310,11 @@ export const getFollowUp = async (req, res) => {
         return res.json({ followUp });
     } catch (error) {
         console.error("getFollowUp error:", error);
-        return res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
-export const clarifyCurrentQuestion = async (req, res) => {
+export const clarifyCurrentQuestion = async (req, res, next) => {
     try {
         const { roundId } = req.params;
         const { message } = req.body || {};
@@ -339,6 +339,6 @@ export const clarifyCurrentQuestion = async (req, res) => {
         return res.json({ answer });
     } catch (error) {
         console.error("clarifyCurrentQuestion error:", error);
-        return res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };

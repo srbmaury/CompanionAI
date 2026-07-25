@@ -10,29 +10,19 @@ import connectDB from "../../config/db.js";
 
 let replset;
 let agent;
-let csrfToken;
+let accessToken;
 
 describe("Happy flows E2E", () => {
     beforeAll(async () => {
-        // Start in-memory replica set to support transactions
         replset = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
         const uri = replset.getUri();
         process.env.MONGO_URI = uri;
         process.env.NODE_ENV = "test";
         process.env.MONGO_TLS = "false";
         process.env.MONGO_REQUIRE_TRANSACTIONS = "false";
-        process.env.CSRF_SAMESITE = "lax";
         process.env.TEST_FORCE_GENERATOR_EMPTY = "true";
         await connectDB();
         agent = request.agent(app);
-        // Prime CSRF cookie
-        const res = await agent.get("/health/liveness").expect(200);
-        const setCookies = res.headers["set-cookie"] || [];
-        const csrfCookie = (Array.isArray(setCookies) ? setCookies : [setCookies]).find((c) => /csrfToken=/.test(c));
-        if (csrfCookie) {
-            const m = /csrfToken=([^;]+)/.exec(csrfCookie);
-            csrfToken = m ? m[1] : undefined;
-        }
     }, 60000);
 
     afterAll(async () => {
@@ -41,15 +31,16 @@ describe("Happy flows E2E", () => {
     }, 30000);
 
     it("registers, logs in, uploads resume, creates interview, prepares first round", async () => {
+        const origin = "http://localhost:5000";
+
         // Register
         const reg = await agent
             .post("/api/auth/register")
             .send({ name: "Test User", email: "t@example.com", password: "Passw0rd!" })
-            .set("x-csrf-token", csrfToken)
-            .set("origin", "http://localhost:5000")
-            .set("referer", "http://localhost:5000/")
-            .set("Cookie", `csrfToken=${csrfToken}`)
+            .set("origin", origin)
+            .set("referer", `${origin}/`)
             .expect(201);
+        expect(reg.body?.message).toMatch(/verify/i);
 
         // Mark user verified for test login
         const u = await User.findOne({ email: "t@example.com" });
@@ -60,21 +51,15 @@ describe("Happy flows E2E", () => {
         const login = await agent
             .post("/api/auth/login")
             .send({ email: "t@example.com", password: "Passw0rd!" })
-            .set("x-csrf-token", csrfToken)
-            .set("origin", "http://localhost:5000")
-            .set("referer", "http://localhost:5000/")
-            .set("Cookie", `csrfToken=${csrfToken}`)
+            .set("origin", origin)
+            .set("referer", `${origin}/`)
             .expect(200);
+        accessToken = login.body?.token;
+        expect(accessToken).toBeDefined();
 
-        // Capture jwt cookie for authenticated requests
-        const setCookiesLogin = login.headers["set-cookie"] || [];
-        const jwtCookieStr = (Array.isArray(setCookiesLogin) ? setCookiesLogin : [setCookiesLogin]).find((c) => /jwt=/.test(c)) || "";
-        const jwtValueMatch = /jwt=([^;]+)/.exec(jwtCookieStr);
-        const jwtValue = jwtValueMatch ? jwtValueMatch[1] : "";
+        const auth = { Authorization: `Bearer ${accessToken}` };
 
-        // Create minimal resume directly via model bypass (or mock)
-        // For E2E simplicity, create an interview without actual resume upload
-        // Create interview with 2 rounds
+        // Create minimal resume directly via model (avoids Cloudinary)
         const me = await User.findOne({ email: "t@example.com" });
         const resumeDoc = await Resume.create({
             user: me._id,
@@ -88,8 +73,13 @@ describe("Happy flows E2E", () => {
             notes: "",
         });
         const resumeId = resumeDoc._id.toHexString();
+
+        // Create interview with 2 rounds
         const create = await agent
             .post("/api/interviews")
+            .set(auth)
+            .set("origin", origin)
+            .set("referer", `${origin}/`)
             .send({
                 resumeId,
                 company: "Acme",
@@ -99,53 +89,39 @@ describe("Happy flows E2E", () => {
                     { roundName: "Round 1", description: "Conversational", deliveryMode: "conversational", questionLimit: 2 },
                     { roundName: "Round 2", description: "OA", deliveryMode: "online-assessment", questionLimit: 2 },
                 ],
-            })
-            .set("x-csrf-token", csrfToken)
-            .set("origin", "http://localhost:5000")
-            .set("referer", "http://localhost:5000/")
-            .set("Cookie", `csrfToken=${csrfToken}; jwt=${jwtValue}`)
-            .then((res) => {
-                if (res.status !== 201) {
-                    // eslint-disable-next-line no-console
-                    console.error("CreateInterview failed:", res.status, res.body);
-                }
-                return res;
             });
-
+        if (create.status !== 201) {
+            console.error("CreateInterview failed:", create.status, create.body);
+        }
         expect(create.status).toBe(201);
         expect(create.body?._id).toBeDefined();
         const interviewId = create.body._id;
 
         // Fetch interview
-        const fetched = await agent.get(`/api/interviews/${interviewId}`).expect(200);
+        const fetched = await agent.get(`/api/interviews/${interviewId}`).set(auth).expect(200);
         expect(Array.isArray(fetched.body?.rounds)).toBe(true);
         const firstRoundId = fetched.body.rounds[0].round._id;
 
-        // Seed a few generic questions to let generator fallback succeed without external calls
+        // Seed generic questions for fallback
         await Question.create([
             { text: "Explain event loop in Node.js", tags: ["node", "event loop"] },
             { text: "What is closure in JavaScript?", tags: ["javascript"] },
             { text: "Describe REST vs GraphQL", tags: ["api"] },
         ]);
 
-        // Prepare first round synchronously via controller (dev-only path)
+        // Prepare first round
         const prep = await agent
             .post(`/api/questions/${interviewId}/rounds/${firstRoundId}/prepare`)
-            .send({ count: 2 })
-            .set("x-csrf-token", csrfToken)
-            .set("origin", "http://localhost:5000")
-            .set("referer", "http://localhost:5000/")
-            .set("Cookie", `csrfToken=${csrfToken}`)
-            .then((res) => {
-                if (res.status !== 200) {
-                    // eslint-disable-next-line no-console
-                    console.error("Prepare failed:", res.status, res.body);
-                }
-                return res;
-            });
+            .set(auth)
+            .set("origin", origin)
+            .set("referer", `${origin}/`)
+            .send({ count: 2 });
+        if (prep.status !== 200) {
+            console.error("Prepare failed:", prep.status, prep.body);
+        }
         expect(prep.status).toBe(200);
 
-        const refetched = await agent.get(`/api/interviews/${interviewId}`).expect(200);
+        const refetched = await agent.get(`/api/interviews/${interviewId}`).set(auth).expect(200);
         const round = refetched.body.rounds[0].round;
         expect((round.questions || []).length).toBeGreaterThan(0);
     }, 120000);

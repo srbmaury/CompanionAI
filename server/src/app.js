@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-// cookie-parser removed for pure JWT auth
+import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import swaggerUi from "swagger-ui-express";
@@ -34,7 +34,7 @@ const app = express();
 // Middleware
 app.set("trust proxy", 1); // required for secure cookies behind proxies
 app.use(express.json({ limit: "200kb" }));
-// No cookie parsing required in JWT header mode
+app.use(cookieParser());
 const isLocalhostOrigin = (origin) => {
     try {
         const { hostname, protocol } = new URL(origin);
@@ -184,37 +184,51 @@ app.use(originCheck());
 
 // Basic rate limiting for API (use Redis store in production)
 const redisClient = process.env.NODE_ENV === "production" ? await getRedisClient() : null;
-const apiLimiter = rateLimit({
-    windowMs: Math.max(parseInt(process.env.API_RATE_LIMIT_WINDOW_MS || "900000", 10) || 900000, 1000),
-    max: Math.max(parseInt(process.env.API_RATE_LIMIT_MAX || "300", 10) || 300, 1),
-    standardHeaders: true,
-    legacyHeaders: false,
-    store:
-        process.env.NODE_ENV === "production" && redisClient
-            ? new RedisStore({
-                  // @ts-ignore: node-redis v4 sendCommand signature
-                  sendCommand: (...args) => redisClient.sendCommand(args),
-              })
-            : undefined,
-    handler: (req, res) => {
-        try {
-            const route = req.route?.path || req.path;
-            metrics.rateLimitHitsTotal.labels(route).inc();
-        } catch {}
-        res.status(429).json({ message: { message: "Too many requests, please slow down." } });
-    },
-});
+
+const makeStore = () =>
+    process.env.NODE_ENV === "production" && redisClient
+        ? new RedisStore({ sendCommand: (...args) => redisClient.sendCommand(args) })
+        : undefined;
+
+const makeLimiter = (windowMs, max, prefix = "rl") =>
+    rateLimit({
+        windowMs,
+        max,
+        standardHeaders: true,
+        legacyHeaders: false,
+        store: makeStore(),
+        keyGenerator: (req) => {
+            // Rate-limit by authenticated user ID when available, else by IP
+            const userId = req.user?.id || req.user?._id;
+            return userId ? `${prefix}:user:${userId}` : `${prefix}:ip:${req.ip}`;
+        },
+        handler: (req, res) => {
+            try { metrics.rateLimitHitsTotal.labels(req.route?.path || req.path).inc(); } catch {}
+            res.status(429).json({ message: "Too many requests, please slow down." });
+        },
+    });
+
+const apiLimiter = makeLimiter(
+    Math.max(parseInt(process.env.API_RATE_LIMIT_WINDOW_MS || "900000", 10) || 900000, 1000),
+    Math.max(parseInt(process.env.API_RATE_LIMIT_MAX || "300", 10) || 300, 1),
+    "api"
+);
+// Tighter limits for AI-intensive endpoints (per authenticated user)
+const aiLimiter   = makeLimiter(15 * 60 * 1000, parseInt(process.env.AI_RATE_LIMIT_MAX   || "30",  10) || 30,  "ai");
+const sttLimiter  = makeLimiter(15 * 60 * 1000, parseInt(process.env.STT_RATE_LIMIT_MAX  || "60",  10) || 60,  "stt");
+const codeLimiter = makeLimiter(15 * 60 * 1000, parseInt(process.env.CODE_RATE_LIMIT_MAX || "20",  10) || 20,  "code");
+
 app.use("/api", apiLimiter);
 
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/resumes", resumeRoutes);
 app.use("/api/interviews", interviewRoutes);
-app.use("/api/rounds", roundRoutes);
-app.use("/api/questions", questionRoutes);
-app.use("/api/feedback", feedbackRoutes);
-app.use("/api/run-code", runCodeRoutes);
-app.use("/api/stt", sttRoutes);
+app.use("/api/rounds", aiLimiter, roundRoutes);
+app.use("/api/questions", aiLimiter, questionRoutes);
+app.use("/api/feedback", aiLimiter, feedbackRoutes);
+app.use("/api/run-code", codeLimiter, runCodeRoutes);
+app.use("/api/stt", sttLimiter, sttRoutes);
 app.use("/api/experiences", experienceRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/jobs", jobsRoutes);

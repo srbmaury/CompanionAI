@@ -3,6 +3,7 @@ import {
     registerUser,
     loginUser,
     logoutUser,
+    refreshAccessToken,
     verifyEmail,
     resendVerification,
     googleSignIn,
@@ -262,6 +263,9 @@ router.post("/resend-verification", resendVerificationLimiter, validate(ResendVe
 router.post("/google", googleLoginLimiter, validate(GoogleIdTokenSchema), googleSignIn);
 router.post("/forgot-password", forgotPasswordLimiter, captcha(), validate(ForgotPasswordSchema), forgotPassword);
 router.post("/reset-password", resetPasswordLimiter, captcha(), validate(ResetPasswordSchema), resetPassword);
+
+// Token refresh (uses httpOnly cookie — no auth middleware needed)
+router.post("/refresh", refreshAccessToken);
 
 // Protected
 router.post("/logout", protect, logoutUser);

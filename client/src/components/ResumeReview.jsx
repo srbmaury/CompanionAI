@@ -1,7 +1,7 @@
-import { useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 // API / Context
-import { AuthContext } from "../context/AuthContext";
+import { useResumes } from "../hooks/useResumes";
 
 // UI Components
 import Alert from "@mui/material/Alert";
@@ -39,7 +39,7 @@ import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
  * - title: string (heading text)
  */
 const ResumeReview = ({ value, onChange, title = "Resume Review" }) => {
-    const { getResumes, deleteResume, uploadResume } = useContext(AuthContext);
+    const { getResumes, deleteResume, uploadResume } = useResumes();
 
     const [resumes, setResumes] = useState([]);
     const [uploading, setUploading] = useState(false);

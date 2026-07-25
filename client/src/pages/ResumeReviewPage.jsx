@@ -1,6 +1,6 @@
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../api/axios";
-import { AuthContext } from "../context/AuthContext";
+import { useResumes } from "../hooks/useResumes";
 
 import {
     Alert,
@@ -25,7 +25,7 @@ import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import DownloadIcon from "@mui/icons-material/Download";
 
 export default function ResumeReviewPage() {
-    const { getResumes, uploadResume } = useContext(AuthContext);
+    const { getResumes, uploadResume } = useResumes();
     const [resumes, setResumes] = useState([]);
     const [resumeId, setResumeId] = useState("");
     const [uploading, setUploading] = useState(false);

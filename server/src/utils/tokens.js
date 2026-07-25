@@ -1,11 +1,15 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
+import RefreshToken from "../models/RefreshToken.js";
 
 const ACCESS_TTL_SECONDS = Number(process.env.ACCESS_TOKEN_TTL_SECONDS || 15 * 60);
+const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7);
 
-export const signAccessToken = (userId) => {
-    return jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: `${ACCESS_TTL_SECONDS}s` });
+export const signAccessToken = (userId, tokenVersion) => {
+    const payload = { id: userId };
+    if (tokenVersion != null) payload.tokenVersion = tokenVersion;
+    return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: `${ACCESS_TTL_SECONDS}s` });
 };
 
 export const bumpTokenVersion = async (userId) => {
@@ -15,6 +19,26 @@ export const bumpTokenVersion = async (userId) => {
 };
 
 export const hashOpaqueToken = (raw) => crypto.createHash("sha256").update(raw).digest("hex");
+
+export const issueRefreshToken = async (userId, { userAgent, ip } = {}) => {
+    const raw = crypto.randomBytes(40).toString("hex");
+    const tokenHash = hashOpaqueToken(raw);
+    const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000);
+    await RefreshToken.create({ user: userId, tokenHash, expiresAt, userAgent, ip });
+    return { raw, expiresAt };
+};
+
+export const consumeRefreshToken = async (raw) => {
+    const tokenHash = hashOpaqueToken(raw);
+    const record = await RefreshToken.findOneAndDelete({ tokenHash });
+    if (!record) return null;
+    if (record.expiresAt < new Date()) return null;
+    return record.user;
+};
+
+export const revokeAllRefreshTokens = async (userId) => {
+    await RefreshToken.deleteMany({ user: userId });
+};
 
 export default {
     signAccessToken,

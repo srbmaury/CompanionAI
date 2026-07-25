@@ -85,22 +85,26 @@ try {
     }
 } catch {}
 
-// Startup env validation (fail fast in production)
+// Startup env validation — fail fast for critical vars in all environments
 const EnvSchema = z.object({
     NODE_ENV: z.string().optional(),
     PORT: z.string().optional(),
-    JWT_SECRET: z.string().min(10, "JWT_SECRET is required"),
+    JWT_SECRET: z.string().min(10, "JWT_SECRET must be at least 10 characters"),
     MONGO_URI: z.string().min(1, "MONGO_URI is required"),
     ALLOWED_ORIGINS: z.string().optional(),
     CLIENT_ORIGIN: z.string().optional(),
     SERVER_ORIGIN: z.string().optional(),
-    COOKIE_DOMAIN: z.string().optional(),
 });
 try {
     const parsed = EnvSchema.safeParse(process.env);
-    if (!parsed.success && process.env.NODE_ENV === "production") {
-        console.error("Invalid environment configuration:", parsed.error?.errors || parsed.error);
+    if (!parsed.success) {
+        const issues = parsed.error.errors.map((e) => `  ${e.path.join(".")}: ${e.message}`).join("\n");
+        console.error(`[startup] Missing or invalid environment variables:\n${issues}`);
         process.exit(1);
+    }
+    // Warn if no AI provider is configured
+    if (!process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
+        console.warn("[startup] Neither OPENAI_API_KEY nor GEMINI_API_KEY is set — AI features will fail.");
     }
 } catch {}
 connectDB();

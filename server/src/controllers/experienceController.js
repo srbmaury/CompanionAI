@@ -5,7 +5,7 @@ const getFetch = async () => {
     return nodeFetch;
 };
 
-export const searchExperiences = async (req, res) => {
+export const searchExperiences = async (req, res, next) => {
     try {
         const company = (req.query.company || "").toString().trim().slice(0, 120);
         const role = (req.query.role || "").toString().trim().slice(0, 120);

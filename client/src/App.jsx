@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import Header from "./components/Header";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 import CreateInterviewPage from "./pages/CreateInterviewPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -50,6 +51,7 @@ function App() {
             </a>
             <Header />
             <main id="main-content">
+                <ErrorBoundary>
                 <Routes>
                 {/* Public routes */}
                 <Route path="/login" element={<LoginPage />} />
@@ -112,6 +114,7 @@ function App() {
                 {/* For any invalid url redirect to login */}
                 <Route path="*" element={<Navigate to="/login" replace />} />
                 </Routes>
+                </ErrorBoundary>
             </main>
         </div>
     );

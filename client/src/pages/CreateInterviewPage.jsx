@@ -1,9 +1,9 @@
-import { useEffect, useContext, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 // API / Context
 import api from "../api/axios";
-import { AuthContext } from "../context/AuthContext";
+import { useResumes } from "../hooks/useResumes";
 
 // UI Components
 import Alert from "@mui/material/Alert";
@@ -37,8 +37,7 @@ import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import RoundSelector from "../components/RoundSelector";
 
 const CreateInterviewPage = () => {
-    const { getResumes, deleteResume, uploadResume } =
-        useContext(AuthContext);
+    const { getResumes, deleteResume, uploadResume } = useResumes();
     const navigate = useNavigate();
 
     const [formData, setFormData] = useState({
@@ -184,7 +183,7 @@ const CreateInterviewPage = () => {
         e.preventDefault();
         if (!formData.resumeId) return;
         if (selectedRounds.length === 0) {
-            alert("Please select at least one round");
+            setSnack({ open: true, severity: "warning", message: "Please select at least one round" });
             return;
         }
 

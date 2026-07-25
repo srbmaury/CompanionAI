@@ -1,7 +1,7 @@
 import { suggestRounds } from "../utils/interviewRounds.js";
 import Round from "../models/Round.js";
 
-export const getSuggestedRounds = async (req, res) => {
+export const getSuggestedRounds = async (req, res, next) => {
     const { company, jobRole, jobDescription } = req.body;
 
     if (!company || !jobRole || !jobDescription) {
@@ -14,11 +14,11 @@ export const getSuggestedRounds = async (req, res) => {
         const rounds = await suggestRounds(company, jobRole, jobDescription);
         res.status(200).json(rounds);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
-export const createRound = async (req, res) => {
+export const createRound = async (req, res, next) => {
     const { roundName, description, deliveryMode } = req.body;
 
     if (!roundName || !description) {
@@ -38,6 +38,6 @@ export const createRound = async (req, res) => {
         res.status(201).json(round);
     } catch (error) {
         console.error("Error creating round:", error);
-        res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };

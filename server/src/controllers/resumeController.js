@@ -33,7 +33,7 @@ const optionalAntivirusScan = async (buffer) => {
 };
 
 // Upload resume
-export const uploadResume = async (req, res) => {
+export const uploadResume = async (req, res, next) => {
     try {
         if (!req.file)
             return res.status(400).json({ message: "No file uploaded" });
@@ -94,12 +94,12 @@ export const uploadResume = async (req, res) => {
     } catch (error) {
         console.error("Resume upload error:", error);
         try { metrics.uploadResumeTotal.labels("failure").inc(); } catch {}
-        res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
 // Fetch all resumes for a user
-export const getUserResumes = async (req, res) => {
+export const getUserResumes = async (req, res, next) => {
     try {
         const { sort = "-createdAt", tag, q } = req.query || {};
         const query = { user: req.user._id };
@@ -117,12 +117,12 @@ export const getUserResumes = async (req, res) => {
         res.json(resumes);
     } catch (error) {
         console.error("Fetch resumes error:", error);
-        res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
 // Delete resume
-export const deleteResume = async (req, res) => {
+export const deleteResume = async (req, res, next) => {
     try {
         const resume = await Resume.findOne({
             _id: req.params.id,
@@ -144,24 +144,24 @@ export const deleteResume = async (req, res) => {
         res.json({ message: "Resume deleted" });
     } catch (error) {
         console.error("Delete resume error:", error);
-        res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
 // View resume
-export const viewResume = async (req, res) => {
+export const viewResume = async (req, res, next) => {
     try {
         const resume = await Resume.findOne({ _id: req.params.id, user: req.user._id });
         if (!resume) return res.status(404).json({ message: "Resume not found" });
         res.json(resume);
     } catch (error) {
         console.error("View resume error:", error);
-        res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
 // Stream PDF inline for preview
-export const previewResume = async (req, res) => {
+export const previewResume = async (req, res, next) => {
     try {
         const resume = await Resume.findOne({ _id: req.params.id, user: req.user._id });
         if (!resume) return res.status(404).json({ message: "Resume not found" });
@@ -187,11 +187,11 @@ export const previewResume = async (req, res) => {
         });
     } catch (error) {
         console.error("Preview resume error:", error);
-        res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 // Update resume metadata (rename, tags, notes)
-export const updateResume = async (req, res) => {
+export const updateResume = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { fileName, tags, notes } = req.body || {};
@@ -211,12 +211,12 @@ export const updateResume = async (req, res) => {
         res.json(resume);
     } catch (error) {
         console.error("Update resume error:", error);
-        res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
 // Generate AI review for a resume
-export const reviewResume = async (req, res) => {
+export const reviewResume = async (req, res, next) => {
     try {
         const { id } = req.params;
         const { role, jobDescription } = req.body || {};
@@ -266,6 +266,6 @@ RESUME_TEXT: ${resumeText}`;
         res.json(response);
     } catch (error) {
         console.error("Review resume error:", error);
-        res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };

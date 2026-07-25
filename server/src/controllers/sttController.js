@@ -5,7 +5,7 @@ import metrics from "../metrics/index.js";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY || "" });
 
-export const transcribe = async (req, res) => {
+export const transcribe = async (req, res, next) => {
     try {
         const file = req.file;
         if (!file || !file.buffer) {

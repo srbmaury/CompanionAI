@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { AuthContext } from "../context/AuthContext";
 
-import { Box, Button, Card, CardActionArea, CardContent, CircularProgress, Pagination, Stack, Typography, ToggleButton, ToggleButtonGroup, Chip } from "@mui/material";
+import { Box, Button, Card, CardActionArea, CardContent, Pagination, Skeleton, Stack, Typography, ToggleButton, ToggleButtonGroup, Chip } from "@mui/material";
 
 const DashboardPage = () => {
     const { user } = useContext(AuthContext);
@@ -46,7 +46,18 @@ const DashboardPage = () => {
             </Typography>
 
             {loading ? (
-                <CircularProgress />
+                <Stack spacing={2}>
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <Card key={i} variant="outlined">
+                            <CardContent>
+                                <Skeleton variant="text" width="40%" height={28} />
+                                <Skeleton variant="text" width="25%" height={20} sx={{ mt: 0.5 }} />
+                                <Skeleton variant="text" width="20%" height={16} sx={{ mt: 0.5 }} />
+                                <Skeleton variant="rounded" width={80} height={24} sx={{ mt: 1 }} />
+                            </CardContent>
+                        </Card>
+                    ))}
+                </Stack>
             ) : interviews.length === 0 ? (
                 <Stack spacing={2} alignItems="center" sx={{ py: 6 }}>
                     <Typography color="text.secondary">You haven't started any interviews yet.</Typography>

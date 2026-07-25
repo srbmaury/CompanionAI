@@ -1,4 +1,6 @@
 import { useState, useEffect, lazy, memo, Suspense, useMemo, useRef, useCallback } from "react";
+import SoundWave from "./SoundWave";
+import { useElapsed } from "../hooks/useElapsed";
 import {
     Box, Button, Chip, CircularProgress, Dialog, DialogActions,
     DialogContent, DialogContentText, DialogTitle, IconButton,
@@ -12,50 +14,7 @@ import SendIcon from "@mui/icons-material/Send";
 import SkipRoundButton from "./SkipRoundButton";
 import WebcamPreview from "./WebcamPreview";
 
-const CodeEditorField = lazy(() => import("../pages/CodeEditorField"));
-
-// ── Sound-wave bars (5 bars, staggered animation) ────────────────────────────
-const SoundWave = ({ active }) => (
-    <Box sx={{
-        display: "flex",
-        gap: "3px",
-        alignItems: "center",
-        height: 28,
-        "@keyframes soundWave": {
-            "0%,100%": { transform: "scaleY(0.3)" },
-            "50%": { transform: "scaleY(1)" },
-        },
-    }}>
-        {[0, 100, 50, 150, 80].map((delay, i) => (
-            <Box
-                key={i}
-                sx={{
-                    width: 3,
-                    height: 22,
-                    bgcolor: "primary.light",
-                    borderRadius: 1,
-                    transformOrigin: "center",
-                    transform: "scaleY(0.3)",
-                    opacity: active ? 0.85 : 0.2,
-                    animation: active ? `soundWave 0.75s ease-in-out infinite` : "none",
-                }}
-                style={{ animationDelay: `${delay}ms` }}
-            />
-        ))}
-    </Box>
-);
-
-// ── Elapsed timer ─────────────────────────────────────────────────────────────
-const useElapsed = () => {
-    const startRef = useRef(Date.now());
-    const [elapsed, setElapsed] = useState(0);
-    useEffect(() => {
-        const id = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000);
-        return () => clearInterval(id);
-    }, []);
-    const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-    return fmt(elapsed);
-};
+const CodeEditorField = lazy(() => import("./CodeEditorField"));
 
 // ── Main component ────────────────────────────────────────────────────────────
 const ConversationalPanel = ({

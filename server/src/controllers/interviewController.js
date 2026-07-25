@@ -2,7 +2,7 @@ import Interview from "../models/Interview.js";
 import Round from "../models/Round.js";
 import mongoose from "mongoose";
 
-export const createInterview = async (req, res) => {
+export const createInterview = async (req, res, next) => {
     const { resumeId, company, jobRole, jobDescription, rounds } = req.body;
 
     if (!resumeId || !company || !jobRole || !jobDescription || !Array.isArray(rounds) || rounds.length === 0) {
@@ -62,11 +62,11 @@ export const createInterview = async (req, res) => {
         await session.abortTransaction();
         session.endSession();
         console.error("Error creating interview with rounds:", error);
-        return res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
-export const getInterviews = async (req, res) => {
+export const getInterviews = async (req, res, next) => {
     try {
         const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
         const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 100);
@@ -105,11 +105,11 @@ export const getInterviews = async (req, res) => {
         const totalPages = Math.max(Math.ceil(total / limit), 1);
         return res.status(200).json({ items, total, page, limit, totalPages });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
-export const getInterview = async (req, res) => {
+export const getInterview = async (req, res, next) => {
     try {
         const interview = await Interview.findById(req.params.id)
             .populate({

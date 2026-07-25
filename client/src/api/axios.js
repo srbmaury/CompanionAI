@@ -1,6 +1,5 @@
 import axios from "axios";
 
-// Resolve API base URL (supports local proxy and absolute prod URL)
 const resolveBaseUrl = () => {
     const envUrl = import.meta?.env?.VITE_API_BASE_URL;
     try {
@@ -18,133 +17,54 @@ const api = axios.create({
     withCredentials: true,
 });
 
-// Cache latest CSRF token seen in headers as a fallback when cookie is unavailable cross-site
-let latestCsrfToken = null;
-let csrfPrimePromise = null;
-
-const readCookieToken = () => {
-    try {
-        const match = document.cookie.match(/(?:^|; )csrfToken=([^;]+)/);
-        return match ? decodeURIComponent(match[1]) : null;
-    } catch {
-        return null;
-    }
-};
-
-const getAbsoluteApiUrl = (path) => {
-    try {
-        const base = resolveBaseUrl();
-        const baseTrimmed = String(base || "").replace(/\/+$/, "");
-        const pathWithSlash = path.startsWith("/") ? path : `/${path}`;
-        if (/^https?:\/\//i.test(baseTrimmed)) {
-            return `${baseTrimmed}${pathWithSlash}`;
-        }
-        const origin = typeof window !== "undefined" ? window.location.origin : "";
-        return `${origin}${baseTrimmed}${pathWithSlash}`;
-    } catch {
-        return path;
-    }
-};
-
-const primeAndGetCsrfToken = async () => {
-    // Fast path from cookie or cached header
-    const cookieToken = readCookieToken();
-    if (cookieToken) return cookieToken;
-    if (latestCsrfToken) return latestCsrfToken;
-
-    // Debounce concurrent priming
-    if (!csrfPrimePromise) {
-        csrfPrimePromise = (async () => {
-            try {
-                const url = getAbsoluteApiUrl("/auth/profile");
-                const resp = await window.fetch(url, {
-                    method: "GET",
-                    credentials: "include",
-                    headers: {
-                        Accept: "application/json",
-                    },
-                });
-                const headerToken = resp.headers.get("x-csrf-token") || resp.headers.get("X-CSRF-Token");
-                if (headerToken) latestCsrfToken = headerToken;
-            } catch { void 0; }
-            try { await new Promise((r) => setTimeout(r, 0)); } catch { void 0; }
-            return latestCsrfToken || readCookieToken();
-        })().finally(() => {
-            setTimeout(() => { csrfPrimePromise = null; }, 0);
-        });
-    }
-    try {
-        const token = await csrfPrimePromise;
-        return token || null;
-    } catch {
-        return null;
-    }
-};
-
-// Prime CSRF early (non-blocking)
-try { api.get(`/auth/profile`).catch(() => { /* ignore */ }); } catch { /* ignore */ }
-
-// Attach Authorization bearer (if available) and CSRF token for state-changing requests
-api.interceptors.request.use(async (config) => {
-    const method = (config.method || "get").toLowerCase();
+// Attach Authorization bearer token on every request
+api.interceptors.request.use((config) => {
     try {
         const token = typeof window !== "undefined" ? window.localStorage.getItem("accessToken") : null;
-        if (token) {
-            config.headers["Authorization"] = `Bearer ${token}`;
-        }
+        if (token) config.headers["Authorization"] = `Bearer ${token}`;
     } catch { /* ignore */ }
-    if (["post", "put", "patch", "delete"].includes(method)) {
-        const token = readCookieToken() || latestCsrfToken || (await primeAndGetCsrfToken());
-        if (token) {
-            config.headers["X-CSRF-Token"] = token;
-            config.headers["X-XSRF-Token"] = token;
-        }
-    }
     return config;
 });
 
-// Capture header token and retry once on CSRF failures
+let refreshPromise = null;
+
+const silentRefresh = async () => {
+    if (!refreshPromise) {
+        refreshPromise = axios
+            .post(`${resolveBaseUrl()}/auth/refresh`, {}, { withCredentials: true })
+            .then((res) => {
+                const token = res?.data?.token;
+                if (token) {
+                    try { window.localStorage.setItem("accessToken", token); } catch { /* ignore */ }
+                }
+                return token;
+            })
+            .finally(() => { refreshPromise = null; });
+    }
+    return refreshPromise;
+};
+
+// On 401: try silent refresh once, then redirect to login
 api.interceptors.response.use(
-    (response) => {
-        try {
-            const headerToken = response?.headers?.["x-csrf-token"] || response?.headers?.["X-CSRF-Token"];
-            if (headerToken) latestCsrfToken = headerToken;
-        } catch { /* ignore */ }
-        return response;
-    },
+    (response) => response,
     async (error) => {
-        const response = error?.response;
+        const status = error?.response?.status;
         const originalConfig = error?.config;
-        if (!response || !originalConfig) return Promise.reject(error);
 
-        const isCsrfError =
-            response.status === 403 &&
-            (response.data?.message === "Invalid or missing CSRF token" ||
-                response.data?.message === "CSRF validation failed");
-
-        if (isCsrfError && !originalConfig.__retriedAfterCsrf) {
+        if (status === 401 && originalConfig && !originalConfig.__retried) {
+            originalConfig.__retried = true;
             try {
-                await primeAndGetCsrfToken();
-            } catch { /* ignore */ }
-            const csrfToken = readCookieToken() || latestCsrfToken;
-            originalConfig.__retriedAfterCsrf = true;
-            if (csrfToken) {
-                originalConfig.headers = originalConfig.headers || {};
-                originalConfig.headers["X-CSRF-Token"] = csrfToken;
-                originalConfig.headers["X-XSRF-Token"] = csrfToken;
-            }
-            return api.request(originalConfig);
-        }
+                const newToken = await silentRefresh();
+                if (newToken) {
+                    originalConfig.headers["Authorization"] = `Bearer ${newToken}`;
+                    return api.request(originalConfig);
+                }
+            } catch { /* refresh failed — fall through to logout */ }
 
-        // Session expiry: 401 while a token exists → clear and redirect to login
-        if (response.status === 401) {
             try {
-                const hasToken = typeof window !== "undefined" && window.localStorage.getItem("accessToken");
-                if (hasToken) {
-                    window.localStorage.removeItem("accessToken");
-                    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-                        window.location.href = "/login";
-                    }
+                window.localStorage.removeItem("accessToken");
+                if (!window.location.pathname.startsWith("/login")) {
+                    window.location.href = "/login";
                 }
             } catch { /* ignore */ }
         }

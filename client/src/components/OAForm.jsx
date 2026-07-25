@@ -3,7 +3,7 @@ import VoiceControls from "./VoiceControls";
 import SkipRoundButton from "./SkipRoundButton";
 import { lazy, Suspense } from "react";
 
-const CodeEditorField = lazy(() => import("../pages/CodeEditorField"));
+const CodeEditorField = lazy(() => import("./CodeEditorField"));
 
 const OAForm = ({
     questions,

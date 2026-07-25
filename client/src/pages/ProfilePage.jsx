@@ -1,5 +1,6 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { AuthContext } from "../context/AuthContext";
+import { useResumes } from "../hooks/useResumes";
 
 // MUI components
 import {
@@ -41,8 +42,8 @@ import {
 } from "@mui/icons-material";
 
 const ProfilePage = () => {
-    const { user, getResumes, deleteResume, uploadResume, updateProfile, updateResume } =
-        useContext(AuthContext);
+    const { user, updateProfile } = useContext(AuthContext);
+    const { getResumes, deleteResume, uploadResume, updateResume } = useResumes();
 
     const [resumes, setResumes] = useState([]);
     const [loading, setLoading] = useState(true);
