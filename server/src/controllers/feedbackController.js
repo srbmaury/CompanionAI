@@ -2,12 +2,29 @@ import Feedback from "../models/Feedback.js";
 import Round from "../models/Round.js";
 import Question from "../models/Question.js";
 import { generateFeedbackForAnswer } from "../utils/generateFeedback.js";
+import Interview from "../models/Interview.js";
+
+const ownedRoundIds = async (userId) => {
+    const interviews = await Interview.find({ user: userId }).select("rounds.round").lean();
+    return interviews.flatMap((interview) => (interview.rounds || []).map((item) => item.round));
+};
+
+const userOwnsRound = async (userId, roundId) =>
+    Boolean(await Interview.exists({ user: userId, "rounds.round": roundId }));
+
+const userOwnsQuestion = async (userId, questionId) => {
+    const roundIds = await ownedRoundIds(userId);
+    return Boolean(roundIds.length && await Round.exists({ _id: { $in: roundIds }, "questions.question": questionId }));
+};
 
 // Create feedback for a specific question (by questionId)
 export const createFeedback = async (req, res, next) => {
     try {
         const { questionId } = req.params;
         const { answer } = req.body || {};
+        if (!await userOwnsQuestion(req.user._id, questionId)) {
+            return res.status(404).json({ message: "Question not found" });
+        }
         const qDoc = await Question.findById(questionId);
         if (!qDoc) return res.status(404).json({ message: "Question not found" });
         const gen = await generateFeedbackForAnswer({ questionText: qDoc.text, userAnswer: answer });
@@ -18,6 +35,7 @@ export const createFeedback = async (req, res, next) => {
             ? gen.suggestions.map((s) => (s || "").toString()).filter(Boolean).slice(0, 10)
             : [];
         const fb = await Feedback.create({
+            user: req.user._id,
             question: questionId,
             comment: safeComment,
             score: clampedScore,
@@ -35,11 +53,20 @@ export const attachFeedbackToRoundQuestion = async (req, res, next) => {
     try {
         const { roundId } = req.params;
         const { index, feedbackId } = req.body || {};
+        if (!await userOwnsRound(req.user._id, roundId)) {
+            return res.status(404).json({ message: "Round not found" });
+        }
         const round = await Round.findById(roundId);
         if (!round) return res.status(404).json({ message: "Round not found" });
         const idx = Number(index);
         if (!Number.isInteger(idx) || idx < 0 || idx >= (round.questions?.length || 0))
             return res.status(400).json({ message: "Invalid index" });
+        const feedback = await Feedback.findOne({
+            _id: feedbackId,
+            user: req.user._id,
+            question: round.questions[idx].question,
+        });
+        if (!feedback) return res.status(404).json({ message: "Feedback not found" });
         round.questions[idx].feedback = feedbackId;
         await round.save();
         return res.json({ success: true });
@@ -53,7 +80,10 @@ export const attachFeedbackToRoundQuestion = async (req, res, next) => {
 export const getFeedbackForQuestion = async (req, res, next) => {
     try {
         const { questionId } = req.params;
-        const list = await Feedback.find({ question: questionId }).sort({ createdAt: -1 });
+        if (!await userOwnsQuestion(req.user._id, questionId)) {
+            return res.status(404).json({ message: "Question not found" });
+        }
+        const list = await Feedback.find({ question: questionId, user: req.user._id }).sort({ createdAt: -1 });
         return res.json(list);
     } catch (error) {
         console.error("getFeedbackForQuestion error:", error);
@@ -69,7 +99,10 @@ export const createBulkFeedback = async (req, res, next) => {
             return res.status(400).json({ message: "No items provided" });
         }
         const qIds = items.map((it) => it?.questionId).filter(Boolean);
-        const qDocs = await Question.find({ _id: { $in: qIds } });
+        const roundIds = await ownedRoundIds(req.user._id);
+        const ownedRounds = await Round.find({ _id: { $in: roundIds }, "questions.question": { $in: qIds } }).select("questions.question").lean();
+        const allowedQuestionIds = new Set(ownedRounds.flatMap((round) => (round.questions || []).map((item) => String(item.question))));
+        const qDocs = await Question.find({ _id: { $in: qIds.filter((id) => allowedQuestionIds.has(String(id))) } });
         const byId = new Map(qDocs.map((q) => [String(q._id), q]));
 
         const results = [];
@@ -84,6 +117,7 @@ export const createBulkFeedback = async (req, res, next) => {
                 ? gen.suggestions.map((s) => (s || "").toString()).filter(Boolean).slice(0, 10)
                 : [];
             const fb = await Feedback.create({
+                user: req.user._id,
                 question: q._id,
                 comment: safeComment,
                 score: clampedScore,

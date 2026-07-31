@@ -40,6 +40,8 @@ const ResetPasswordPage = () => {
         return submitting;
     }, [newPassword, confirmPassword, submitting]);
 
+    const hasValidLink = Boolean(token && email);
+
     const onSubmit = async (e) => {
         e.preventDefault();
         setSubmitting(true);
@@ -63,10 +65,19 @@ const ResetPasswordPage = () => {
                     <Typography variant="h5" fontWeight={700} gutterBottom>
                         Reset Password
                     </Typography>
-                    <Typography color="text.secondary" sx={{ mb: 3 }}>
-                        Set a new password for {email}.
-                    </Typography>
-                    <form onSubmit={onSubmit}>
+                    {!hasValidLink ? (
+                        <Stack spacing={2}>
+                            <Alert severity="error">Invalid or incomplete password reset link.</Alert>
+                            <Button variant="contained" onClick={() => navigate("/forgot-password")}>
+                                Request a new reset link
+                            </Button>
+                        </Stack>
+                    ) : (
+                    <>
+                        <Typography color="text.secondary" sx={{ mb: 3 }}>
+                            Set a new password for {email}.
+                        </Typography>
+                        <form onSubmit={onSubmit}>
                         <Stack spacing={2}>
                             <TextField
                                 label="New password"
@@ -111,7 +122,9 @@ const ResetPasswordPage = () => {
                             {message && <Alert severity="success">{message}</Alert>}
                             {error && <Alert severity="error">{error}</Alert>}
                         </Stack>
-                    </form>
+                        </form>
+                    </>
+                    )}
                 </CardContent>
             </Card>
         </Box>

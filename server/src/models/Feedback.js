@@ -2,6 +2,11 @@ import mongoose from "mongoose";
 
 const feedbackSchema = new mongoose.Schema(
     {
+        user: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            index: true,
+        },
         question: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Question",

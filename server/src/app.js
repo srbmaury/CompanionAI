@@ -8,6 +8,7 @@ import swaggerUi from "swagger-ui-express";
 import { RedisStore } from "rate-limit-redis";
 import getRedisClient from "./config/redis.js";
 import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
 import metrics from "./metrics/index.js";
 import requestId from "./middleware/requestId.js";
 import errorHandler from "./middleware/errorHandler.js";
@@ -179,6 +180,19 @@ app.use(requestId());
 // Structured logging
 app.use(httpLogger);
 
+// Instrument requests before routes so completed API requests are observed.
+app.use((req, res, next) => {
+    const route = req.path;
+    const end = metrics.httpRequestDurationSeconds.startTimer({ method: req.method, route });
+    res.on("finish", () => {
+        try {
+            metrics.httpRequestsTotal.labels(req.method, route, String(res.statusCode)).inc();
+            end({ status: String(res.statusCode) });
+        } catch {}
+    });
+    next();
+});
+
 // Origin/Referer check for state-changing requests (defense-in-depth)
 app.use(originCheck());
 
@@ -198,8 +212,15 @@ const makeLimiter = (windowMs, max, prefix = "rl") =>
         legacyHeaders: false,
         store: makeStore(),
         keyGenerator: (req) => {
-            // Rate-limit by authenticated user ID when available, else by IP
-            const userId = req.user?.id || req.user?._id;
+            let userId = req.user?.id || req.user?._id;
+            if (!userId) {
+                const authHeader = req.get("authorization") || "";
+                if (/^bearer\s+/i.test(authHeader) && process.env.JWT_SECRET) {
+                    try {
+                        userId = jwt.verify(authHeader.slice(7).trim(), process.env.JWT_SECRET)?.id;
+                    } catch { /* Invalid tokens remain IP-limited and are rejected by route auth. */ }
+                }
+            }
             return userId ? `${prefix}:user:${userId}` : `${prefix}:ip:${req.ip}`;
         },
         handler: (req, res) => {
@@ -274,19 +295,8 @@ app.get("/health/readiness", async (req, res) => {
     });
 });
 
-// Prometheus metrics collection + request instrumentation
+// Prometheus metrics collection
 const metricsToken = process.env.METRICS_TOKEN || "";
-app.use((req, res, next) => {
-    const route = req.route?.path || req.path;
-    const end = metrics.httpRequestDurationSeconds.startTimer({ method: req.method, route });
-    res.on("finish", () => {
-        try {
-            metrics.httpRequestsTotal.labels(req.method, route, String(res.statusCode)).inc();
-            end({ status: String(res.statusCode) });
-        } catch {}
-    });
-    next();
-});
 app.get("/metrics", async (req, res) => {
     try {
         if (metricsToken) {

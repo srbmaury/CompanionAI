@@ -90,7 +90,7 @@ const InterviewPage = () => {
 
     // ── Conversational ────────────────────────────────────────────────────────
     const {
-        convState, convViewState,
+        convViewState,
         convAnswer, setConvAnswer,
         convSavedAt,
         convSubmitting, convRoundSubmitting, convFeedbackProgress,

@@ -61,7 +61,7 @@ const Captcha = ({ onVerify, onExpire, provider, theme = "auto" }) => {
             if (cfg.provider === "recaptcha" && window.grecaptcha && widgetIdRef.current !== null) {
                 window.grecaptcha.reset(widgetIdRef.current);
             }
-        } catch {}
+        } catch { /* CAPTCHA reset is best-effort. */ }
     }, [cfg.provider]);
 
     useEffect(() => {
@@ -82,10 +82,10 @@ const Captcha = ({ onVerify, onExpire, provider, theme = "auto" }) => {
                         sitekey: cfg.turnstileSiteKey,
                         theme,
                         callback: (token) => {
-                            try { onVerifyRef.current && onVerifyRef.current(token); } catch {}
+                            try { onVerifyRef.current?.(token); } catch { /* Consumer callback errors must not break the widget. */ }
                         },
                         "expired-callback": () => {
-                            try { onExpireRef.current && onExpireRef.current(); } catch {}
+                            try { onExpireRef.current?.(); } catch { /* Consumer callback errors must not break the widget. */ }
                         },
                         "error-callback": () => {
                             setError("CAPTCHA failed to load. Try again.");
@@ -109,16 +109,16 @@ const Captcha = ({ onVerify, onExpire, provider, theme = "auto" }) => {
                             sitekey: cfg.recaptchaSiteKey,
                             theme: theme === "auto" ? "light" : theme,
                             callback: (token) => {
-                                try { onVerifyRef.current && onVerifyRef.current(token); } catch {}
+                                try { onVerifyRef.current?.(token); } catch { /* Consumer callback errors must not break the widget. */ }
                             },
                             "expired-callback": () => {
-                                try { onExpireRef.current && onExpireRef.current(); } catch {}
+                                try { onExpireRef.current?.(); } catch { /* Consumer callback errors must not break the widget. */ }
                             },
                             "error-callback": () => setError("CAPTCHA failed to load. Try again."),
                         });
                         widgetIdRef.current = id;
                         setReady(true);
-                    } catch (e) {
+                    } catch {
                         setError("CAPTCHA failed to initialize.");
                     }
                 });
@@ -127,22 +127,23 @@ const Captcha = ({ onVerify, onExpire, provider, theme = "auto" }) => {
             }
         };
         init();
+        const container = containerRef.current;
         return () => {
             cancelled = true;
             try {
                 if (cfg.provider === "turnstile") {
-                    if (window.turnstile && containerRef.current) {
+                    if (window.turnstile && container) {
                         // Best-effort removal
-                        window.turnstile.remove(containerRef.current);
+                        window.turnstile.remove(container);
                     }
                 } else if (cfg.provider === "recaptcha") {
                     if (window.grecaptcha && widgetIdRef.current !== null) {
                         // No official destroy API; reset and clear container
-                        try { window.grecaptcha.reset(widgetIdRef.current); } catch {}
-                        if (containerRef.current) containerRef.current.innerHTML = "";
+                        try { window.grecaptcha.reset(widgetIdRef.current); } catch { /* Widget may already be removed. */ }
+                        if (container) container.innerHTML = "";
                     }
                 }
-            } catch {}
+            } catch { /* Cleanup is best-effort. */ }
             widgetIdRef.current = null;
         };
     }, [cfg.provider, cfg.turnstileSiteKey, cfg.recaptchaSiteKey, theme]);

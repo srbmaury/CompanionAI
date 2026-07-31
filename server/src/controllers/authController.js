@@ -10,18 +10,23 @@ import AuditLog from "../models/AuditLog.js";
 
 const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7);
 
+const refreshCookieOptions = () => ({
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.COOKIE_SAMESITE || (process.env.NODE_ENV === "production" ? "strict" : "lax"),
+    domain: process.env.COOKIE_DOMAIN || undefined,
+    path: "/api/auth",
+});
+
 const setRefreshCookie = (res, raw, expiresAt) => {
     res.cookie("refreshToken", raw, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+        ...refreshCookieOptions(),
         expires: expiresAt,
-        path: "/api/auth",
     });
 };
 
 const clearRefreshCookie = (res) => {
-    res.clearCookie("refreshToken", { httpOnly: true, path: "/api/auth" });
+    res.clearCookie("refreshToken", refreshCookieOptions());
 };
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -52,7 +57,7 @@ export const registerUser = async (req, res, next) => {
             const baseUrl = process.env.CLIENT_ORIGIN || "http://localhost:5173";
             const verifyUrl = `${baseUrl}/verify-email?token=${verificationTokenRaw}&email=${encodeURIComponent(email)}`;
             const mail = buildVerificationEmail(user.name || "there", verifyUrl);
-            if (process.env.NODE_ENV !== "production") {
+            if (process.env.NODE_ENV === "development") {
                 console.log(`\n[DEV] Verification URL for ${email}:\n  ${verifyUrl}\n`);
             }
             try {
@@ -190,7 +195,7 @@ export const resendVerification = async (req, res, next) => {
             const baseUrl = process.env.CLIENT_ORIGIN || "http://localhost:5173";
             const verifyUrl = `${baseUrl}/verify-email?token=${verificationToken}&email=${encodeURIComponent(email)}`;
             const mail = buildVerificationEmail(user.name || "there", verifyUrl);
-            if (process.env.NODE_ENV !== "production") {
+            if (process.env.NODE_ENV === "development") {
                 console.log(`\n[DEV] Resend verification URL for ${email}:\n  ${verifyUrl}\n`);
             }
             try {

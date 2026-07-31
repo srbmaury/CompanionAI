@@ -7,12 +7,15 @@ import { generateClarification } from "../utils/generateQuestions/clarify.js";
 import { generateFollowUp } from "../utils/generateQuestions/followUp.js";
 import { getQueue } from "../queues/index.js";
 
+const findOwnedInterviewForRound = (userId, roundId) =>
+    Interview.findOne({ user: userId, "rounds.round": roundId });
+
 export const prepareQuestionsForRound = async (req, res, next) => {
     try {
         const { interviewId, roundId } = req.params;
         const { count = 8, prefetch = false } = req.body || {};
 
-        const interview = await Interview.findById(interviewId).populate("resume").lean();
+        const interview = await Interview.findOne({ _id: interviewId, user: req.user._id }).populate("resume").lean();
         if (!interview) return res.status(404).json({ message: "Interview not found" });
 
         const round = await Round.findById(roundId);
@@ -162,6 +165,8 @@ export const submitConversationalAnswer = async (req, res, next) => {
     try {
         const { roundId } = req.params;
         const { index, answer } = req.body || {};
+        const ownedInterview = await findOwnedInterviewForRound(req.user._id, roundId).lean();
+        if (!ownedInterview) return res.status(404).json({ message: "Round not found" });
         const round = await Round.findById(roundId).populate("questions.question");
         if (!round) return res.status(404).json({ message: "Round not found" });
         if (round.deliveryMode !== "conversational")
@@ -217,6 +222,8 @@ export const submitOAAnswers = async (req, res, next) => {
     try {
         const { roundId } = req.params;
         const { answers } = req.body || {};
+        const ownedInterview = await findOwnedInterviewForRound(req.user._id, roundId).lean();
+        if (!ownedInterview) return res.status(404).json({ message: "Round not found" });
         const round = await Round.findById(roundId).populate("questions.question");
         if (!round) return res.status(404).json({ message: "Round not found" });
         if (round.deliveryMode !== "online-assessment")
@@ -240,6 +247,8 @@ export const submitOAAnswers = async (req, res, next) => {
 export const completeRound = async (req, res, next) => {
     try {
         const { roundId } = req.params;
+        const ownedInterview = await findOwnedInterviewForRound(req.user._id, roundId).lean();
+        if (!ownedInterview) return res.status(404).json({ message: "Round not found" });
         const round = await Round.findById(roundId);
         if (!round) return res.status(404).json({ message: "Round not found" });
         round.status = "completed";
@@ -254,7 +263,7 @@ export const completeRound = async (req, res, next) => {
 export const skipRound = async (req, res, next) => {
     try {
         const { interviewId, roundId } = req.params;
-        const interview = await Interview.findById(interviewId);
+        const interview = await Interview.findOne({ _id: interviewId, user: req.user._id });
         if (!interview) return res.status(404).json({ message: "Interview not found" });
 
         const belongs = interview.rounds.some((r) => String(r.round) === String(roundId));
@@ -273,7 +282,7 @@ export const skipRound = async (req, res, next) => {
         }
 
         await Interview.updateOne(
-            { _id: interviewId },
+            { _id: interviewId, user: req.user._id },
             { $pull: { rounds: { round: roundId } } }
         );
         await Round.deleteOne({ _id: roundId });
@@ -290,6 +299,8 @@ export const getFollowUp = async (req, res, next) => {
         const { roundId } = req.params;
         const { index, answer } = req.body || {};
 
+        const interview = await findOwnedInterviewForRound(req.user._id, roundId).lean();
+        if (!interview) return res.status(404).json({ message: "Round not found" });
         const round = await Round.findById(roundId).populate("questions.question");
         if (!round) return res.status(404).json({ message: "Round not found" });
         if (round.deliveryMode !== "conversational")
@@ -297,8 +308,6 @@ export const getFollowUp = async (req, res, next) => {
 
         const idx = Number(index) || 0;
         const questionText = round.questions?.[idx]?.question?.text || "";
-
-        const interview = await Interview.findOne({ "rounds.round": roundId }).lean();
 
         const followUp = await generateFollowUp({
             questionText,
@@ -319,6 +328,8 @@ export const clarifyCurrentQuestion = async (req, res, next) => {
         const { roundId } = req.params;
         const { message } = req.body || {};
         if (!message || !message.toString().trim()) return res.status(400).json({ message: "Message required" });
+        const interview = await findOwnedInterviewForRound(req.user._id, roundId).lean();
+        if (!interview) return res.status(404).json({ message: "Round not found" });
         const round = await Round.findById(roundId).populate("questions.question");
         if (!round) return res.status(404).json({ message: "Round not found" });
         if (round.deliveryMode !== "conversational")
@@ -327,7 +338,6 @@ export const clarifyCurrentQuestion = async (req, res, next) => {
         const current = round.questions?.[idx] || round.questions?.[idx - 1] || round.questions?.[0];
         const qText = current?.question?.text || "";
 
-        const interview = await Interview.findOne({ "rounds.round": roundId }).lean();
         const role = interview?.jobRole || "";
 
         const answer = await generateClarification({

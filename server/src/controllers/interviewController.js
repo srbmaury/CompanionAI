@@ -1,6 +1,7 @@
 import Interview from "../models/Interview.js";
 import Round from "../models/Round.js";
 import mongoose from "mongoose";
+import Resume from "../models/Resume.js";
 
 export const createInterview = async (req, res, next) => {
     const { resumeId, company, jobRole, jobDescription, rounds } = req.body;
@@ -13,6 +14,12 @@ export const createInterview = async (req, res, next) => {
     session.startTransaction();
     const ops = [];
     try {
+        const ownedResume = await Resume.exists({ _id: resumeId, user: req.user._id }).session(session);
+        if (!ownedResume) {
+            await session.abortTransaction();
+            session.endSession();
+            return res.status(404).json({ message: "Resume not found" });
+        }
         // Create rounds first
         const roundDocs = await Round.insertMany(
             rounds.map((r) => ({
@@ -111,7 +118,7 @@ export const getInterviews = async (req, res, next) => {
 
 export const getInterview = async (req, res, next) => {
     try {
-        const interview = await Interview.findById(req.params.id)
+        const interview = await Interview.findOne({ _id: req.params.id, user: req.user._id })
             .populate({
                 path: "rounds.round",
                 model: "Round",

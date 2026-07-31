@@ -7,6 +7,7 @@ import User from "../../models/User.js";
 import Resume from "../../models/Resume.js";
 import Question from "../../models/Question.js";
 import connectDB from "../../config/db.js";
+import { signAccessToken } from "../../utils/tokens.js";
 
 let replset;
 let agent;
@@ -101,6 +102,37 @@ describe("Happy flows E2E", () => {
         const fetched = await agent.get(`/api/interviews/${interviewId}`).set(auth).expect(200);
         expect(Array.isArray(fetched.body?.rounds)).toBe(true);
         const firstRoundId = fetched.body.rounds[0].round._id;
+
+        // A different authenticated user cannot read or mutate this user's resources.
+        const otherUser = await User.create({
+            name: "Other User",
+            email: "other@example.com",
+            provider: "google",
+            googleId: "test-other-google-id",
+            isVerified: true,
+        });
+        const otherAuth = { Authorization: `Bearer ${signAccessToken(otherUser._id, otherUser.tokenVersion)}` };
+        await agent.get(`/api/interviews/${interviewId}`).set(otherAuth).expect(404);
+        await agent
+            .post("/api/interviews")
+            .set(otherAuth)
+            .set("origin", origin)
+            .set("referer", `${origin}/`)
+            .send({
+                resumeId,
+                company: "Acme",
+                jobRole: "Software Engineer",
+                jobDescription: "Build things",
+                rounds: [{ roundName: "Round 1", description: "Conversational", deliveryMode: "conversational", questionLimit: 2 }],
+            })
+            .expect(404);
+        await agent
+            .post(`/api/questions/${interviewId}/rounds/${firstRoundId}/prepare`)
+            .set(otherAuth)
+            .set("origin", origin)
+            .set("referer", `${origin}/`)
+            .send({ count: 2 })
+            .expect(404);
 
         // Seed generic questions for fallback
         await Question.create([

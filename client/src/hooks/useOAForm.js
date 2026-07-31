@@ -35,6 +35,8 @@ export const useOAForm = ({
             }
             return next;
         });
+    // The selected fields are intentional: replacing the whole round object should not erase drafts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [interviewId, selectedRound?._id, selectedRound?.questions?.length, isConversational]);
 
     // Persist OA drafts on every change

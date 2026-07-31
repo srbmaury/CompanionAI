@@ -30,6 +30,7 @@ const getTransporter = () => {
 };
 
 export const sendMail = async ({ to, subject, html, text }) => {
+    if (process.env.NODE_ENV === "test" && process.env.ALLOW_TEST_EMAIL !== "true") return;
     const from = envTrim(process.env.MAIL_FROM) || envTrim(process.env.SMTP_USER);
     await getTransporter().sendMail({
         from,

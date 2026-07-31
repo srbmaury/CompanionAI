@@ -35,10 +35,10 @@ export const AuthProvider = ({ children }) => {
     }, [fetchProfile]);
 
     const setToken = (token) => {
-        try { if (token) window.localStorage.setItem("accessToken", token); } catch {}
+        try { if (token) window.localStorage.setItem("accessToken", token); } catch { /* Storage can be unavailable in privacy mode. */ }
     };
     const clearToken = () => {
-        try { window.localStorage.removeItem("accessToken"); } catch {}
+        try { window.localStorage.removeItem("accessToken"); } catch { /* Storage can be unavailable in privacy mode. */ }
     };
 
     const login = async (email, password, captchaToken) => {

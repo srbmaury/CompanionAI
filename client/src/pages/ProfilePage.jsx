@@ -144,12 +144,8 @@ const ProfilePage = () => {
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        const allowed = [
-            "application/pdf",
-            "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ];
-        const maxBytes = 10 * 1024 * 1024; // 10MB
+        const allowed = ["application/pdf"];
+        const maxBytes = Number(import.meta.env.VITE_MAX_RESUME_BYTES || 5 * 1024 * 1024);
         if (!allowed.includes(file.type)) {
             setProfileMsg("Unsupported file type");
             setProfileMsgOpen(true);
@@ -157,7 +153,7 @@ const ProfilePage = () => {
             return;
         }
         if (file.size > maxBytes) {
-            setProfileMsg("File too large (max 10MB)");
+            setProfileMsg(`File too large (max ${Math.floor(maxBytes / 1024 / 1024)}MB)`);
             setProfileMsgOpen(true);
             e.target.value = "";
             return;
@@ -168,6 +164,9 @@ const ProfilePage = () => {
             setResumes((prev) => [uploaded, ...prev]);
         } catch (err) {
             console.error("Upload error:", err);
+            setProfileMsg(err?.response?.data?.message || "Failed to upload resume");
+            setProfileMsgSeverity("error");
+            setProfileMsgOpen(true);
         } finally {
             setUploading(false);
             e.target.value = ""; // reset input
