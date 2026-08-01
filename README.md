@@ -21,7 +21,7 @@ AI-assisted interview preparation: build multi-round interviews from a job descr
 
 ## Architecture
 - Client: React (Vite), Material UI, React Router, Axios (with credentials)
-- Server: Express, Mongoose/MongoDB, Redis/BullMQ, Zod, Stripe, Cloudinary, Nodemailer, Prometheus, and Sentry
+- Server: Express, Mongoose/MongoDB, Redis/BullMQ, Zod, Stripe, Cloudinary, Brevo Email API, Prometheus, and Sentry
 
 Monorepo layout
 ```
@@ -38,7 +38,7 @@ server/                  # Express API
 ## Getting started
 Prerequisites: Node 20+, MongoDB, Cloudinary, and at least one AI provider.
 
-Production also requires Redis, SMTP, CAPTCHA, Stripe, HTTPS, and MongoDB transaction support. Judge0 is required only when code execution is enabled.
+Production also requires Redis, Brevo transactional email, CAPTCHA, Stripe, HTTPS, and MongoDB transaction support. Judge0 is required only when code execution is enabled.
 
 1) Install
 ```bash
@@ -49,7 +49,7 @@ cd server && npm i && cd ../client && npm i
 
 - Server: copy the example and fill required values
   - Local minimum: `MONGO_URI`, `JWT_SECRET`, `CLIENT_ORIGIN`, Cloudinary credentials, and `OPENAI_API_KEY` or `GEMINI_API_KEY`
-  - SMTP is required for verification, password reset, and reminders
+  - Brevo API access is required for verification, password reset, and reminders
   - Stripe requires `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRO_PRICE_ID`
   - Production startup fails fast if Redis, metrics protection, CAPTCHA, or enabled feature dependencies are missing
   - Full list and sane defaults live in `server/.env.example`
@@ -136,6 +136,16 @@ BullMQ handles question preparation and bulk feedback when Redis is configured. 
 4. Test checkout, subscription updates, failed/recovered payments, refunds, disputes, cancellation, and portal access in Stripe test mode before using live keys.
 
 The pricing UI reads amount, currency, and interval from Stripe rather than hard-coding them.
+
+## Brevo email setup
+
+1. Create a Brevo account and add `companionai.email@gmail.com` under **Settings → Senders, Domains & Dedicated IPs → Senders**.
+2. Enter the verification code Brevo sends to that Gmail inbox.
+3. Create a Brevo API key under **Settings → SMTP & API → API Keys**.
+4. Add `BREVO_API_KEY`, `BREVO_SENDER_EMAIL=companionai.email@gmail.com`, and `BREVO_SENDER_NAME=CompanionAI` to the API service environment.
+5. Redeploy and confirm the startup log includes `Brevo API verified: transactional email ready`, then send a test reminder from Profile.
+
+Brevo accepts a verified Gmail sender, but free-email domains cannot be authenticated with DKIM/DMARC and may be rewritten or have poorer deliverability. Move to an authenticated CompanionAI-owned domain before a public launch.
 
 ## Production checklist
 - Use TLS for MongoDB/Redis; enforce HTTPS, HSTS, and Helmet

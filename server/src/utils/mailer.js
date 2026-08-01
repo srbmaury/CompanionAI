@@ -1,45 +1,59 @@
-import nodemailer from "nodemailer";
+import fetch from "node-fetch";
 
-// Support env names like the MERN-Chat-App example
-const envTrim = (v) => (typeof v === "string" ? v.trim() : v);
+const BREVO_API_URL = "https://api.brevo.com/v3";
+const envTrim = (value) => typeof value === "string" ? value.trim() : value;
 
-// Lazy transporter to ensure env is loaded (dotenv) before reading
-let transporter = null;
-const getTransporter = () => {
-    if (transporter) return transporter;
-    const smtpUser = envTrim(process.env.SMTP_USER);
-    const smtpPassRaw = envTrim(process.env.SMTP_PASS);
-    const smtpPass = typeof smtpPassRaw === "string" ? smtpPassRaw.replace(/\s+/g, "") : smtpPassRaw;
-    const smtpHost = envTrim(process.env.SMTP_HOST);
-    const smtpPort = Number(envTrim(process.env.SMTP_PORT) || 587);
-    if (!smtpHost) {
-        console.warn("SMTP_HOST not set. Set SMTP_HOST (e.g., smtp.mailtrap.io)");
+const brevoRequest = async (path, options = {}) => {
+    const apiKey = envTrim(process.env.BREVO_API_KEY);
+    if (!apiKey) throw new Error("BREVO_API_KEY is not configured");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+        const response = await fetch(`${BREVO_API_URL}${path}`, {
+            ...options,
+            signal: controller.signal,
+            headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+                "api-key": apiKey,
+                ...(options.headers || {}),
+            },
+        });
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(`Brevo API ${response.status}: ${body?.message || "request failed"}`);
+        }
+        return response.status === 204 ? {} : response.json();
+    } finally {
+        clearTimeout(timeout);
     }
-    if (!smtpUser || !smtpPass) {
-        console.warn("SMTP_USER/SMTP_PASS not set. Set both to enable email sending.");
-    }
-    transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpPort === 465,
-        requireTLS: smtpPort === 587,
-        auth: smtpUser && smtpPass ? { user: smtpUser, pass: smtpPass } : undefined,
-        logger: process.env.NODE_ENV !== "production",
-    });
-    return transporter;
 };
+
+const recipients = (to) => (Array.isArray(to) ? to : String(to || "").split(","))
+    .map((email) => typeof email === "string" ? { email: email.trim() } : email)
+    .filter((recipient) => recipient?.email);
 
 export const sendMail = async ({ to, subject, html, text }) => {
     if (process.env.NODE_ENV === "test" && process.env.ALLOW_TEST_EMAIL !== "true") return;
-    const from = envTrim(process.env.MAIL_FROM) || envTrim(process.env.SMTP_USER);
-    return getTransporter().sendMail({
-        from,
-        to,
-        subject,
-        html,
-        text,
-        envelope: { from: from, to: to },
+    const senderEmail = envTrim(process.env.BREVO_SENDER_EMAIL);
+    if (!senderEmail) throw new Error("BREVO_SENDER_EMAIL is not configured");
+    return brevoRequest("/smtp/email", {
+        method: "POST",
+        body: JSON.stringify({
+            sender: { email: senderEmail, name: envTrim(process.env.BREVO_SENDER_NAME) || "CompanionAI" },
+            to: recipients(to),
+            subject,
+            ...(html ? { htmlContent: html } : {}),
+            ...(text ? { textContent: text } : {}),
+            replyTo: { email: senderEmail, name: envTrim(process.env.BREVO_SENDER_NAME) || "CompanionAI" },
+            tags: ["companionai-transactional"],
+        }),
     });
+};
+
+export const verifyEmailProvider = async () => {
+    await brevoRequest("/account", { method: "GET" });
+    console.log("Brevo API verified: transactional email ready");
 };
 
 export const buildVerificationEmail = (name, verifyUrl) => {
@@ -50,24 +64,9 @@ export const buildVerificationEmail = (name, verifyUrl) => {
             <h2>Verify your email</h2>
             <p>Hi ${name},</p>
             <p>Please verify your email by clicking the button below:</p>
-            <p>
-                <a href="${verifyUrl}" style="display:inline-block;padding:10px 16px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:6px;">Verify Email</a>
-            </p>
+            <p><a href="${verifyUrl}" style="display:inline-block;padding:10px 16px;background:#4f46e5;color:#fff;text-decoration:none;border-radius:6px;">Verify Email</a></p>
             <p>Or open this link: <br/><a href="${verifyUrl}">${verifyUrl}</a></p>
             <p>If you did not sign up, you can ignore this email.</p>
-        </div>
-    `;
+        </div>`;
     return { subject, text, html };
-};
-
-// No default export to avoid initializing transporter at import time
-
-export const verifySmtp = async () => {
-    try {
-        await getTransporter().verify();
-        console.log("SMTP verified: connection ready");
-    } catch (e) {
-        console.warn("SMTP verify failed:", e?.message || e);
-        throw e;
-    }
 };

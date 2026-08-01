@@ -2,7 +2,7 @@
 
 ## Deployment topology
 
-Run the React build behind a CDN and the API as a Node 20+ service. Production requires MongoDB with transactions, Redis, HTTPS, SMTP, Cloudinary, CAPTCHA, Stripe, and at least one AI provider. The API process currently starts BullMQ workers and the reminder dispatcher; deploy one worker-enabled API replica until these are split into dedicated process types.
+Run the React build behind a CDN and the API as a Node 20+ service. Production requires MongoDB with transactions, Redis, HTTPS, Brevo transactional email API access, Cloudinary, CAPTCHA, Stripe, and at least one AI provider. The API process currently starts BullMQ workers and the reminder dispatcher; deploy one worker-enabled API replica until these are split into dedicated process types.
 
 ## Pre-deployment
 
@@ -14,7 +14,7 @@ Run the React build behind a CDN and the API as a Node 20+ service. Production r
 
 ## Environment and secrets
 
-Use a secret manager. Never commit `.env`. Rotate JWT, SMTP, Stripe, AI, Cloudinary, Redis, CAPTCHA, metrics, and Sentry credentials after suspected exposure. Configure both `ALLOWED_ORIGINS` and `CLIENT_ORIGIN` explicitly in production.
+Use a secret manager. Never commit `.env`. Rotate JWT, Brevo, Stripe, AI, Cloudinary, Redis, CAPTCHA, metrics, and Sentry credentials after suspected exposure. Configure both `ALLOWED_ORIGINS` and `CLIENT_ORIGIN` explicitly in production.
 
 ## Deployment and rollback
 
@@ -29,7 +29,7 @@ Deploy immutable artifacts. Wait for readiness before routing traffic. On failur
 
 ## Alerts
 
-Alert on readiness failures, elevated 5xx responses, authentication spikes, rate-limit spikes, queue failures, reminders in `failed` state, Stripe webhook 5xx responses, SMTP verification failures, and AI error/cost anomalies.
+Alert on readiness failures, elevated 5xx responses, authentication spikes, rate-limit spikes, queue failures, reminders in `failed` state, Stripe webhook 5xx responses, Brevo API failures, and AI error/cost anomalies.
 
 ## Reminder recovery
 

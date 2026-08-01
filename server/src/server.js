@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import connectDB from "./config/db.js";
 import app from "./app.js";
-import { verifySmtp } from "./utils/mailer.js";
+import { verifyEmailProvider } from "./utils/mailer.js";
 import cron from "node-cron";
 import cloudinary from "./config/cloudinaryConfig.js";
 import Resume from "./models/Resume.js";
@@ -47,8 +47,8 @@ try {
             console.error("METRICS_TOKEN is required in production to protect /metrics endpoint.");
             process.exit(1);
         }
-        if (process.env.REMINDER_DELIVERY_ENABLED === "true" && (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.MAIL_FROM)) {
-            console.error("SMTP_HOST, SMTP_USER, SMTP_PASS, and MAIL_FROM are required when reminder delivery is enabled.");
+        if (!process.env.BREVO_API_KEY || !process.env.BREVO_SENDER_EMAIL) {
+            console.error("BREVO_API_KEY and BREVO_SENDER_EMAIL are required in production for transactional email.");
             process.exit(1);
         }
         // Mandatory features: CAPTCHA in prod
@@ -117,16 +117,16 @@ await connectDB();
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
-    // Try SMTP verification on boot to catch misconfig early
-    const hasSmtpConfig = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
-    if (hasSmtpConfig) {
+    // Verify the Brevo API key on boot to catch misconfiguration early.
+    const hasEmailConfig = process.env.BREVO_API_KEY && process.env.BREVO_SENDER_EMAIL;
+    if (hasEmailConfig) {
         try {
-            await verifySmtp();
+            await verifyEmailProvider();
         } catch {
             // already logged
         }
     } else {
-        console.log("SMTP not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASS.");
+        console.log("Brevo email not configured. Set BREVO_API_KEY and BREVO_SENDER_EMAIL.");
     }
 
     // Start workers if Redis configured

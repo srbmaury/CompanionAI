@@ -315,7 +315,7 @@ app.get("/health/readiness", async (req, res) => {
 
     metrics.componentReady.labels("mongo").set(mongoReady ? 1 : 0);
     metrics.componentReady.labels("redis").set(redisStatus === "up" || redisStatus === "disabled" ? 1 : 0);
-    metrics.componentReady.labels("smtp").set(process.env.SMTP_HOST || process.env.NODE_ENV === "test" ? 1 : 0);
+    metrics.componentReady.labels("email").set(process.env.BREVO_API_KEY && process.env.BREVO_SENDER_EMAIL || process.env.NODE_ENV === "test" ? 1 : 0);
     metrics.componentReady.labels("stripe").set(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && process.env.STRIPE_PRO_PRICE_ID ? 1 : 0);
     const allOk = mongoReady && (redisStatus === "up" || redisStatus === "disabled");
     const statusCode = allOk ? 200 : 503;
