@@ -459,7 +459,7 @@ const ConversationalPanel = ({
                     <DialogTitle id="submit-round-title">End this round?</DialogTitle>
                     <DialogContent>
                         <DialogContentText>
-                            This will submit all your answers and generate feedback. You can still continue answering remaining questions.
+                            This will submit your answered questions, generate feedback, and close the round. Unanswered questions won’t receive feedback.
                         </DialogContentText>
                     </DialogContent>
                     <DialogActions>

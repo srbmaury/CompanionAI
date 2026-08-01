@@ -201,7 +201,7 @@ export const submitConversationalAnswer = async (req, res, next) => {
                 if (items.length > 0) {
                     const q = await getQueue("bulk-feedback");
                     if (q) {
-                        const job = await q.add("bulk-feedback", { roundId, items, attach: true }, { removeOnComplete: { age: 3600, count: 500 }, removeOnFail: { age: 86400, count: 500 } });
+                        const job = await q.add("bulk-feedback", { roundId, items, attach: true, userId: String(req.user._id) }, { removeOnComplete: { age: 3600, count: 500 }, removeOnFail: { age: 86400, count: 500 } });
                         feedbackJobId = job?.id || null;
                     }
                 }
@@ -277,8 +277,11 @@ export const skipRound = async (req, res, next) => {
             .map((q) => q?.question)
             .filter(Boolean);
         if (qIds.length > 0) {
-            await Feedback.deleteMany({ question: { $in: qIds } });
-            await Question.deleteMany({ _id: { $in: qIds } });
+            const feedbackIds = (round.questions || []).map((q) => q?.feedback).filter(Boolean);
+            await Feedback.deleteMany({ _id: { $in: feedbackIds } });
+            const sharedQuestionIds = await Round.distinct("questions.question", { _id: { $ne: round._id }, "questions.question": { $in: qIds } });
+            const shared = new Set(sharedQuestionIds.map(String));
+            await Question.deleteMany({ _id: { $in: qIds.filter((id) => !shared.has(String(id))) } });
         }
 
         await Interview.updateOne(

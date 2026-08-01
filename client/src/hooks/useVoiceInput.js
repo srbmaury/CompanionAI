@@ -1,13 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import api from "../api/axios";
-import { isVoskAvailable, startListeningWithVosk } from "../stt/vosk";
 
 const SpeechRecognitionCtor =
     typeof window !== "undefined"
         ? (window.SpeechRecognition || window.webkitSpeechRecognition || null)
         : null;
-
-const voskModelUrl = import.meta?.env?.VITE_VOSK_MODEL_URL || undefined;
 
 /**
  * Dual-layer STT: MediaRecorder → Whisper on stop (high quality),
@@ -26,7 +23,6 @@ export const useVoiceInput = ({ onTranscript }) => {
     const mediaRecorderRef = useRef(null);  // MediaRecorder for Whisper audio
     const liveRecRef = useRef(null);        // Web Speech running in parallel for live preview
     const wsFinalsRef = useRef("");         // accumulated finals from parallel Web Speech
-    const voskStopRef = useRef(null);
     const audioCtxRef = useRef(null);
     const analyserRef = useRef(null);
     const rafRef = useRef(null);
@@ -107,19 +103,6 @@ export const useVoiceInput = ({ onTranscript }) => {
 
     // Pure Web Speech fallback (used when getUserMedia is unavailable entirely)
     const fallbackSTT = useCallback(async (target) => {
-        if (isVoskAvailable() && voskModelUrl) {
-            try {
-                const session = await startListeningWithVosk({
-                    modelUrl: voskModelUrl,
-                    onResult: (text) => { if (text) onTranscriptRef.current?.(target, text.trim()); },
-                    onError: () => { setListening(false); setListeningTarget(null); },
-                });
-                voskStopRef.current = session.stop;
-                setListening(true);
-                setListeningTarget(target);
-                return;
-            } catch (e) { console.warn("Vosk fallback failed", e); }
-        }
         try {
             const Rec = SpeechRecognitionCtor;
             if (!Rec) throw new Error("Web Speech not available");
@@ -237,10 +220,6 @@ export const useVoiceInput = ({ onTranscript }) => {
 
     const stopListening = useCallback(() => {
         stopLiveRec();
-        if (voskStopRef.current) {
-            try { voskStopRef.current(); } catch { void 0; }
-            voskStopRef.current = null;
-        }
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
             try { mediaRecorderRef.current.stop(); } catch (e) { console.debug("stop error", e); }
         }

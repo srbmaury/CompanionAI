@@ -12,8 +12,6 @@ const formatZodError = (error) => {
 const validate = (schema, source = "body") => {
     return (req, res, next) => {
         try {
-            const enforce = process.env.NODE_ENV === "production" || process.env.SCHEMA_VALIDATE_ENFORCE === "true";
-            if (!enforce) return next();
             const result = schema.safeParse(req[source]);
             if (!result.success) {
                 const details = formatZodError(result.error);

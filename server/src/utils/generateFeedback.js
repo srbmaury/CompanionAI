@@ -14,7 +14,7 @@ Evaluate correctness, clarity, and depth. Be constructive in suggestions.`;
         const text = (await generateJSON(prompt)) || "{}";
         let obj = {};
         try { obj = JSON.parse(text); } catch (parseErr) {
-            console.error("[Feedback:JSONParse] error=", parseErr?.message, "raw=", text);
+            console.error("[Feedback:JSONParse] invalid provider response", parseErr?.message);
         }
         let comment = (obj?.comment || "").toString().trim().slice(0, 2000);
         if (!comment) comment = "Feedback unavailable.";

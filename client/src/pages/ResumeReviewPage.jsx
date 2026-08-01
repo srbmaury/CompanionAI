@@ -6,7 +6,9 @@ import {
     Alert,
     Box,
     Button,
+    Checkbox,
     Chip,
+    Container,
     Dialog,
     DialogActions,
     DialogContent,
@@ -15,6 +17,8 @@ import {
     Grid,
     IconButton,
     LinearProgress,
+    FormControlLabel,
+    Link,
     MenuItem,
     Paper,
     Stack,
@@ -36,6 +40,7 @@ export default function ResumeReviewPage() {
     const [review, setReview] = useState(null);
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState("");
+    const [uploadConsent, setUploadConsent] = useState(false);
 
     useEffect(() => {
         const fetchResumes = async () => {
@@ -93,10 +98,10 @@ export default function ResumeReviewPage() {
     };
 
     return (
-        <Paper sx={{ p: 3, maxWidth: 1000, mx: "auto", mt: 4 }}>
-            <Typography variant="h5" gutterBottom>
-                AI Resume Review
-            </Typography>
+        <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 5 } }}>
+        <Paper variant="outlined" sx={{ p: { xs: 2.5, sm: 4 }, borderRadius: 3 }}>
+            <Typography component="h1" variant="h4" fontWeight={800}>AI resume review</Typography>
+            <Typography color="text.secondary" sx={{ mt: .75, mb: 3 }}>Compare your resume with a target role and get focused, actionable improvements.</Typography>
             {snack.open && (
                 <Alert
                     severity={snack.severity}
@@ -124,6 +129,7 @@ export default function ResumeReviewPage() {
                             <MenuItem key={r._id} value={r._id}>
                                 {r.fileName || "Untitled Resume"} — {new Date(r.createdAt).toLocaleDateString()}
                                 <IconButton
+                                    aria-label={`Download ${r.fileName || "resume"}`}
                                     color="primary"
                                     size="small"
                                     component="a"
@@ -136,6 +142,7 @@ export default function ResumeReviewPage() {
                                 </IconButton>
                                 {r.fileType === "application/pdf" && (
                                     <IconButton
+                                        aria-label={`Preview ${r.fileName || "resume"}`}
                                         color="primary"
                                         size="small"
                                         onMouseDown={(e) => e.stopPropagation()}
@@ -152,7 +159,12 @@ export default function ResumeReviewPage() {
                         ))}
                     </TextField>
                 )}
-                <Button fullWidth variant="outlined" component="label" disabled={uploading}>
+                <FormControlLabel
+                    sx={{ alignItems: "flex-start", m: 0 }}
+                    control={<Checkbox checked={uploadConsent} onChange={(event) => setUploadConsent(event.target.checked)} size="small" />}
+                    label={<Typography variant="body2" color="text.secondary">I understand my resume is stored and processed to provide AI feedback. See the <Link href="/privacy">privacy notice</Link>.</Typography>}
+                />
+                <Button fullWidth variant="outlined" component="label" disabled={uploading || !uploadConsent}>
                     {uploading ? "Uploading..." : "Upload Resume (PDF)"}
                     <input type="file" hidden accept="application/pdf" onChange={handleUpload} />
                 </Button>
@@ -261,5 +273,6 @@ export default function ResumeReviewPage() {
                 </DialogActions>
             </Dialog>
         </Paper>
+        </Container>
     );
 }

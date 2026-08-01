@@ -1,21 +1,38 @@
 import { Route, Routes, Navigate } from "react-router-dom";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
+import { Box, CircularProgress } from "@mui/material";
 
 import Header from "./components/Header";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
+import AdminRoute from "./components/AdminRoute";
 
-import CreateInterviewPage from "./pages/CreateInterviewPage";
-import DashboardPage from "./pages/DashboardPage";
-import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
-import InterviewPage from "./pages/InterviewPage";
-import LoginPage from "./pages/LoginPage";
-import ProfilePage from "./pages/ProfilePage";
-import RegisterPage from "./pages/RegisterPage";
-import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
-import VerifyEmailPage from "./pages/VerifyEmailPage.jsx";
-import ExperiencesPage from "./pages/ExperiencesPage.jsx";
-import ResumeReviewPage from "./pages/ResumeReviewPage.jsx";
+const CreateInterviewPage = lazy(() => import("./pages/CreateInterviewPage"));
+const DashboardPage = lazy(() => import("./pages/DashboardPage"));
+const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage.jsx"));
+const InterviewPage = lazy(() => import("./pages/InterviewPage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const RegisterPage = lazy(() => import("./pages/RegisterPage"));
+const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage.jsx"));
+const VerifyEmailPage = lazy(() => import("./pages/VerifyEmailPage.jsx"));
+const ExperiencesPage = lazy(() => import("./pages/ExperiencesPage.jsx"));
+const ResumeReviewPage = lazy(() => import("./pages/ResumeReviewPage.jsx"));
+const LandingPage = lazy(() => import("./pages/LandingPage.jsx"));
+const LegalPage = lazy(() => import("./pages/LegalPage.jsx"));
+const ProgressPage = lazy(() => import("./pages/ProgressPage.jsx"));
+const ReviewHistoryPage = lazy(() => import("./pages/ReviewHistoryPage.jsx"));
+const SavedExperiencesPage = lazy(() => import("./pages/SavedExperiencesPage.jsx"));
+const ResumesPage = lazy(() => import("./pages/ResumesPage.jsx"));
+const PricingPage = lazy(() => import("./pages/PricingPage.jsx"));
+const BillingSuccessPage = lazy(() => import("./pages/BillingSuccessPage.jsx"));
+const AdminFeedbackPage = lazy(() => import("./pages/AdminFeedbackPage.jsx"));
+
+const PageLoader = () => (
+    <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }} role="status" aria-label="Loading page">
+        <CircularProgress />
+    </Box>
+);
 
 function App() {
     const [showSkip, setShowSkip] = useState(false);
@@ -52,13 +69,17 @@ function App() {
             <Header />
             <main id="main-content">
                 <ErrorBoundary>
+                <Suspense fallback={<PageLoader />}>
                 <Routes>
                 {/* Public routes */}
+                <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 <Route path="/verify-email" element={<VerifyEmailPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="/privacy" element={<LegalPage type="privacy" />} />
+                <Route path="/terms" element={<LegalPage type="terms" />} />
 
                 {/* Protected routes */}
                 <Route
@@ -85,6 +106,13 @@ function App() {
                         </ProtectedRoute>
                     }
                 />
+                <Route path="/progress" element={<ProtectedRoute><ProgressPage /></ProtectedRoute>} />
+                <Route path="/resume-reviews" element={<ProtectedRoute><ReviewHistoryPage /></ProtectedRoute>} />
+                <Route path="/saved-experiences" element={<ProtectedRoute><SavedExperiencesPage /></ProtectedRoute>} />
+                <Route path="/resumes" element={<ProtectedRoute><ResumesPage /></ProtectedRoute>} />
+                <Route path="/pricing" element={<ProtectedRoute><PricingPage /></ProtectedRoute>} />
+                <Route path="/billing/success" element={<ProtectedRoute><BillingSuccessPage /></ProtectedRoute>} />
+                <Route path="/admin/feedback" element={<ProtectedRoute><AdminRoute><AdminFeedbackPage /></AdminRoute></ProtectedRoute>} />
                 <Route
                     path="/create-interview"
                     element={
@@ -111,9 +139,10 @@ function App() {
                         </ProtectedRoute>
                     }
                 />
-                {/* For any invalid url redirect to login */}
-                <Route path="*" element={<Navigate to="/login" replace />} />
+                {/* For any invalid url return to the product home */}
+                <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
+                </Suspense>
                 </ErrorBoundary>
             </main>
         </div>

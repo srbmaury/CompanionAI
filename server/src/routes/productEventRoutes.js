@@ -1,0 +1,17 @@
+import express from "express";
+import { z } from "zod";
+import protect from "../middleware/authMiddleware.js";
+import validate from "../middleware/validate.js";
+import ProductEvent from "../models/ProductEvent.js";
+
+const router = express.Router();
+const schema = z.object({ event: z.enum(["dashboard_viewed", "pricing_viewed", "checkout_started", "interview_created", "resume_review_started", "resume_review_completed"]), path: z.string().max(200).optional() }).strict();
+
+router.post("/", protect, validate(schema), async (req, res, next) => {
+    try {
+        await ProductEvent.create({ user: req.user._id, event: req.body.event, path: req.body.path || req.path, plan: req.user.plan || "free" });
+        return res.status(202).json({ accepted: true });
+    } catch (error) { return next(error); }
+});
+
+export default router;

@@ -149,7 +149,7 @@ const Captcha = ({ onVerify, onExpire, provider, theme = "auto" }) => {
     }, [cfg.provider, cfg.turnstileSiteKey, cfg.recaptchaSiteKey, theme]);
 
     return (
-        <div>
+        <div style={{ display: "grid", justifyContent: "center" }}>
             <div ref={containerRef} data-ready={ready ? "1" : "0"} />
             {error ? (
                 <div style={{ color: "#b91c1c", fontSize: 12, marginTop: 6 }}>{error}</div>

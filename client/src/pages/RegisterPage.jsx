@@ -2,14 +2,15 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { useNavigate, Link as RouterLink } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import Captcha from "../components/Captcha";
+import AuthShell from "../components/AuthShell";
 
 // MUI components
 import {
     Box,
     Button,
-    Card,
-    CardContent,
+    Checkbox,
     FormControl,
+    FormControlLabel,
     FormHelperText,
     IconButton,
     InputAdornment,
@@ -36,6 +37,7 @@ const RegisterPage = () => {
     const [successMsg, setSuccessMsg] = useState("");
     const googleDivRef = useRef(null);
     const [captchaToken, setCaptchaToken] = useState("");
+    const [acceptedTerms, setAcceptedTerms] = useState(false);
 
     // simple inline validation state
     const [errors, setErrors] = useState({ name: "", email: "", password: "" });
@@ -66,7 +68,7 @@ const RegisterPage = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!validate()) return;
+        if (!validate() || !acceptedTerms) return;
 
         setSubmitting(true);
         try {
@@ -96,13 +98,22 @@ const RegisterPage = () => {
 
     // Detect GIS readiness
     useEffect(() => {
+        const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
+        if (!clientId) return;
         if (window.google && window.google.accounts && window.google.accounts.id) {
             setGsiReady(true);
             return;
         }
-        const script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+        let script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
         const onLoad = () => setGsiReady(true);
-        if (script) script.addEventListener("load", onLoad);
+        if (!script) {
+            script = document.createElement("script");
+            script.src = "https://accounts.google.com/gsi/client";
+            script.async = true;
+            script.defer = true;
+            document.head.appendChild(script);
+        }
+        script.addEventListener("load", onLoad);
         return () => {
             if (script) script.removeEventListener("load", onLoad);
         };
@@ -111,7 +122,7 @@ const RegisterPage = () => {
     // Render button
     useEffect(() => {
         const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
-        if (!clientId || !gsiReady || !googleDivRef.current) return;
+        if (!acceptedTerms || !clientId || !gsiReady || !googleDivRef.current) return;
         try {
             window.google.accounts.id.initialize({
                 client_id: clientId,
@@ -135,42 +146,14 @@ const RegisterPage = () => {
         } catch (e) {
             console.warn("Google button init failed", e);
         }
-    }, [gsiReady, googleLogin, navigate]);
+    }, [acceptedTerms, gsiReady, googleLogin, navigate]);
 
     // no manual click handler; rely on the rendered Google button only
 
     return (
-        <Box
-            sx={(theme) => ({
-                minHeight: "100vh",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                px: 2,
-                py: 6,
-                background:
-                    theme.palette.mode === "dark"
-                        ? `linear-gradient(135deg, ${theme.palette.background.default}, ${theme.palette.background.paper})`
-                        : "linear-gradient(135deg, #f6f9ff 0%, #eef2ff 100%)",
-            })}
-        >
-            <Card
-                elevation={3}
-                sx={{
-                    width: "100%",
-                    maxWidth: 840,
-                    borderRadius: 3,
-                    overflow: "hidden",
-                    border: (t) => `1px solid ${t.palette.divider}`,
-                }}
-            >
-                <CardContent sx={{ p: { xs: 3, sm: 5, md: 6 } }}>
-                    <Typography variant="h4" fontWeight={700} gutterBottom>
-                        Register
-                    </Typography>
-
+        <AuthShell eyebrow="Create your account" title="Start practicing with purpose" subtitle="Your first tailored interview plan is only a few minutes away.">
                     <Box component="form" noValidate onSubmit={handleSubmit}>
-                        <Stack spacing={3} mt={3}>
+                        <Stack spacing={{ xs: 2.25, md: 1.35 }}>
                             {successMsg && (
                                 <Typography color="success.main">
                                     {successMsg}
@@ -187,7 +170,7 @@ const RegisterPage = () => {
                                     placeholder="Jane Doe"
                                     autoComplete="name"
                                     error={!!errors.name}
-                                    helperText={errors.name || " "}
+                                    helperText={errors.name || undefined}
                                     size="medium"
                                 />
                             </FormControl>
@@ -204,7 +187,7 @@ const RegisterPage = () => {
                                     placeholder="name@example.com"
                                     autoComplete="email"
                                     error={!!errors.email}
-                                    helperText={errors.email || " "}
+                                    helperText={errors.email || undefined}
                                     size="medium"
                                 />
                             </FormControl>
@@ -250,9 +233,7 @@ const RegisterPage = () => {
                                         ),
                                     }}
                                 />
-                                <FormHelperText error={!!errors.password}>
-                                    {errors.password || " "}
-                                </FormHelperText>
+                                {errors.password && <FormHelperText error>{errors.password}</FormHelperText>}
                                 {password && (
                                     <Stack spacing={0.25} mt={0.5}>
                                         {[
@@ -272,13 +253,17 @@ const RegisterPage = () => {
 
                             {/* CAPTCHA */}
                             <Captcha onVerify={(t) => setCaptchaToken(t)} onExpire={() => setCaptchaToken("")} />
+                            <FormControlLabel
+                                control={<Checkbox checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} />}
+                                label={<Typography variant="body2">I agree to the <Link component={RouterLink} to="/terms">Terms</Link> and acknowledge the <Link component={RouterLink} to="/privacy">Privacy Notice</Link>.</Typography>}
+                            />
                             {/* Submit */}
                             <Button
                                 type="submit"
                                 variant="contained"
                                 size="large"
                                 startIcon={<PersonAddIcon />}
-                                disabled={submitting}
+                                disabled={submitting || !acceptedTerms}
                                 sx={{
                                     py: 1.25,
                                     borderRadius: 2,
@@ -288,12 +273,10 @@ const RegisterPage = () => {
                             >
                                 {submitting
                                     ? "Creating account..."
-                                    : "Register"}
+                                    : "Create account"}
                             </Button>
 
-                            <Stack spacing={2} alignItems="center">
-                                <div ref={googleDivRef} />
-                            </Stack>
+                            {acceptedTerms && <Stack spacing={2} alignItems="center"><div ref={googleDivRef} /></Stack>}
 
                             {submittedEmail && (
                                 <Stack spacing={1} alignItems="center">
@@ -321,7 +304,7 @@ const RegisterPage = () => {
                     <Typography
                         align="center"
                         color="text.secondary"
-                        sx={{ mt: 4 }}
+                                sx={{ mt: { xs: 4, md: 2 } }}
                     >
                         Already have an account?{" "}
                         <Link
@@ -332,9 +315,7 @@ const RegisterPage = () => {
                             Login
                         </Link>
                     </Typography>
-                </CardContent>
-            </Card>
-        </Box>
+        </AuthShell>
     );
 };
 

@@ -29,11 +29,17 @@ import sttRoutes from "./routes/sttRoutes.js";
 import experienceRoutes from "./routes/experienceRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import jobsRoutes from "./routes/jobsRoutes.js";
+import productFeedbackRoutes from "./routes/productFeedbackRoutes.js";
+import billingRoutes from "./routes/billingRoutes.js";
+import recommendationRoutes from "./routes/recommendationRoutes.js";
+import billingWebhookRoutes from "./routes/billingWebhookRoutes.js";
+import productEventRoutes from "./routes/productEventRoutes.js";
 
 const app = express();
 
 // Middleware
 app.set("trust proxy", 1); // required for secure cookies behind proxies
+app.use("/api/billing/webhook", express.raw({ type: "application/json", limit: "1mb" }), billingWebhookRoutes);
 app.use(express.json({ limit: "200kb" }));
 app.use(cookieParser());
 const isLocalhostOrigin = (origin) => {
@@ -253,6 +259,10 @@ app.use("/api/stt", sttLimiter, sttRoutes);
 app.use("/api/experiences", experienceRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/jobs", jobsRoutes);
+app.use("/api/product-feedback", productFeedbackRoutes);
+app.use("/api/billing", billingRoutes);
+app.use("/api/recommendations", recommendationRoutes);
+app.use("/api/events", productEventRoutes);
 
 // Health endpoints
 app.get("/health/liveness", (req, res) => {

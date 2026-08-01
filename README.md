@@ -30,7 +30,7 @@ server/                  # Express API
 ```
 
 ## Getting started
-Prerequisites: Node 18+, MongoDB, Cloudinary account, SMTP (Gmail app password or Mailtrap).
+Prerequisites: Node 20+, MongoDB, Cloudinary account, SMTP (Gmail app password or a transactional email provider).
 Optional: Judge0 for code execution, OpenAI/Gemini for AI, Redis for quotas/sessions in prod.
 
 1) Install
@@ -43,9 +43,9 @@ cd server && npm i && cd ../client && npm i
 - Server: copy the example and fill required values
   - Minimal required: `MONGO_URI`, `JWT_SECRET`, `CLIENT_ORIGIN`, all `SMTP_*`, all `CLOUDINARY_*`
   - Optional feature flags: `ENABLE_CODE_EXEC`, `ENABLE_STT`, `CAPTCHA_*`, quotas and rate limits
-  - Full list and sane defaults live in `server/env.example`
+  - Full list and sane defaults live in `server/.env.example`
 ```bash
-cp server/env.example server/.env
+cp server/.env.example server/.env
 ```
 
 - Client: create `client/.env` and set your client keys
@@ -92,11 +92,13 @@ Highlighted endpoints
 - Code execution via Judge0 is opt‑in and host‑allowlisted
 - File uploads validated by magic bytes, size; optional AV scanning
 - Metrics endpoint protected by token; structured JSON logging with request IDs
+- Durable reminder delivery records with idempotency and retry backoff
+- Stripe webhook signature validation and event idempotency
 
 ## Production checklist
 - Use TLS for MongoDB/Redis; enforce HTTPS, HSTS, and Helmet
 - Configure CSP allowlists via `CSP_*` envs and validate the client
-- Set up monitoring (Sentry) and import alerts from `server/src/metrics/alerts.yml`
-- See `server/RUNBOOK.md` for deployment, rollback, health checks, and hardening
+- Set up monitoring and alerts for `/health/readiness`, reminder failures, queue failures, and Stripe webhook failures
+- See `RUNBOOK.md` for deployment, rollback, health checks, backups, workers, and incident response
 
 License: MIT

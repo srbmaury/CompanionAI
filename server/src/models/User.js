@@ -53,6 +53,59 @@ const userSchema = new mongoose.Schema(
             enum: ["javascript", "python", "cpp", "java"],
             default: "cpp",
         },
+        practiceGoal: {
+            type: String,
+            enum: ["get-first-role", "switch-role", "promotion", "confidence", "other"],
+            default: "confidence",
+        },
+        targetRole: {
+            type: String,
+            trim: true,
+            maxlength: 120,
+            default: "",
+        },
+        weeklyPracticeTarget: {
+            type: Number,
+            min: 1,
+            max: 7,
+            default: 3,
+        },
+        reminderEnabled: {
+            type: Boolean,
+            default: false,
+        },
+        reminderDay: {
+            type: String,
+            enum: ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+            default: "monday",
+        },
+        reminderTime: {
+            type: String,
+            match: /^([01]\d|2[0-3]):[0-5]\d$/,
+            default: "19:00",
+        },
+        reminderTimezone: {
+            type: String,
+            maxlength: 80,
+            validate: {
+                validator: (value) => {
+                    try {
+                        new Intl.DateTimeFormat("en", { timeZone: value });
+                        return true;
+                    } catch {
+                        return false;
+                    }
+                },
+                message: "Invalid timezone",
+            },
+            default: "UTC",
+        },
+        lastReminderKey: { type: String, default: "", select: false },
+        plan: { type: String, enum: ["free", "pro"], default: "free", index: true },
+        subscriptionStatus: { type: String, enum: ["inactive", "incomplete", "incomplete_expired", "trialing", "active", "past_due", "canceled", "unpaid", "paused"], default: "inactive" },
+        billingProvider: { type: String, enum: ["none", "stripe"], default: "none", select: false },
+        billingCustomerId: { type: String, default: "", select: false },
+        billingSubscriptionId: { type: String, default: "", select: false },
         tokenVersion: {
             type: Number,
             default: 0,

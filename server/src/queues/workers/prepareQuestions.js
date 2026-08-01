@@ -5,9 +5,10 @@ import { generateQuestionsForRound } from "../../utils/generateQuestions.js";
 
 // Processor for BullMQ
 export default async function prepareQuestionsProcessor(job) {
-    const { interviewId, roundId, count, prefetch } = job.data || {};
+    const { interviewId, roundId, count, prefetch, userId } = job.data || {};
+    if (!userId) throw new Error("Missing job owner");
     job.updateProgress(5);
-    const interview = await Interview.findById(interviewId).populate("resume").lean();
+    const interview = await Interview.findOne({ _id: interviewId, user: userId, "rounds.round": roundId }).populate("resume").lean();
     if (!interview) throw new Error("Interview not found");
     const round = await Round.findById(roundId);
     if (!round) throw new Error("Round not found");

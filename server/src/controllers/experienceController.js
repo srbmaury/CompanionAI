@@ -4,6 +4,7 @@ const getFetch = async () => {
     const { default: nodeFetch } = await import("node-fetch");
     return nodeFetch;
 };
+import SavedExperience from "../models/SavedExperience.js";
 
 export const searchExperiences = async (req, res, next) => {
     try {
@@ -31,4 +32,38 @@ export const searchExperiences = async (req, res, next) => {
     } catch (e) {
         return res.json({ results: [] });
     }
+};
+
+export const getSavedExperiences = async (req, res, next) => {
+    try {
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(Number(req.query.limit) || 5, 1), 50);
+        const query = { user: req.user._id };
+        const [items, total] = await Promise.all([
+            SavedExperience.find(query).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+            SavedExperience.countDocuments(query),
+        ]);
+        return res.json({ items, total, page, limit, totalPages: Math.max(Math.ceil(total / limit), 1) });
+    }
+    catch (error) { return next(error instanceof Error ? error : new Error(String(error))); }
+};
+
+export const saveExperience = async (req, res, next) => {
+    try {
+        const payload = { ...req.body, user: req.user._id };
+        const saved = await SavedExperience.findOneAndUpdate(
+            { user: req.user._id, url: payload.url },
+            { $set: payload },
+            { new: true, upsert: true, runValidators: true }
+        );
+        return res.status(201).json(saved);
+    } catch (error) { return next(error instanceof Error ? error : new Error(String(error))); }
+};
+
+export const deleteSavedExperience = async (req, res, next) => {
+    try {
+        const deleted = await SavedExperience.findOneAndDelete({ _id: req.params.id, user: req.user._id });
+        if (!deleted) return res.status(404).json({ message: "Saved experience not found" });
+        return res.json({ message: "Saved experience removed" });
+    } catch (error) { return next(error instanceof Error ? error : new Error(String(error))); }
 };

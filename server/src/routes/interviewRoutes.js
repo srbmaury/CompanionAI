@@ -1,10 +1,11 @@
 import express from "express";
-import { createInterview, getInterviews, getInterview } from "../controllers/interviewController.js";
+import { createInterview, getInterviews, getInterview, getProgressSummary } from "../controllers/interviewController.js";
 import protect from "../middleware/authMiddleware.js";
 import validate from "../middleware/validate.js";
 import { z } from "zod";
 import audit from "../middleware/audit.js";
 import quotas from "../middleware/quotas.js";
+import usageLimit from "../middleware/usageLimit.js";
 
 const router = express.Router();
 
@@ -97,10 +98,12 @@ router.post(
         maxPerWindow: Number(process.env.QUOTA_INTERVIEW_CREATE_PER_HOUR || 30),
     }),
     validate(CreateInterviewSchema),
+    usageLimit("interviews", "interviewsPerMonth"),
     audit("interview.create", { entityType: "Interview" }),
     createInterview
 );
 router.get("/", protect, getInterviews);
+router.get("/analytics/progress", protect, getProgressSummary);
 router.get("/:id", protect, getInterview);
 
 export default router;

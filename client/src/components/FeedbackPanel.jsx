@@ -1,6 +1,13 @@
-import { Box, Card, CardContent, Chip, Divider, LinearProgress, Stack, Typography } from "@mui/material";
+import { Alert, Box, Button, Card, CardContent, Chip, Divider, LinearProgress, Stack, TextField, Typography } from "@mui/material";
 
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
+
+const getScore = (item) => {
+    const rawScore = item?.feedback?.score;
+    if (rawScore === null || rawScore === undefined || rawScore === "") return null;
+    const score = Number(rawScore);
+    return Number.isFinite(score) ? score : null;
+};
 
 const ScoreBar = ({ score }) => {
     const normalized = Math.max(0, Math.min(10, Number(score) || 0));
@@ -75,14 +82,42 @@ const FeedbackItem = memo(({ index, item }) => {
 });
 
 const FeedbackPanel = ({ round }) => {
+    const [retryItem, setRetryItem] = useState(null);
+    const [retryAnswer, setRetryAnswer] = useState("");
     const items = useMemo(() => (Array.isArray(round?.questions) ? round.questions : []), [round?.questions]);
+    const scoredItems = useMemo(() => items
+        .map((item, index) => ({ item, index, score: getScore(item) }))
+        .filter(({ score }) => score !== null)
+        .sort((a, b) => b.score - a.score), [items]);
+    const strongest = scoredItems[0] || null;
+    const weakest = scoredItems.length > 1 ? scoredItems[scoredItems.length - 1] : scoredItems[0] || null;
+    const topSuggestions = useMemo(() => {
+        const seen = new Set();
+        const result = [];
+        [...scoredItems].reverse().forEach(({ item }) => {
+            (Array.isArray(item?.feedback?.suggestions) ? item.feedback.suggestions : []).forEach((suggestion) => {
+                const value = String(suggestion || "").trim();
+                const key = value.toLocaleLowerCase();
+                if (value && !seen.has(key) && result.length < 3) {
+                    seen.add(key);
+                    result.push(value);
+                }
+            });
+        });
+        return result;
+    }, [scoredItems]);
     const avgScore = useMemo(() => {
-        const scores = items.map((it) => Number(it?.feedback?.score)).filter((n) => Number.isFinite(n));
+        const scores = items.map(getScore).filter((score) => score !== null);
         return scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : null;
     }, [items]);
     const scoreCount = useMemo(() => {
-        return items.reduce((acc, it) => acc + (Number.isFinite(Number(it?.feedback?.score)) ? 1 : 0), 0);
+        return items.reduce((acc, item) => acc + (getScore(item) !== null ? 1 : 0), 0);
     }, [items]);
+
+    useEffect(() => {
+        setRetryItem(null);
+        setRetryAnswer("");
+    }, [round?._id]);
 
     return (
         <Stack spacing={2} mt={2}>
@@ -99,8 +134,78 @@ const FeedbackPanel = ({ round }) => {
                             <Typography variant="body2" color="text.secondary">Feedback pending</Typography>
                         )}
                     </Stack>
+                    {strongest && (
+                        <Stack spacing={2} sx={{ mt: 2 }}>
+                            <Divider />
+                            <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+                                <Box sx={{ flex: 1 }}>
+                                    <Typography variant="overline" color="success.main">Strongest answer · {strongest.score}/10</Typography>
+                                    <Typography variant="body2">{strongest.item?.question?.text || `Question ${strongest.index + 1}`}</Typography>
+                                </Box>
+                                <Box sx={{ flex: 1 }}>
+                                    <Typography variant="overline" color="warning.main">Focus next · {weakest.score}/10</Typography>
+                                    <Typography variant="body2">{weakest.item?.question?.text || `Question ${weakest.index + 1}`}</Typography>
+                                </Box>
+                            </Stack>
+                            {topSuggestions.length > 0 && (
+                                <Box>
+                                    <Typography variant="subtitle2" gutterBottom>Top improvements</Typography>
+                                    <Stack component="ol" spacing={0.5} sx={{ my: 0, pl: 2.5 }}>
+                                        {topSuggestions.map((suggestion) => (
+                                            <Typography component="li" variant="body2" key={suggestion}>{suggestion}</Typography>
+                                        ))}
+                                    </Stack>
+                                </Box>
+                            )}
+                            <Box>
+                                <Typography variant="subtitle2">Improved-answer guidance</Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                    Re-answer the focus question and use the improvements above as a checklist. Keep the response direct, support it with a specific example, and end with the result or takeaway.
+                                </Typography>
+                            </Box>
+                            <Box>
+                                <Button
+                                    variant="contained"
+                                    onClick={() => { setRetryItem(weakest); setRetryAnswer(""); }}
+                                >
+                                    Retry weak question
+                                </Button>
+                            </Box>
+                        </Stack>
+                    )}
                 </CardContent>
             </Card>
+
+            {retryItem && (
+                <Card variant="outlined" sx={{ borderColor: "primary.main" }}>
+                    <CardContent>
+                        <Stack spacing={1.5}>
+                            <Box>
+                                <Typography variant="overline" color="primary">Private retry</Typography>
+                                <Typography variant="h6">{retryItem.item?.question?.text || `Question ${retryItem.index + 1}`}</Typography>
+                            </Box>
+                            {Array.isArray(retryItem.item?.feedback?.suggestions) && retryItem.item.feedback.suggestions.length > 0 && (
+                                <Alert severity="info">
+                                    Before answering: {retryItem.item.feedback.suggestions.join(" · ")}
+                                </Alert>
+                            )}
+                            <TextField
+                                label="Try a stronger answer"
+                                multiline
+                                minRows={5}
+                                value={retryAnswer}
+                                onChange={(event) => setRetryAnswer(event.target.value)}
+                                helperText="This draft stays in this page and does not replace your submitted answer."
+                                fullWidth
+                            />
+                            <Stack direction="row" spacing={1}>
+                                <Button variant="outlined" onClick={() => setRetryAnswer("")} disabled={!retryAnswer}>Clear draft</Button>
+                                <Button onClick={() => { setRetryItem(null); setRetryAnswer(""); }}>Close retry</Button>
+                            </Stack>
+                        </Stack>
+                    </CardContent>
+                </Card>
+            )}
 
             <Stack spacing={2}>
                 {items.map((it, idx) => (

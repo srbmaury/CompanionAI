@@ -22,7 +22,7 @@ const getOpenAIClient = () => {
 const getGeminiModel = () => {
     if (!_geminiModel) {
         _geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-        const modelName = process.env.GEMINI_MODEL_NAME || process.env.MODEL_NAME || "gemini-1.5-flash";
+        const modelName = process.env.GEMINI_MODEL_NAME || "gemini-1.5-flash";
         _geminiModel = _geminiClient.getGenerativeModel({
             model: modelName,
             generationConfig: { responseMimeType: "application/json" },

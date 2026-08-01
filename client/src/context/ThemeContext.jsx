@@ -31,7 +31,27 @@ export const ThemeModeProvider = ({ children }) => {
         setMode((currentMode) => (currentMode === "light" ? "dark" : "light"));
     }, []);
 
-    const muiTheme = useMemo(() => createTheme({ palette: { mode } }), [mode]);
+    const muiTheme = useMemo(() => createTheme({
+        palette: {
+            mode,
+            primary: { main: mode === "dark" ? "#958cff" : "#5b50d6", light: "#8f85ff", dark: "#4438b8" },
+            secondary: { main: mode === "dark" ? "#45d5bd" : "#0e9f8a" },
+            background: mode === "dark" ? { default: "#0b1020", paper: "#12182a" } : { default: "#fafbff", paper: "#ffffff" },
+        },
+        shape: { borderRadius: 14 },
+        typography: {
+            fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+            button: { textTransform: "none", fontWeight: 700 },
+        },
+        components: {
+            MuiButton: { defaultProps: { disableElevation: true }, styleOverrides: { root: { borderRadius: 11, minHeight: 40 }, containedPrimary: { boxShadow: "0 8px 22px rgba(91,80,214,.22)" } } },
+            MuiCard: { styleOverrides: { root: { borderRadius: 18, backgroundImage: "none" } } },
+            MuiPaper: { styleOverrides: { root: { backgroundImage: "none" } } },
+            MuiTextField: { defaultProps: { variant: "outlined" } },
+            MuiOutlinedInput: { styleOverrides: { root: { borderRadius: 12 } } },
+            MuiChip: { styleOverrides: { root: { fontWeight: 700 } } },
+        },
+    }), [mode]);
 
     const value = useMemo(() => ({ mode, toggle }), [mode, toggle]);
 

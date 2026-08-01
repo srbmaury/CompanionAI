@@ -6,8 +6,13 @@ import { ObjectIdString } from "../validation/commonSchemas.js";
 import audit from "../middleware/audit.js";
 import { getQueue } from "../queues/index.js";
 import quotas from "../middleware/quotas.js";
+import requireRole from "../middleware/requireRole.js";
+import Interview from "../models/Interview.js";
+import Round from "../models/Round.js";
 
 const router = express.Router();
+const QueueName = z.enum(["prepare-questions", "bulk-feedback"]);
+const JobParams = z.object({ queue: QueueName, id: z.string().min(1).max(200) });
 
 const EnqueuePrepareSchema = z.object({
     interviewId: ObjectIdString,
@@ -28,11 +33,14 @@ router.post(
     audit("job.prepare.enqueue", { entityType: "Round", getEntityId: (_req, body) => body.roundId, pickBody: (b) => ({ interviewId: b.interviewId, roundId: b.roundId, count: b.count }) }),
     async (req, res) => {
         try {
+            const { interviewId, roundId, count, prefetch } = req.body;
+            const owns = await Interview.exists({ _id: interviewId, user: req.user._id, "rounds.round": roundId });
+            if (!owns) return res.status(404).json({ message: "Interview round not found" });
             const q = await getQueue("prepare-questions");
             if (!q) return res.status(503).json({ message: "Queue unavailable" });
-            const { interviewId, roundId, count, prefetch } = req.body;
-            const jobId = `prepare:${interviewId}:${roundId}:${count || ""}:${prefetch ? 1 : 0}`;
-            const job = await q.add("prepare", req.body, { jobId, removeOnComplete: { age: 3600, count: 500 }, removeOnFail: { age: 86400, count: 500 } });
+            const userId = String(req.user._id);
+            const jobId = `prepare:${userId}:${interviewId}:${roundId}:${count || ""}:${prefetch ? 1 : 0}`;
+            const job = await q.add("prepare", { ...req.body, userId }, { jobId, removeOnComplete: { age: 3600, count: 500 }, removeOnFail: { age: 86400, count: 500 } });
             return res.json({ jobId: job.id });
         } catch (e) {
             console.error("enqueue prepare error", e);
@@ -63,12 +71,20 @@ router.post(
     audit("job.feedback.enqueue", { entityType: "Round", getEntityId: (_req, body) => body.roundId }),
     async (req, res) => {
         try {
+            const { roundId, items } = req.body;
+            const owns = await Interview.exists({ user: req.user._id, "rounds.round": roundId });
+            if (!owns) return res.status(404).json({ message: "Round not found" });
+            const round = await Round.findById(roundId).select("questions.question").lean();
+            const allowed = new Set((round?.questions || []).map((item) => String(item.question)));
+            if (items.some((item) => !allowed.has(String(item.questionId)))) {
+                return res.status(400).json({ message: "Question not part of round" });
+            }
             const q = await getQueue("bulk-feedback");
             if (!q) return res.status(503).json({ message: "Queue unavailable" });
-            const { roundId, items } = req.body;
+            const userId = String(req.user._id);
             const hash = Buffer.from(JSON.stringify(items || [])).toString("base64").slice(0, 40);
-            const jobId = `feedback:${roundId}:${hash}`;
-            const job = await q.add("bulk-feedback", req.body, { jobId, removeOnComplete: { age: 3600, count: 500 }, removeOnFail: { age: 86400, count: 500 } });
+            const jobId = `feedback:${userId}:${roundId}:${hash}`;
+            const job = await q.add("bulk-feedback", { ...req.body, userId }, { jobId, removeOnComplete: { age: 3600, count: 500 }, removeOnFail: { age: 86400, count: 500 } });
             return res.json({ jobId: job.id });
         } catch (e) {
             console.error("enqueue feedback error", e);
@@ -80,18 +96,20 @@ router.post(
 router.get(
     "/status/:queue/:id",
     protect,
-    validate(z.object({ queue: z.string().min(1), id: z.string().min(1) }), "params"),
+    validate(JobParams, "params"),
     async (req, res) => {
         try {
             const q = await getQueue(req.params.queue);
             if (!q) return res.status(503).json({ message: "Queue unavailable" });
             const job = await q.getJob(req.params.id);
             if (!job) return res.status(404).json({ message: "Job not found" });
+            if (req.user.role !== "admin" && String(job.data?.userId || "") !== String(req.user._id)) {
+                return res.status(404).json({ message: "Job not found" });
+            }
             const state = await job.getState();
             const progress = job.progress || 0;
             const returnvalue = job.returnvalue || null;
-            const counts = await q.getJobCounts();
-            return res.json({ state, progress, result: returnvalue, counts });
+            return res.json({ state, progress, result: returnvalue });
         } catch (e) {
             console.error("job status error", e);
             return res.status(500).json({ message: "Failed to get status" });
@@ -103,7 +121,8 @@ router.get(
 router.get(
     "/failed/:queue",
     protect,
-    validate(z.object({ queue: z.string().min(1) }), "params"),
+    requireRole("admin"),
+    validate(z.object({ queue: QueueName }), "params"),
     async (req, res) => {
         try {
             const q = await getQueue(req.params.queue);
@@ -122,7 +141,8 @@ router.get(
 router.post(
     "/retry/:queue/:id",
     protect,
-    validate(z.object({ queue: z.string().min(1), id: z.string().min(1) }), "params"),
+    requireRole("admin"),
+    validate(JobParams, "params"),
     async (req, res) => {
         try {
             const q = await getQueue(req.params.queue);
@@ -142,7 +162,8 @@ router.post(
 router.delete(
     "/remove/:queue/:id",
     protect,
-    validate(z.object({ queue: z.string().min(1), id: z.string().min(1) }), "params"),
+    requireRole("admin"),
+    validate(JobParams, "params"),
     async (req, res) => {
         try {
             const q = await getQueue(req.params.queue);

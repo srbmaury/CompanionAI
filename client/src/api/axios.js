@@ -17,26 +17,27 @@ const api = axios.create({
     withCredentials: true,
 });
 
+let accessToken = null;
+export const setAccessToken = (token) => { accessToken = token || null; };
+export const clearAccessToken = () => { accessToken = null; };
+
 // Attach Authorization bearer token on every request
 api.interceptors.request.use((config) => {
     try {
-        const token = typeof window !== "undefined" ? window.localStorage.getItem("accessToken") : null;
-        if (token) config.headers["Authorization"] = `Bearer ${token}`;
+        if (accessToken) config.headers["Authorization"] = `Bearer ${accessToken}`;
     } catch { /* ignore */ }
     return config;
 });
 
 let refreshPromise = null;
 
-const silentRefresh = async () => {
+export const silentRefresh = async () => {
     if (!refreshPromise) {
         refreshPromise = axios
             .post(`${resolveBaseUrl()}/auth/refresh`, {}, { withCredentials: true })
             .then((res) => {
                 const token = res?.data?.token;
-                if (token) {
-                    try { window.localStorage.setItem("accessToken", token); } catch { /* ignore */ }
-                }
+                if (token) setAccessToken(token);
                 return token;
             })
             .finally(() => { refreshPromise = null; });
@@ -62,7 +63,7 @@ api.interceptors.response.use(
             } catch { /* refresh failed — fall through to logout */ }
 
             try {
-                window.localStorage.removeItem("accessToken");
+                clearAccessToken();
                 if (!window.location.pathname.startsWith("/login")) {
                     window.location.href = "/login";
                 }

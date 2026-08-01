@@ -13,6 +13,7 @@ import mongoose from "mongoose";
 import getRedisClient from "./config/redis.js";
 import * as Sentry from "@sentry/node";
 import { startOtlpPush } from "./metrics/otlpPush.js";
+import { deliverDuePracticeReminders } from "./services/practiceReminders.js";
 
 dotenv.config();
 
@@ -46,9 +47,13 @@ try {
             console.error("METRICS_TOKEN is required in production to protect /metrics endpoint.");
             process.exit(1);
         }
+        if (process.env.REMINDER_DELIVERY_ENABLED === "true" && (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.MAIL_FROM)) {
+            console.error("SMTP_HOST, SMTP_USER, SMTP_PASS, and MAIL_FROM are required when reminder delivery is enabled.");
+            process.exit(1);
+        }
         // Mandatory features: CAPTCHA in prod
-        if (process.env.CAPTCHA_ENABLED !== "true" || !process.env.CAPTCHA_SECRET) {
-            console.error("CAPTCHA must be enabled in production: set CAPTCHA_ENABLED=true and CAPTCHA_SECRET.");
+        if (process.env.CAPTCHA_ENABLED !== "true" || !process.env.CAPTCHA_SECRET || process.env.CAPTCHA_LOGIN_ENABLED !== "true" || process.env.CAPTCHA_REGISTER_ENABLED !== "true") {
+            console.error("CAPTCHA must protect login and registration in production: enable CAPTCHA and both auth gates, then set CAPTCHA_SECRET.");
             process.exit(1);
         }
         // STT feature requires OpenAI key if enabled
@@ -107,7 +112,7 @@ try {
         console.warn("[startup] Neither OPENAI_API_KEY nor GEMINI_API_KEY is set — AI features will fail.");
     }
 } catch {}
-connectDB();
+await connectDB();
 
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, async () => {
@@ -171,6 +176,14 @@ const server = app.listen(PORT, async () => {
             }
         });
     } catch {}
+
+    try {
+        cron.schedule("*/5 * * * *", async () => {
+            const result = await deliverDuePracticeReminders();
+            if (result.sent) console.log(`[REMINDERS] Sent ${result.sent} reminder(s)`);
+        });
+        if (process.env.REMINDER_DELIVERY_ENABLED === "true") console.log("[REMINDERS] Delivery scheduler started");
+    } catch (error) { console.warn("[REMINDERS] Scheduler failed", error?.message || error); }
 
     // Start OTLP push if configured
     try { startOtlpPush(); } catch {}

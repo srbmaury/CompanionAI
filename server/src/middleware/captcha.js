@@ -1,9 +1,16 @@
 import fetch from "node-fetch";
 
+const fetchWithTimeout = async (url, options) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try { return await fetch(url, { ...options, signal: controller.signal }); }
+    finally { clearTimeout(timeout); }
+};
+
 const verifyTurnstile = async (token, ip) => {
     const secret = process.env.CAPTCHA_SECRET;
     if (!secret) return false;
-    const resp = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+    const resp = await fetchWithTimeout("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ secret, response: token, remoteip: ip || "" }),
@@ -16,7 +23,7 @@ const verifyTurnstile = async (token, ip) => {
 const verifyRecaptcha = async (token, ip) => {
     const secret = process.env.CAPTCHA_SECRET;
     if (!secret) return false;
-    const resp = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+    const resp = await fetchWithTimeout("https://www.google.com/recaptcha/api/siteverify", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ secret, response: token, remoteip: ip || "" }),

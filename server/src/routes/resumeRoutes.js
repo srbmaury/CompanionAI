@@ -6,6 +6,8 @@ import {
     updateResume,
     previewResume,
     reviewResume,
+    getResumeReviews,
+    deleteResumeReview,
 } from "../controllers/resumeController.js";
 import { uploadResumeMulter } from "../middleware/multerMemory.js";
 import { uploadLimiter } from "../middleware/rateLimiters.js";
@@ -14,6 +16,7 @@ import audit from "../middleware/audit.js";
 import validate from "../middleware/validate.js";
 import { z } from "zod";
 import { ObjectIdString } from "../validation/commonSchemas.js";
+import usageLimit from "../middleware/usageLimit.js";
 
 const router = express.Router();
 
@@ -142,8 +145,15 @@ router.post("/", protect, uploadLimiter, uploadResumeMulter.single("resume"), au
 router.get(
     "/",
     protect,
-    validate(z.object({ sort: z.string().optional(), tag: z.string().optional(), q: z.string().optional() }), "query"),
+    validate(z.object({ sort: z.string().optional(), tag: z.string().optional(), q: z.string().optional(), page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(100).optional() }), "query"),
     getUserResumes
+);
+router.get("/reviews", protect, validate(z.object({ page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(50).optional() }), "query"), getResumeReviews);
+router.delete(
+    "/reviews/:reviewId",
+    protect,
+    validate(z.object({ reviewId: ObjectIdString }), "params"),
+    deleteResumeReview
 );
 router.delete(
     "/:id",
@@ -171,6 +181,7 @@ router.post(
     protect,
     validate(z.object({ id: ObjectIdString }), "params"),
     validate(z.object({ role: z.string().optional(), jobDescription: z.string().optional() })),
+    usageLimit("resumeReviews", "resumeReviewsPerMonth"),
     audit("resume.review", { entityType: "Resume", getEntityId: (req) => req.params.id }),
     reviewResume
 );
