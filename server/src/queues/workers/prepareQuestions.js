@@ -27,7 +27,7 @@ export default async function prepareQuestionsProcessor(job) {
         }
     }
 
-    const limit = Math.min(Math.max(count || round.questionLimit || 8, 1), 20);
+    const limit = Math.min(Math.max(count || round.questionLimit || 5, 1), 20);
     if (!prefetch) {
         round.conversationalIndex = 0;
         round.status = "in_progress";

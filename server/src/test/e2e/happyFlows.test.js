@@ -205,7 +205,7 @@ describe("Happy flows E2E", () => {
         expect(profile.body.plan).toBe("free");
         const updatedPlan = await agent.put("/api/auth/profile").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ practiceGoal: "switch-role", targetRole: "Backend Engineer", weeklyPracticeTarget: 4, reminderEnabled: true, reminderDay: "monday", reminderTime: "19:00", reminderTimezone: "Asia/Kolkata" }).expect(200);
         expect(updatedPlan.body.user.targetRole).toBe("Backend Engineer");
-        auth.Authorization = `Bearer ${updatedPlan.body.token}`;
+        if (updatedPlan.body.token) auth.Authorization = `Bearer ${updatedPlan.body.token}`;
         await agent.post("/api/events").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ event: "dashboard_viewed", path: "/dashboard" }).expect(202);
         expect(await ProductEvent.countDocuments({ user: me._id, event: "dashboard_viewed" })).toBe(1);
         await agent.post("/api/events").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ event: "not_allowed" }).expect(400);

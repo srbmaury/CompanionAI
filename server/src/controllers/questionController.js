@@ -13,7 +13,7 @@ const findOwnedInterviewForRound = (userId, roundId) =>
 export const prepareQuestionsForRound = async (req, res, next) => {
     try {
         const { interviewId, roundId } = req.params;
-        const { count = 8, prefetch = false } = req.body || {};
+        const { count = 5, prefetch = false } = req.body || {};
 
         const interview = await Interview.findOne({ _id: interviewId, user: req.user._id }).populate("resume").lean();
         if (!interview) return res.status(404).json({ message: "Interview not found" });

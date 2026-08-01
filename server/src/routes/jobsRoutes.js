@@ -9,6 +9,7 @@ import quotas from "../middleware/quotas.js";
 import requireRole from "../middleware/requireRole.js";
 import Interview from "../models/Interview.js";
 import Round from "../models/Round.js";
+import { createJobId } from "../queues/jobIds.js";
 
 const router = express.Router();
 const QueueName = z.enum(["prepare-questions", "bulk-feedback"]);
@@ -39,7 +40,7 @@ router.post(
             const q = await getQueue("prepare-questions");
             if (!q) return res.status(503).json({ message: "Queue unavailable" });
             const userId = String(req.user._id);
-            const jobId = `prepare:${userId}:${interviewId}:${roundId}:${count || ""}:${prefetch ? 1 : 0}`;
+            const jobId = createJobId("prepare", { userId, interviewId, roundId, count: count || null, prefetch: !!prefetch });
             const job = await q.add("prepare", { ...req.body, userId }, { jobId, removeOnComplete: { age: 3600, count: 500 }, removeOnFail: { age: 86400, count: 500 } });
             return res.json({ jobId: job.id });
         } catch (e) {
@@ -82,8 +83,7 @@ router.post(
             const q = await getQueue("bulk-feedback");
             if (!q) return res.status(503).json({ message: "Queue unavailable" });
             const userId = String(req.user._id);
-            const hash = Buffer.from(JSON.stringify(items || [])).toString("base64").slice(0, 40);
-            const jobId = `feedback:${userId}:${roundId}:${hash}`;
+            const jobId = createJobId("feedback", { userId, roundId, items });
             const job = await q.add("bulk-feedback", { ...req.body, userId }, { jobId, removeOnComplete: { age: 3600, count: 500 }, removeOnFail: { age: 86400, count: 500 } });
             return res.json({ jobId: job.id });
         } catch (e) {

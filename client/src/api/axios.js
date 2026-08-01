@@ -1,16 +1,21 @@
 import axios from "axios";
 
-const resolveBaseUrl = () => {
-    const envUrl = import.meta?.env?.VITE_API_BASE_URL;
-    try {
-        if (typeof window !== "undefined") {
-            const hostname = window.location.hostname;
-            const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
-            if (isLocal && (!envUrl || envUrl.startsWith("/"))) return "/api";
-        }
-    } catch { /* ignore */ }
+export const resolveApiBaseUrl = (envUrl, hostname) => {
+    const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+    if (isLocal) {
+        if (!envUrl || envUrl.startsWith("/")) return "/api";
+        try {
+            const configuredHost = new URL(envUrl).hostname;
+            if (["localhost", "127.0.0.1", "::1"].includes(configuredHost)) return "/api";
+        } catch { /* use the configured value below */ }
+    }
     return envUrl || "/api";
 };
+
+const resolveBaseUrl = () => resolveApiBaseUrl(
+    import.meta?.env?.VITE_API_BASE_URL,
+    typeof window !== "undefined" ? window.location.hostname : "",
+);
 
 const api = axios.create({
     baseURL: resolveBaseUrl(),

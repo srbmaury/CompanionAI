@@ -1,4 +1,4 @@
-import pdfParse from "pdf-parse";
+import { PDFParse } from "pdf-parse";
 
 /**
  * Parse uploaded resume buffer
@@ -15,8 +15,11 @@ export async function parseFile(buffer, mimetype) {
         throw new Error("Only PDF resumes are supported");
     }
 
-    // Extract text from PDF
-    const pdfData = await pdfParse(buffer);
-
-    return pdfData.text; // full text
+    const parser = new PDFParse({ data: buffer });
+    try {
+        const pdfData = await parser.getText();
+        return pdfData.text;
+    } finally {
+        await parser.destroy();
+    }
 }

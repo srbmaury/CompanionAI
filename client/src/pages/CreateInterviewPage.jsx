@@ -43,6 +43,7 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 
 // Local components
 import RoundSelector from "../components/RoundSelector";
+import { getDefaultQuestionLimit } from "../utils/roundDefaults";
 
 const INTERVIEW_PRESETS = [
     { name: "Frontend", company: "Target company", jobRole: "Frontend Engineer", jobDescription: "Build accessible, performant web applications with React, JavaScript, testing, API integration, and modern frontend architecture." },
@@ -178,8 +179,8 @@ const CreateInterviewPage = () => {
             if (exists) {
                 return prev.filter((r) => r.roundName !== round.roundName);
             } else {
-                // Default deliveryMode to conversational
-                return [...prev, { ...round, deliveryMode: "conversational" }];
+                const deliveryMode = round.deliveryMode || "conversational";
+                return [...prev, { ...round, deliveryMode, questionLimit: getDefaultQuestionLimit({ ...round, deliveryMode }) }];
             }
         });
     };
@@ -193,7 +194,7 @@ const CreateInterviewPage = () => {
     };
 
     const handleChangeCount = (roundName, num) => {
-        const safe = Math.min(Math.max(Number(num) || 8, 1), 20);
+        const safe = Math.min(Math.max(Number(num) || 4, 1), 20);
         setSelectedRounds((prev) =>
             prev.map((r) =>
                 r.roundName === roundName ? { ...r, questionLimit: safe } : r

@@ -310,17 +310,22 @@ export const updateProfile = async (req, res, next) => {
         if (reminderTimezone !== undefined) user.reminderTimezone = reminderTimezone;
 
         await user.save();
-        try { metrics.securityPasswordChangeTotal.labels("success").inc(); } catch {}
-        await bumpTokenVersion(user._id);
-        await revokeAllRefreshTokens(user._id);
-        const fresh = await User.findById(user._id).select("tokenVersion");
-        const token = signAccessToken(user._id, fresh?.tokenVersion);
-        const { raw, expiresAt } = await issueRefreshToken(user._id, { userAgent: req.get("user-agent"), ip: req.ip });
-        setRefreshCookie(res, raw, expiresAt);
+        let token;
+        if (newPassword) {
+            try { metrics.securityPasswordChangeTotal.labels("success").inc(); } catch {}
+            await bumpTokenVersion(user._id);
+            await revokeAllRefreshTokens(user._id);
+            const fresh = await User.findById(user._id).select("tokenVersion");
+            token = signAccessToken(user._id, fresh?.tokenVersion);
+            const { raw, expiresAt } = await issueRefreshToken(user._id, { userAgent: req.get("user-agent"), ip: req.ip });
+            setRefreshCookie(res, raw, expiresAt);
+        }
         const safe = await User.findById(user._id).select(safeUserFields).lean();
-        return res.json({ message: "Profile updated", token, user: safe });
+        return res.json({ message: "Profile updated", ...(token ? { token } : {}), user: safe });
     } catch (err) {
-        try { metrics.securityPasswordChangeTotal.labels("failure").inc(); } catch {}
+        if (req.body?.newPassword) {
+            try { metrics.securityPasswordChangeTotal.labels("failure").inc(); } catch {}
+        }
         return next(err instanceof Error ? err : new Error(String(err)));
     }
 };

@@ -54,7 +54,7 @@ const ExperiencesPage = () => {
                         {expLoading ? "Searching..." : "Search"}
                     </Button>
                 </Stack>
-                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>Enter both a company and role to search.</Typography>
+                {!searched && <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>Enter both a company and role to search.</Typography>}
                 <Stack spacing={2} sx={{ mt: 2 }}>
                     {error ? (
                         <Alert severity="error">{error}</Alert>

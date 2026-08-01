@@ -14,7 +14,7 @@ export default function ProfilePage() {
     const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
     const timezones = useMemo(() => {
         const supported = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
-        return [...new Set([detectedTimezone, "UTC", ...supported])].sort();
+        return [...new Set([detectedTimezone, "Asia/Kolkata", "UTC", ...supported])].sort();
     }, [detectedTimezone]);
     const [name, setName] = useState(""); const [language, setLanguage] = useState("cpp"); const [saving, setSaving] = useState(false);
     const [practiceGoal, setPracticeGoal] = useState("confidence"); const [targetRole, setTargetRole] = useState(""); const [weeklyTarget, setWeeklyTarget] = useState(3);

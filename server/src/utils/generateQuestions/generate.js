@@ -72,7 +72,7 @@ export const generateQuestionsForRound = async ({
     const safeResume = sanitizeText(resumeText, 4000);
     const safeRound = sanitizeText(roundName, 60);
     const safeRoundDesc = sanitizeText(roundDescription, 400);
-    const num = Math.min(Math.max(Number(count) || 8, 1), 20);
+    const num = Math.min(Math.max(Number(count) || 5, 1), 20);
 
     try {
         // Build prompt and ask AI for JSON via OpenAI (fallback to Gemini)
