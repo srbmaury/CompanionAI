@@ -73,6 +73,7 @@ export const prepareQuestionsForRound = async (req, res, next) => {
                     deliveryMode: round.deliveryMode,
                     count: limit,
                     excludeTexts: exclusionTexts,
+                    grounding: interview.grounding,
                 });
                 if (Array.isArray(res) && res.length > 0) {
                     qTexts = res;

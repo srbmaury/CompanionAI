@@ -72,6 +72,9 @@ export const billingWebhookDurationSeconds = new client.Histogram({ name: "billi
 export const billingCheckoutTotal = new client.Counter({ name: "billing_checkout_total", help: "Checkout-session creation outcomes", labelNames: ["outcome"] });
 export const billingSubscriptionTransitionsTotal = new client.Counter({ name: "billing_subscription_transitions_total", help: "Subscription status transitions observed from Stripe", labelNames: ["status"] });
 export const productEventsTotal = new client.Counter({ name: "product_events_total", help: "Allowlisted product funnel events", labelNames: ["event", "plan"] });
+export const interviewGroundingTotal = new client.Counter({ name: "interview_grounding_total", help: "Company interview grounding outcomes", labelNames: ["outcome"] });
+export const interviewGroundingDurationSeconds = new client.Histogram({ name: "interview_grounding_duration_seconds", help: "Company interview grounding search duration", labelNames: ["outcome"], buckets: [0.1, 0.25, 0.5, 1, 2, 5, 10, 30] });
+export const interviewGroundingSources = new client.Histogram({ name: "interview_grounding_sources", help: "Public sources retained per grounding search", buckets: [0, 1, 2, 3, 5, 8] });
 
 export default {
     client,
@@ -117,4 +120,7 @@ export default {
     billingCheckoutTotal,
     billingSubscriptionTransitionsTotal,
     productEventsTotal,
+    interviewGroundingTotal,
+    interviewGroundingDurationSeconds,
+    interviewGroundingSources,
 };

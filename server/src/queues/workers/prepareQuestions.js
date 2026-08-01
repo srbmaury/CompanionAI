@@ -59,6 +59,7 @@ export default async function prepareQuestionsProcessor(job) {
         deliveryMode: round.deliveryMode,
         count: limit,
         excludeTexts: exclusionTexts,
+        grounding: interview.grounding,
     });
     job.updateProgress(70);
     const normalized = (Array.isArray(qTexts) ? qTexts : []).map((q) => (typeof q === "string" ? { text: q, tags: [] } : { text: String(q?.text || "").slice(0, 200), tags: Array.isArray(q?.tags) ? q.tags.slice(0, 10) : [] }));

@@ -66,6 +66,7 @@ const CreateInterviewPage = () => {
     const [uploadConsent, setUploadConsent] = useState(false);
 
     const [suggestedRounds, setSuggestedRounds] = useState([]);
+    const [grounding, setGrounding] = useState(null);
     const [selectedRounds, setSelectedRounds] = useState([]);
     const [loadingRounds, setLoadingRounds] = useState(false);
     const [snack, setSnack] = useState({
@@ -143,13 +144,15 @@ const CreateInterviewPage = () => {
     const handleSuggestRounds = async () => {
         setLoadingRounds(true);
         setSelectedRounds([]);
+        setGrounding(null);
         try {
             const { data } = await api.post(`/rounds/suggest`, {
                 company: formData.company,
                 jobRole: formData.jobRole,
                 jobDescription: formData.jobDescription,
             });
-            const rounds = Array.isArray(data) ? data : [];
+            const rounds = Array.isArray(data) ? data : (Array.isArray(data?.rounds) ? data.rounds : []);
+            setGrounding(Array.isArray(data) ? null : data?.grounding || null);
             setSuggestedRounds(rounds);
             if (rounds.length > 0) setActiveStep(1);
             setSnack({
@@ -401,6 +404,13 @@ const CreateInterviewPage = () => {
                     {/* Show suggested rounds */}
                     {activeStep === 1 && <>
                     <Typography variant="h6" fontWeight={750}>Choose the rounds you want to practice</Typography>
+                    {grounding && (
+                        <Alert severity={grounding.status === "grounded" ? "success" : "info"}>
+                            {grounding.status === "grounded"
+                                ? `Grounded in ${grounding.sourceCount} public company/role experience source${grounding.sourceCount === 1 ? "" : "s"}. Questions will combine this evidence with your JD and resume.`
+                                : "Limited public company-specific evidence was found. This plan is clearly treated as an AI simulation based on the JD, role, and resume."}
+                        </Alert>
+                    )}
                     <RoundSelector
                         suggestedRounds={suggestedRounds}
                         selectedRounds={selectedRounds}

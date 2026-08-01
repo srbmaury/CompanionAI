@@ -24,6 +24,12 @@ const interviewSchema = new mongoose.Schema(
             type: String,
             required: true,
         },
+        grounding: {
+            status: { type: String, enum: ["grounded", "simulation"], default: "simulation" },
+            retrievedAt: Date,
+            sources: [{ title: { type: String, maxlength: 180 }, url: { type: String, maxlength: 2000 }, snippet: { type: String, maxlength: 700 } }],
+            reportedQuestions: [{ type: String, maxlength: 220 }],
+        },
         rounds: {
             type: [
                 {

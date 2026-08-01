@@ -19,6 +19,8 @@ The server exports Prometheus metrics at `/metrics` and pushes OTLP metrics when
 | Reminder p95 lag | `histogram_quantile(0.95, sum(rate(reminder_delivery_lag_seconds_bucket[24h])) by (le))` |
 | Stripe webhooks | `sum(increase(billing_webhooks_total[24h])) by (event, outcome) or vector(0)` |
 | Funnel | `sum(increase(product_events_total[7d])) by (event, plan) or vector(0)` |
+| Interview grounding | `sum(increase(interview_grounding_total[24h])) by (outcome) or vector(0)` |
+| Grounding p95 latency | `histogram_quantile(0.95, sum(rate(interview_grounding_duration_seconds_bucket[1h])) by (le))` |
 | Authorization denials | `sum(increase(authorization_denied_total[1h])) by (reason, route) or vector(0)` |
 
 Replace the obsolete CSRF panel with authorization denials; the application uses bearer tokens plus origin checks rather than cookie CSRF middleware.

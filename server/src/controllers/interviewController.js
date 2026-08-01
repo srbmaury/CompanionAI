@@ -2,6 +2,7 @@ import Interview from "../models/Interview.js";
 import Round from "../models/Round.js";
 import mongoose from "mongoose";
 import Resume from "../models/Resume.js";
+import { getCompanyGrounding } from "../services/companyGrounding.js";
 
 export const createInterview = async (req, res, next) => {
     const { resumeId, company, jobRole, jobDescription, rounds } = req.body;
@@ -10,6 +11,7 @@ export const createInterview = async (req, res, next) => {
         return res.status(400).json({ message: "All fields and at least one round are required" });
     }
 
+    const grounding = await getCompanyGrounding(company, jobRole);
     const session = await mongoose.startSession();
     session.startTransaction();
     const ops = [];
@@ -56,6 +58,7 @@ export const createInterview = async (req, res, next) => {
                     company,
                     jobRole,
                     jobDescription,
+                    grounding,
                     rounds: roundDocs.map((r) => ({ round: r._id })),
                 },
             ],
