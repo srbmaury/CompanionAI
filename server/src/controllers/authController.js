@@ -7,6 +7,19 @@ import { sendMail, buildVerificationEmail } from "../utils/mailer.js";
 import bcrypt from "bcryptjs";
 import { recordLoginFailure, clearLoginFailures } from "../middleware/loginLockout.js";
 import AuditLog from "../models/AuditLog.js";
+import Interview from "../models/Interview.js";
+import Resume from "../models/Resume.js";
+import Round from "../models/Round.js";
+import Question from "../models/Question.js";
+import Feedback from "../models/Feedback.js";
+import RefreshToken from "../models/RefreshToken.js";
+import ResumeReview from "../models/ResumeReview.js";
+import SavedExperience from "../models/SavedExperience.js";
+import ProductFeedback from "../models/ProductFeedback.js";
+import UsageCounter from "../models/UsageCounter.js";
+import ReminderDelivery from "../models/ReminderDelivery.js";
+import ProductEvent from "../models/ProductEvent.js";
+import cloudinary from "../config/cloudinaryConfig.js";
 
 const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7);
 
@@ -30,6 +43,7 @@ const clearRefreshCookie = (res) => {
 };
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const safeUserFields = "_id name email role provider preferredProgrammingLanguage practiceGoal targetRole weeklyPracticeTarget reminderEnabled reminderDay reminderTime reminderTimezone plan subscriptionStatus isVerified";
 
 // Register
 export const registerUser = async (req, res, next) => {
@@ -106,21 +120,16 @@ export const loginUser = async (req, res, next) => {
             try { metrics.authLoginAttemptsTotal.labels("local", "blocked").inc(); } catch {}
             return res.status(403).json({ message: "Email not verified" });
         }
-        if (user && (await user.matchPassword(password))) {
-            await bumpTokenVersion(user._id);
-            const fresh = await User.findById(user._id).select("tokenVersion");
-            const token = signAccessToken(user._id, fresh?.tokenVersion);
-            const { raw, expiresAt } = await issueRefreshToken(user._id, { userAgent: req.get("user-agent"), ip: req.ip });
-            setRefreshCookie(res, raw, expiresAt);
-            res.json({ token, user: { _id: user._id, name: user.name, email: user.email } });
-            try { await clearLoginFailures((email || "").toLowerCase()); } catch {}
-            try { metrics.authLoginAttemptsTotal.labels("local", "success").inc(); } catch {}
-            try { await AuditLog.create({ user: user._id, action: "auth.login", ip: req.ip, userAgent: req.get("user-agent"), requestId: req.id }); } catch {}
-        } else {
-            await recordLoginFailure((email || "").toLowerCase());
-            try { metrics.authLoginAttemptsTotal.labels("local", "failure").inc(); } catch {}
-            res.status(401).json({ message: "Invalid email or password" });
-        }
+        await bumpTokenVersion(user._id);
+        await revokeAllRefreshTokens(user._id);
+        const fresh = await User.findById(user._id).select("tokenVersion");
+        const token = signAccessToken(user._id, fresh?.tokenVersion);
+        const { raw, expiresAt } = await issueRefreshToken(user._id, { userAgent: req.get("user-agent"), ip: req.ip });
+        setRefreshCookie(res, raw, expiresAt);
+        res.json({ token, user: { _id: user._id, name: user.name, email: user.email } });
+        try { await clearLoginFailures((email || "").toLowerCase()); } catch {}
+        try { metrics.authLoginAttemptsTotal.labels("local", "success").inc(); } catch {}
+        try { await AuditLog.create({ user: user._id, action: "auth.login", ip: req.ip, userAgent: req.get("user-agent"), requestId: req.id }); } catch {}
     } catch (error) {
         return next(error instanceof Error ? error : new Error(String(error)));
     }
@@ -225,7 +234,9 @@ export const googleSignIn = async (req, res, next) => {
         const email = payload?.email;
         const name = payload?.name || email?.split("@")[0] || "User";
         const googleId = payload?.sub;
-        if (!email) return res.status(400).json({ message: "No email in token" });
+        if (!email || payload?.email_verified !== true) {
+            return res.status(401).json({ message: "Google email is not verified" });
+        }
 
         let user = await User.findOne({ email });
         if (!user) {
@@ -237,15 +248,15 @@ export const googleSignIn = async (req, res, next) => {
                 isVerified: true,
             });
         } else {
-            if (user.provider === "local" && !user.isVerified) {
+            if (!user.isVerified) {
                 user.isVerified = true; // trust Google verified email
             }
             if (!user.googleId) user.googleId = googleId;
-            if (user.provider !== "google") user.provider = "google";
             await user.save();
         }
 
         await bumpTokenVersion(user._id);
+        await revokeAllRefreshTokens(user._id);
         const fresh = await User.findById(user._id).select("tokenVersion");
         const token = signAccessToken(user._id, fresh?.tokenVersion);
         const { raw, expiresAt } = await issueRefreshToken(user._id, { userAgent: req.get("user-agent"), ip: req.ip });
@@ -261,7 +272,7 @@ export const googleSignIn = async (req, res, next) => {
 // Update profile (name and/or password)
 export const updateProfile = async (req, res, next) => {
     try {
-        const { name, currentPassword, newPassword, preferredProgrammingLanguage } = req.body || {};
+        const { name, currentPassword, newPassword, preferredProgrammingLanguage, practiceGoal, targetRole, weeklyPracticeTarget, reminderEnabled, reminderDay, reminderTime, reminderTimezone } = req.body || {};
 
         const user = await User.findById(req.user._id);
         if (!user) return res.status(404).json({ message: "User not found" });
@@ -290,17 +301,77 @@ export const updateProfile = async (req, res, next) => {
         if (typeof preferredProgrammingLanguage === "string" && preferredProgrammingLanguage.trim()) {
             user.preferredProgrammingLanguage = preferredProgrammingLanguage.trim();
         }
+        if (practiceGoal !== undefined) user.practiceGoal = practiceGoal;
+        if (targetRole !== undefined) user.targetRole = targetRole.trim();
+        if (weeklyPracticeTarget !== undefined) user.weeklyPracticeTarget = weeklyPracticeTarget;
+        if (reminderEnabled !== undefined) user.reminderEnabled = reminderEnabled;
+        if (reminderDay !== undefined) user.reminderDay = reminderDay;
+        if (reminderTime !== undefined) user.reminderTime = reminderTime;
+        if (reminderTimezone !== undefined) user.reminderTimezone = reminderTimezone;
 
         await user.save();
         try { metrics.securityPasswordChangeTotal.labels("success").inc(); } catch {}
         await bumpTokenVersion(user._id);
+        await revokeAllRefreshTokens(user._id);
         const fresh = await User.findById(user._id).select("tokenVersion");
         const token = signAccessToken(user._id, fresh?.tokenVersion);
-        const safe = await User.findById(user._id).select("-password").lean();
+        const { raw, expiresAt } = await issueRefreshToken(user._id, { userAgent: req.get("user-agent"), ip: req.ip });
+        setRefreshCookie(res, raw, expiresAt);
+        const safe = await User.findById(user._id).select(safeUserFields).lean();
         return res.json({ message: "Profile updated", token, user: safe });
     } catch (err) {
         try { metrics.securityPasswordChangeTotal.labels("failure").inc(); } catch {}
         return next(err instanceof Error ? err : new Error(String(err)));
+    }
+};
+
+export const deleteAccount = async (req, res, next) => {
+    try {
+        const { confirmation, password } = req.body || {};
+        if (confirmation !== "DELETE") return res.status(400).json({ message: "Type DELETE to confirm" });
+        const user = await User.findById(req.user._id);
+        if (!user) return res.status(404).json({ message: "User not found" });
+        if (user.provider === "local" && (!password || !await user.matchPassword(password))) {
+            return res.status(400).json({ message: "Current password is incorrect" });
+        }
+
+        const interviews = await Interview.find({ user: user._id }).select("rounds.round").lean();
+        const roundIds = interviews.flatMap((item) => (item.rounds || []).map((entry) => entry.round));
+        const rounds = await Round.find({ _id: { $in: roundIds } }).select("questions.question questions.feedback").lean();
+        const questionIds = rounds.flatMap((round) => (round.questions || []).map((item) => item.question).filter(Boolean));
+        const feedbackIds = rounds.flatMap((round) => (round.questions || []).map((item) => item.feedback).filter(Boolean));
+        const resumes = await Resume.find({ user: user._id }).select("publicId").lean();
+        const sharedQuestionIds = await Round.distinct("questions.question", { _id: { $nin: roundIds }, "questions.question": { $in: questionIds } });
+        const sharedSet = new Set(sharedQuestionIds.map(String));
+        const privateQuestionIds = questionIds.filter((id) => !sharedSet.has(String(id)));
+
+        await Promise.all([
+            Feedback.deleteMany({ $or: [{ user: user._id }, { _id: { $in: feedbackIds } }] }),
+            Question.deleteMany({ _id: { $in: privateQuestionIds } }),
+            Round.deleteMany({ _id: { $in: roundIds } }),
+            Interview.deleteMany({ user: user._id }),
+            Resume.deleteMany({ user: user._id }),
+            ResumeReview.deleteMany({ user: user._id }),
+            SavedExperience.deleteMany({ user: user._id }),
+            ProductFeedback.deleteMany({ user: user._id }),
+            UsageCounter.deleteMany({ user: user._id }),
+            ReminderDelivery.deleteMany({ user: user._id }),
+            ProductEvent.deleteMany({ user: user._id }),
+            RefreshToken.deleteMany({ user: user._id }),
+            AuditLog.deleteMany({ user: user._id }),
+        ]);
+        await User.deleteOne({ _id: user._id });
+        clearRefreshCookie(res);
+
+        const publicIds = resumes.map((resume) => resume.publicId).filter(Boolean);
+        if (publicIds.length && process.env.NODE_ENV !== "test") {
+            cloudinary.api.delete_resources(publicIds, { resource_type: "raw" }).catch((error) => {
+                console.warn("Account Cloudinary cleanup failed:", error?.message || error);
+            });
+        }
+        return res.json({ message: "Account and personal data deleted" });
+    } catch (error) {
+        return next(error instanceof Error ? error : new Error(String(error)));
     }
 };
 
@@ -309,13 +380,12 @@ export const forgotPassword = async (req, res, next) => {
     try {
         const user = await User.findOne({ email });
         if (!user) return res.json({ message: "If the email exists, a reset link has been sent" });
-        if (!user.isVerified) return res.status(400).json({ message: "Verify your email before resetting password" });
+        if (!user.isVerified) return res.json({ message: "If the email exists, a reset link has been sent" });
 
         const token = crypto.randomBytes(32).toString("hex");
         user.resetPasswordToken = crypto.createHash("sha256").update(token).digest("hex");
         user.resetPasswordExpires = new Date(Date.now() + 1000 * 60 * 30); // 30 min
         await user.save();
-        // Stateless JWT: no server-side session store to revoke
 
         const baseUrl = process.env.CLIENT_ORIGIN || "http://localhost:5173";
         const resetUrl = `${baseUrl}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
@@ -359,6 +429,8 @@ export const resetPassword = async (req, res, next) => {
         user.resetPasswordToken = undefined;
         user.resetPasswordExpires = undefined;
         await user.save();
+        await bumpTokenVersion(user._id);
+        await revokeAllRefreshTokens(user._id);
         try { metrics.authResetTotal.labels("reset", "success").inc(); } catch {}
         try { await AuditLog.create({ user: user._id, action: "auth.reset", ip: req.ip, userAgent: req.get("user-agent"), requestId: req.id }); } catch {}
         return res.json({ message: "Password has been reset" });

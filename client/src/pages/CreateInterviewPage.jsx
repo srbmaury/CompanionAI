@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 
 // API / Context
 import api from "../api/axios";
 import { useResumes } from "../hooks/useResumes";
+import { trackEvent } from "../utils/analytics";
 
 // UI Components
 import Alert from "@mui/material/Alert";
 import {
     Box,
     Button,
+    Checkbox,
     CircularProgress,
     Dialog,
     DialogActions,
@@ -17,12 +19,17 @@ import {
     DialogTitle,
     Divider,
     FormControl,
+    FormControlLabel,
     FormHelperText,
     IconButton,
+    Link,
     MenuItem,
     Paper,
     Snackbar,
     Stack,
+    Step,
+    StepLabel,
+    Stepper,
     TextField,
     Tooltip,
     Typography,
@@ -32,9 +39,16 @@ import {
 import DeleteIcon from "@mui/icons-material/Delete";
 import DownloadIcon from "@mui/icons-material/Download";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 
 // Local components
 import RoundSelector from "../components/RoundSelector";
+
+const INTERVIEW_PRESETS = [
+    { name: "Frontend", company: "Target company", jobRole: "Frontend Engineer", jobDescription: "Build accessible, performant web applications with React, JavaScript, testing, API integration, and modern frontend architecture." },
+    { name: "Backend", company: "Target company", jobRole: "Backend Engineer", jobDescription: "Design reliable APIs and distributed services with databases, caching, queues, observability, security, testing, and scalable system design." },
+    { name: "Full stack", company: "Target company", jobRole: "Full Stack Engineer", jobDescription: "Own product features end to end across React, APIs, data modeling, testing, deployment, performance, security, and cross-functional collaboration." },
+];
 
 const CreateInterviewPage = () => {
     const { getResumes, deleteResume, uploadResume } = useResumes();
@@ -49,6 +63,7 @@ const CreateInterviewPage = () => {
 
     const [resumes, setResumes] = useState([]);
     const [uploading, setUploading] = useState(false);
+    const [uploadConsent, setUploadConsent] = useState(false);
 
     const [suggestedRounds, setSuggestedRounds] = useState([]);
     const [selectedRounds, setSelectedRounds] = useState([]);
@@ -61,6 +76,8 @@ const CreateInterviewPage = () => {
 
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState("");
+    const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+    const [activeStep, setActiveStep] = useState(0);
 
     // Fetch resumes on mount
     useEffect(() => {
@@ -132,7 +149,9 @@ const CreateInterviewPage = () => {
                 jobRole: formData.jobRole,
                 jobDescription: formData.jobDescription,
             });
-            setSuggestedRounds(Array.isArray(data) ? data : []);
+            const rounds = Array.isArray(data) ? data : [];
+            setSuggestedRounds(rounds);
+            if (rounds.length > 0) setActiveStep(1);
             setSnack({
                 open: true,
                 severity: "success",
@@ -194,6 +213,7 @@ const CreateInterviewPage = () => {
                 rounds: selectedRounds,
             });
             if (data && data._id) {
+                trackEvent("interview_created");
                 setSnack({
                     open: true,
                     severity: "success",
@@ -224,10 +244,14 @@ const CreateInterviewPage = () => {
         formData.resumeId;
 
     return (
-        <Paper sx={{ p: 3, maxWidth: 800, mx: "auto", mt: 4 }}>
-            <Typography variant="h5" gutterBottom>
-                Start a New Interview
-            </Typography>
+        <Paper elevation={0} variant="outlined" sx={{ p: { xs: 2.5, sm: 4.5 }, maxWidth: 920, mx: "auto", my: { xs: 3, md: 6 }, borderRadius: 4 }}>
+            <Typography variant="overline" color="primary.main" fontWeight={850}>New practice session</Typography>
+            <Typography variant="h4" fontWeight={850} letterSpacing="-.03em" mt={.5}>Build your interview plan</Typography>
+            <Typography color="text.secondary" mt={1}>Tell us what you’re preparing for. You’ll review every suggested round before anything starts.</Typography>
+            <Stepper activeStep={activeStep} sx={{ my: 4 }}>
+                <Step><StepLabel>Role and resume</StepLabel></Step>
+                <Step><StepLabel>Review interview plan</StepLabel></Step>
+            </Stepper>
 
             {/* Inline notifications */}
             {snack.open && (
@@ -244,6 +268,15 @@ const CreateInterviewPage = () => {
 
             <form onSubmit={handleSubmit}>
                 <Stack spacing={2}>
+                    <Box sx={{ display: activeStep === 0 ? "block" : "none" }}>
+                    <Stack spacing={2}>
+                    <Typography variant="h6" fontWeight={750}>Target role</Typography>
+                    <Box>
+                        <Typography variant="body2" color="text.secondary" mb={1}>Start quickly with a preset, then tailor every field to the actual job.</Typography>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                            {INTERVIEW_PRESETS.map((preset) => <Button key={preset.name} variant="outlined" startIcon={<AutoAwesomeIcon />} onClick={() => setFormData((current) => ({ ...current, company: preset.company, jobRole: preset.jobRole, jobDescription: preset.jobDescription }))}>{preset.name}</Button>)}
+                        </Stack>
+                    </Box>
                     <TextField
                         label="Company"
                         name="company"
@@ -268,19 +301,20 @@ const CreateInterviewPage = () => {
                         required
                     />
 
-                    <Divider sx={{ my: 2 }} />
+                    <Divider sx={{ my: 2.5 }} />
 
                     <FormControl required error={!formData.resumeId}>
-                        <Typography variant="subtitle1">
-                            Select Resume
+                        <Typography variant="h6" fontWeight={750}>
+                            Resume context
                         </Typography>
+                        <Typography variant="body2" color="text.secondary" mb={1}>Use the resume you’ll submit so questions reflect your actual experience.</Typography>
 
                         {/* Upload New Resume */}
                         <Box sx={{ my: 1 }}>
                             <Button
                                 variant="outlined"
                                 component="label"
-                                disabled={uploading}
+                                disabled={uploading || !uploadConsent}
                             >
                                 {uploading
                                     ? "Uploading..."
@@ -292,6 +326,11 @@ const CreateInterviewPage = () => {
                                     onChange={handleUpload}
                                 />
                             </Button>
+                            <FormControlLabel
+                                sx={{ display: "flex", mt: 1, alignItems: "flex-start" }}
+                                control={<Checkbox checked={uploadConsent} onChange={(event) => setUploadConsent(event.target.checked)} size="small" />}
+                                label={<Typography variant="caption" color="text.secondary">I understand my resume will be stored and processed by configured service providers to generate interview content. See the <Link component={RouterLink} to="/privacy">privacy notice</Link>.</Typography>}
+                            />
                         </Box>
 
                         {/* Or Choose Existing */}
@@ -314,42 +353,20 @@ const CreateInterviewPage = () => {
                                         {new Date(
                                             r.createdAt
                                         ).toLocaleDateString()}
-                                        <IconButton
-                                            color="primary"
-                                            size="small"
-                                            component="a"
-                                            href={r.fileUrl}
-                                            download
-                                            onMouseDown={(e) => e.stopPropagation()}
-                                        >
-                                            <DownloadIcon />
-                                        </IconButton>
-                                        <IconButton
-                                            color="secondary"
-                                            size="small"
-                                            sx={{ ml: 1 }}
-                                            onMouseDown={(e) => e.stopPropagation()}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handlePreviewResume(r);
-                                            }}
-                                        >
-                                            <PictureAsPdfIcon fontSize="small" />
-                                        </IconButton>
-                                        <IconButton
-                                            size="small"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDelete(r._id);
-                                            }}
-                                            sx={{ ml: 1 }}
-                                        >
-                                            <DeleteIcon fontSize="small" />
-                                        </IconButton>
                                     </MenuItem>
                                 ))}
                             </TextField>
                         )}
+                        {formData.resumeId && (() => {
+                            const selectedResume = resumes.find((resume) => resume._id === formData.resumeId);
+                            if (!selectedResume) return null;
+                            return <Stack direction="row" spacing={1} alignItems="center" mt={1}>
+                                <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>Selected: {selectedResume.fileName || "Untitled resume"}</Typography>
+                                <Tooltip title="Download"><IconButton size="small" component="a" href={selectedResume.fileUrl} download><DownloadIcon fontSize="small" /></IconButton></Tooltip>
+                                <Tooltip title="Preview"><IconButton size="small" onClick={() => handlePreviewResume(selectedResume)}><PictureAsPdfIcon fontSize="small" /></IconButton></Tooltip>
+                                <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => setDeleteConfirmId(selectedResume._id)}><DeleteIcon fontSize="small" /></IconButton></Tooltip>
+                            </Stack>;
+                        })()}
 
                         {!formData.resumeId && (
                             <FormHelperText>
@@ -368,17 +385,22 @@ const CreateInterviewPage = () => {
                                 onClick={handleSuggestRounds}
                                 disabled={!isFormValid || loadingRounds}
                                 fullWidth
+                                size="large"
                             >
                                 {loadingRounds ? (
                                     <CircularProgress size={20} />
                                 ) : (
-                                    "Suggest Rounds"
+                                    "Build my interview plan"
                                 )}
                             </Button>
                         </span>
                     </Tooltip>
+                    </Stack>
+                    </Box>
 
                     {/* Show suggested rounds */}
+                    {activeStep === 1 && <>
+                    <Typography variant="h6" fontWeight={750}>Choose the rounds you want to practice</Typography>
                     <RoundSelector
                         suggestedRounds={suggestedRounds}
                         selectedRounds={selectedRounds}
@@ -386,14 +408,11 @@ const CreateInterviewPage = () => {
                         onChangeMode={handleChangeMode}
                         onChangeCount={handleChangeCount}
                     />
-
-                    <Button
-                        type="submit"
-                        variant="contained"
-                        disabled={!isFormValid || selectedRounds.length === 0}
-                    >
-                        Start Interview
-                    </Button>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
+                        <Button variant="outlined" onClick={() => setActiveStep(0)}>Back</Button>
+                        <Button type="submit" variant="contained" disabled={!isFormValid || selectedRounds.length === 0} sx={{ flex: 1 }}>Start Interview</Button>
+                    </Stack>
+                    </>}
                 </Stack>
             </form>
 
@@ -420,6 +439,14 @@ const CreateInterviewPage = () => {
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setPreviewOpen(false)}>Close</Button>
+                </DialogActions>
+            </Dialog>
+            <Dialog open={Boolean(deleteConfirmId)} onClose={() => setDeleteConfirmId(null)} aria-labelledby="create-delete-resume-title">
+                <DialogTitle id="create-delete-resume-title">Delete this resume?</DialogTitle>
+                <DialogContent><Typography>This permanently removes the resume from your account and may affect interviews that use it.</Typography></DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+                    <Button color="error" variant="contained" onClick={async () => { const id = deleteConfirmId; setDeleteConfirmId(null); await handleDelete(id); }}>Delete</Button>
                 </DialogActions>
             </Dialog>
         </Paper>

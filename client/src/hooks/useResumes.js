@@ -5,9 +5,12 @@ const getResumes = async (opts = {}) => {
         if (opts.sort) params.set("sort", opts.sort);
         if (opts.tag) params.set("tag", opts.tag);
         if (opts.q) params.set("q", opts.q);
+        if (opts.page) params.set("page", opts.page);
+        if (opts.limit) params.set("limit", opts.limit);
         const qs = params.toString();
         const { data } = await api.get(`/resumes${qs ? `?${qs}` : ""}`);
-        return Array.isArray(data) ? data : [];
+        const normalized = data && Array.isArray(data.items) ? data : { items: Array.isArray(data) ? data : [], total: 0, page: 1, limit: opts.limit || 10, totalPages: 1 };
+        return opts.paginated ? normalized : normalized.items;
 };
 
 const uploadResume = async (file) => {

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import {
     TextField,
     Stack,
@@ -14,8 +14,11 @@ import CodeIcon from "@mui/icons-material/Code";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import MonacoEditor from "react-monaco-editor";
 import api from "../api/axios";
+
+// Monaco is several megabytes. Keep it out of the network path until the user
+// explicitly switches a plain answer field into code-editor mode.
+const MonacoEditor = lazy(() => import("react-monaco-editor"));
 
 const languages = [
     { label: "JavaScript", value: "javascript" },
@@ -310,27 +313,44 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
                         </>
                     )}
 
-                    <MonacoEditor
-                        width="100%"
-                        height={isFullscreen ? "55vh" : editorHeight}
-                        language={language}
-                        theme={editorTheme}
-                        value={value}
-                        options={{
-                            automaticLayout: true,
-                            minimap: { enabled: false },
-                            scrollBeyondLastLine: false,
-                            scrollbar: { vertical: "hidden" },
-                            wordWrap: "on",
-                            smoothScrolling: true,
-                            tabSize: 4,
-                            insertSpaces: true,
-                            autoClosingBrackets: "always",
-                            autoIndent: "full",
-                        }}
-                        onChange={onChange}
-                        editorDidMount={handleEditorDidMount}
-                    />
+                    <Suspense
+                        fallback={(
+                            <div
+                                role="status"
+                                style={{
+                                    height: isFullscreen ? "55vh" : editorHeight,
+                                    display: "grid",
+                                    placeItems: "center",
+                                    border: `1px solid ${fsOutputBorder}`,
+                                    borderRadius: 4,
+                                }}
+                            >
+                                Loading code editor…
+                            </div>
+                        )}
+                    >
+                        <MonacoEditor
+                            width="100%"
+                            height={isFullscreen ? "55vh" : editorHeight}
+                            language={language}
+                            theme={editorTheme}
+                            value={value}
+                            options={{
+                                automaticLayout: true,
+                                minimap: { enabled: false },
+                                scrollBeyondLastLine: false,
+                                scrollbar: { vertical: "hidden" },
+                                wordWrap: "on",
+                                smoothScrolling: true,
+                                tabSize: 4,
+                                insertSpaces: true,
+                                autoClosingBrackets: "always",
+                                autoIndent: "full",
+                            }}
+                            onChange={onChange}
+                            editorDidMount={handleEditorDidMount}
+                        />
+                    </Suspense>
 
                     {/* Output section — shown inside fullscreen */}
                     {isFullscreen && (output || runError || execMeta) && (

@@ -116,6 +116,27 @@ export const getInterviews = async (req, res, next) => {
     }
 };
 
+export const getProgressSummary = async (req, res, next) => {
+    try {
+        const interviews = await Interview.find({ user: req.user._id })
+            .sort({ createdAt: 1 })
+            .populate({ path: "rounds.round", select: "status questions", populate: { path: "questions.feedback", select: "score" } })
+            .lean();
+        const scored = [];
+        let completed = 0;
+        for (const interview of interviews) {
+            const rounds = (interview.rounds || []).map((entry) => entry.round).filter(Boolean);
+            if (rounds.length && rounds.every((round) => round.status === "completed")) completed += 1;
+            const scores = rounds.flatMap((round) => (round.questions || []).map((item) => Number(item.feedback?.score)).filter(Number.isFinite));
+            if (scores.length) scored.push({ date: interview.createdAt, score: Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 });
+        }
+        const averageScore = scored.length ? Math.round((scored.reduce((sum, item) => sum + item.score, 0) / scored.length) * 10) / 10 : 0;
+        const recent = scored.slice(-5);
+        const improvement = recent.length > 1 ? Math.round((recent.at(-1).score - recent[0].score) * 10) / 10 : 0;
+        return res.json({ total: interviews.length, completed, averageScore, improvement, recent });
+    } catch (error) { return next(error instanceof Error ? error : new Error(String(error))); }
+};
+
 export const getInterview = async (req, res, next) => {
     try {
         const interview = await Interview.findOne({ _id: req.params.id, user: req.user._id })

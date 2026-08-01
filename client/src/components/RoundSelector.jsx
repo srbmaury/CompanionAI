@@ -13,6 +13,7 @@ import {
     Tooltip,
     Typography,
 } from "@mui/material";
+import { ChatBubbleOutlineRounded, CodeRounded } from "@mui/icons-material";
 
 const RoundsSelector = ({ suggestedRounds, selectedRounds, onToggleRound, onChangeMode, onChangeCount }) => {
     return (
@@ -26,11 +27,17 @@ const RoundsSelector = ({ suggestedRounds, selectedRounds, onToggleRound, onChan
                         key={idx}
                         variant="outlined"
                         sx={{
-                            border: isSelected ? "2px solid blue" : "1px solid grey",
+                            border: "1px solid",
+                            borderColor: isSelected ? "primary.main" : "divider",
+                            bgcolor: isSelected ? "action.selected" : "background.paper",
+                            boxShadow: isSelected ? "0 10px 30px rgba(91,80,214,.10)" : "none",
+                            transition: "border-color .18s ease, transform .18s ease, box-shadow .18s ease",
+                            "&:hover": { borderColor: "primary.light", transform: "translateY(-1px)" },
                         }}
                     >
                         <CardContent>
                             <FormControlLabel
+                                sx={{ width: "100%", m: 0, alignItems: "flex-start", ".MuiFormControlLabel-label": { flex: 1 } }}
                                 control={
                                     <Checkbox
                                         checked={isSelected}
@@ -38,11 +45,14 @@ const RoundsSelector = ({ suggestedRounds, selectedRounds, onToggleRound, onChan
                                     />
                                 }
                                 label={
-                                    <Box>
-                                        <Typography variant="h6">
+                                    <Box sx={{ pt: .25 }}>
+                                        <Stack direction="row" spacing={1} alignItems="center">
+                                        <Box sx={{ color: "primary.main", display: "flex" }}>{round.deliveryMode === "online-assessment" ? <CodeRounded fontSize="small" /> : <ChatBubbleOutlineRounded fontSize="small" />}</Box>
+                                        <Typography variant="h6" fontWeight={750}>
                                             {round.roundName}
                                         </Typography>
-                                        <Typography variant="body2">
+                                        </Stack>
+                                        <Typography variant="body2" color="text.secondary" mt={.75} lineHeight={1.6}>
                                             {round.description}
                                         </Typography>
                                     </Box>
@@ -68,7 +78,7 @@ const RoundsSelector = ({ suggestedRounds, selectedRounds, onToggleRound, onChan
                                             size="small"
                                             label="Questions"
                                             type="number"
-                                            value={selected?.questionCount ?? 5}
+                                            value={selected?.questionLimit ?? 8}
                                             onChange={(e) => {
                                                 const n = Math.max(1, Math.min(20, Number(e.target.value) || 1));
                                                 onChangeCount?.(round.roundName, n);

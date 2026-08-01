@@ -1,4 +1,5 @@
 import Resume from "../models/Resume.js";
+import ResumeReview from "../models/ResumeReview.js";
 import cloudinary from "../config/cloudinaryConfig.js";
 import streamifier from "streamifier";
 import { parseFile } from "../utils/parseFile.js";
@@ -10,17 +11,25 @@ import { generateJSON } from "../utils/generateQuestions/aiClient.js";
 // Align with multer filter (PDF only) and use single source of truth for max bytes
 const ALLOWED_MIME = ["application/pdf"];
 const MAX_BYTES = Number(process.env.MAX_RESUME_BYTES || 5 * 1024 * 1024); // default 5MB
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const safeDownloadName = (value) => (value || "resume.pdf").replace(/[\r\n"\\/]/g, "_").slice(0, 180);
 
 const optionalAntivirusScan = async (buffer) => {
     if (process.env.ENABLE_AV_SCAN !== "true") return { clean: true };
     try {
         const url = process.env.AV_SCAN_URL;
         if (!url) return { clean: true };
-        const resp = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/octet-stream" },
-            body: buffer,
-        });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        let resp;
+        try {
+            resp = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/octet-stream" },
+                body: buffer,
+                signal: controller.signal,
+            });
+        } finally { clearTimeout(timeout); }
         if (!resp.ok) return { clean: false, reason: `scanner_http_${resp.status}` };
         const data = await resp.json().catch(() => ({}));
         // expected response: { clean: boolean, reason?: string }
@@ -102,19 +111,24 @@ export const uploadResume = async (req, res, next) => {
 export const getUserResumes = async (req, res, next) => {
     try {
         const { sort = "-createdAt", tag, q } = req.query || {};
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
         const query = { user: req.user._id };
         if (tag) query.tags = tag;
         if (q) query.$or = [
-            { fileName: new RegExp(q, "i") },
-            { notes: new RegExp(q, "i") },
+            { fileName: new RegExp(escapeRegex(q.slice(0, 100)), "i") },
+            { notes: new RegExp(escapeRegex(q.slice(0, 100)), "i") },
         ];
         const sortSpec = {};
         const field = sort.replace(/^-/, "");
         const dir = sort.startsWith("-") ? -1 : 1;
         if (["createdAt", "fileName"].includes(field)) sortSpec[field] = dir;
 
-        const resumes = await Resume.find(query).sort(sortSpec).lean();
-        res.json(resumes);
+        const [items, total] = await Promise.all([
+            Resume.find(query).sort(sortSpec).skip((page - 1) * limit).limit(limit).lean(),
+            Resume.countDocuments(query),
+        ]);
+        res.json({ items, total, page, limit, totalPages: Math.max(Math.ceil(total / limit), 1) });
     } catch (error) {
         console.error("Fetch resumes error:", error);
         return next(error instanceof Error ? error : new Error(String(error)));
@@ -169,7 +183,7 @@ export const previewResume = async (req, res, next) => {
             return res.status(400).json({ message: "Preview available for PDFs only" });
         }
         res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", `inline; filename="${resume.fileName || "resume.pdf"}"`);
+        res.setHeader("Content-Disposition", `inline; filename="${safeDownloadName(resume.fileName)}"`);
         const reqTimeoutMs = Math.max(parseInt(process.env.RESUME_PREVIEW_TIMEOUT_MS || "10000", 10) || 10000, 1000);
         const httpReq = https.get(resume.fileUrl, (r) => {
             if (r.statusCode && r.statusCode >= 400) {
@@ -263,9 +277,38 @@ RESUME_TEXT: ${resumeText}`;
             roleAlignment: (parsed?.roleAlignment || "").toString().slice(0, 2000),
         };
 
-        res.json(response);
+        const saved = await ResumeReview.create({
+            user: req.user._id,
+            resume: resume._id,
+            resumeName: resume.fileName,
+            role: safeRole,
+            jobDescription: safeJD,
+            ...response,
+        });
+        res.json({ ...response, _id: saved._id, createdAt: saved.createdAt });
     } catch (error) {
         console.error("Review resume error:", error);
         return next(error instanceof Error ? error : new Error(String(error)));
     }
+};
+
+export const getResumeReviews = async (req, res, next) => {
+    try {
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(Number(req.query.limit) || 5, 1), 50);
+        const query = { user: req.user._id };
+        const [items, total] = await Promise.all([
+            ResumeReview.find(query).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+            ResumeReview.countDocuments(query),
+        ]);
+        return res.json({ items, total, page, limit, totalPages: Math.max(Math.ceil(total / limit), 1) });
+    } catch (error) { return next(error instanceof Error ? error : new Error(String(error))); }
+};
+
+export const deleteResumeReview = async (req, res, next) => {
+    try {
+        const deleted = await ResumeReview.findOneAndDelete({ _id: req.params.reviewId, user: req.user._id });
+        if (!deleted) return res.status(404).json({ message: "Review not found" });
+        return res.json({ message: "Review deleted" });
+    } catch (error) { return next(error instanceof Error ? error : new Error(String(error))); }
 };

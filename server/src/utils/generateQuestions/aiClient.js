@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import metrics from "../../metrics/index.js";
 
 dotenv.config();
 
@@ -22,7 +23,7 @@ const getOpenAIClient = () => {
 const getGeminiModel = () => {
     if (!_geminiModel) {
         _geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-        const modelName = process.env.GEMINI_MODEL_NAME || process.env.MODEL_NAME || "gemini-1.5-flash";
+        const modelName = process.env.GEMINI_MODEL_NAME || "gemini-1.5-flash";
         _geminiModel = _geminiClient.getGenerativeModel({
             model: modelName,
             generationConfig: { responseMimeType: "application/json" },
@@ -68,14 +69,15 @@ export const generateJSON = async (prompt) => {
         120000
     );
 
+    const openAiModel = process.env.OPENAI_MODEL_NAME || "gpt-4o-mini";
+    const openAiStartedAt = process.hrtime.bigint();
     try {
         if (!process.env.OPENAI_API_KEY) {
             throw new Error("OPENAI_API_KEY not set");
         }
-        const model = process.env.OPENAI_MODEL_NAME || "gpt-4o-mini";
         const completion = await withTimeout(
             getOpenAIClient().chat.completions.create({
-                model,
+                model: openAiModel,
                 messages: [
                     { role: "system", content: "Return ONLY raw JSON. No code fences." },
                     { role: "user", content: trimmed },
@@ -85,13 +87,25 @@ export const generateJSON = async (prompt) => {
             aiTimeoutMs,
             "OpenAI request"
         );
+        for (const [type, value] of [["input", completion?.usage?.prompt_tokens], ["output", completion?.usage?.completion_tokens]]) {
+            if (Number.isFinite(value)) metrics.aiTokensTotal.labels("openai", openAiModel, type).inc(value);
+        }
         const text = completion?.choices?.[0]?.message?.content || "";
         const normalized = coerceToRawJSON(text);
-        if (normalized) return normalized;
-        if (text && text.trim()) return text.trim();
+        if (normalized || (text && text.trim())) {
+            metrics.aiRequestsTotal.labels("openai", openAiModel, "success").inc();
+            metrics.aiRequestDurationSeconds.labels("openai", openAiModel, "success").observe(Number(process.hrtime.bigint() - openAiStartedAt) / 1e9);
+            return normalized || text.trim();
+        }
+        metrics.aiInvalidResponsesTotal.labels("openai", openAiModel).inc();
         throw new Error("Empty OpenAI response");
     } catch (_e) {
+        metrics.aiRequestsTotal.labels("openai", openAiModel, "failure").inc();
+        metrics.aiRequestDurationSeconds.labels("openai", openAiModel, "failure").observe(Number(process.hrtime.bigint() - openAiStartedAt) / 1e9);
+        metrics.aiFallbacksTotal.labels("openai", "gemini").inc();
         console.warn("[AI][OpenAI] request failed:", _e?.message || _e);
+        const geminiModel = process.env.GEMINI_MODEL_NAME || "gemini-1.5-flash";
+        const geminiStartedAt = process.hrtime.bigint();
         try {
             if (!process.env.GEMINI_API_KEY) {
                 throw new Error("GEMINI_API_KEY not set");
@@ -103,8 +117,16 @@ export const generateJSON = async (prompt) => {
             );
             const text = result?.response?.text?.() || "";
             const normalized = coerceToRawJSON(text);
-            return normalized || (text || "").toString();
+            if (!normalized && !text.trim()) {
+                metrics.aiInvalidResponsesTotal.labels("gemini", geminiModel).inc();
+                throw new Error("Empty Gemini response");
+            }
+            metrics.aiRequestsTotal.labels("gemini", geminiModel, "success").inc();
+            metrics.aiRequestDurationSeconds.labels("gemini", geminiModel, "success").observe(Number(process.hrtime.bigint() - geminiStartedAt) / 1e9);
+            return normalized || text;
         } catch (fallbackErr) {
+            metrics.aiRequestsTotal.labels("gemini", geminiModel, "failure").inc();
+            metrics.aiRequestDurationSeconds.labels("gemini", geminiModel, "failure").observe(Number(process.hrtime.bigint() - geminiStartedAt) / 1e9);
             console.warn("[AI][Gemini] request failed:", fallbackErr?.message || fallbackErr);
             return "";
         }

@@ -2,14 +2,13 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { useNavigate, Link as RouterLink } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import Captcha from "../components/Captcha";
+import AuthShell from "../components/AuthShell";
 
 // MUI components
 import {
     Alert,
     Box,
     Button,
-    Card,
-    CardContent,
     Divider,
     FormControl,
     FormHelperText,
@@ -72,13 +71,22 @@ const LoginPage = () => {
 
     // Detect when GIS script is ready
     useEffect(() => {
+        const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
+        if (!clientId) return;
         if (window.google && window.google.accounts && window.google.accounts.id) {
             setGsiReady(true);
             return;
         }
-        const script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+        let script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
         const onLoad = () => setGsiReady(true);
-        if (script) script.addEventListener("load", onLoad);
+        if (!script) {
+            script = document.createElement("script");
+            script.src = "https://accounts.google.com/gsi/client";
+            script.async = true;
+            script.defer = true;
+            document.head.appendChild(script);
+        }
+        script.addEventListener("load", onLoad);
         return () => {
             if (script) script.removeEventListener("load", onLoad);
         };
@@ -121,37 +129,9 @@ const LoginPage = () => {
     // no manual click handler; rely on the rendered Google button only
 
     return (
-        <Box
-            sx={(theme) => ({
-                minHeight: "100vh",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                px: 2,
-                py: 6,
-                background:
-                    theme.palette.mode === "dark"
-                        ? `linear-gradient(135deg, ${theme.palette.background.default}, ${theme.palette.background.paper})`
-                        : "linear-gradient(135deg, #f6f9ff 0%, #eef2ff 100%)",
-            })}
-        >
-            <Card
-                elevation={3}
-                sx={{
-                    width: "100%",
-                    maxWidth: 840,
-                    borderRadius: 3,
-                    overflow: "hidden",
-                    border: (t) => `1px solid ${t.palette.divider}`,
-                }}
-            >
-                <CardContent sx={{ p: { xs: 3, sm: 5, md: 6 } }}>
-                    <Typography variant="h4" fontWeight={700} gutterBottom>
-                        Login
-                    </Typography>
-
+        <AuthShell eyebrow="Welcome back" title="Sign in to CompanionAI" subtitle="Continue your practice and pick up where you left off.">
                     <Box component="form" noValidate onSubmit={handleSubmit}>
-                        <Stack spacing={3} mt={3}>
+                        <Stack spacing={{ xs: 2.25, md: 1.5 }}>
                             {apiError && <Alert severity="error" onClose={() => setApiError("")}>{apiError}</Alert>}
                             {/* Email */}
                             <FormControl fullWidth>
@@ -165,7 +145,7 @@ const LoginPage = () => {
                                     placeholder="name@example.com"
                                     autoComplete="email"
                                     error={!!errors.email}
-                                    helperText={errors.email || " "}
+                                    helperText={errors.email || undefined}
                                     size="medium"
                                 />
                             </FormControl>
@@ -211,9 +191,7 @@ const LoginPage = () => {
                                         ),
                                     }}
                                 />
-                                <FormHelperText error={!!errors.password}>
-                                    {errors.password || " "}
-                                </FormHelperText>
+                                {errors.password && <FormHelperText error>{errors.password}</FormHelperText>}
                                 <Typography variant="body2" align="right" sx={{ mt: 1 }}>
                                     <Link component={RouterLink} to="/forgot-password" underline="hover">
                                         Forgot password?
@@ -258,12 +236,12 @@ const LoginPage = () => {
                                     fontWeight: 700,
                                 }}
                             >
-                                {submitting ? "Signing in..." : "Login"}
+                                {submitting ? "Signing in..." : "Sign in"}
                             </Button>
                         </Stack>
                     </Box>
 
-                    <Divider sx={{ my: 4 }} />
+                    <Divider sx={{ my: { xs: 3, md: 2 } }}><Typography variant="caption" color="text.secondary">OR CONTINUE WITH</Typography></Divider>
 
                     <Stack spacing={2} alignItems="center">
                         <div ref={googleDivRef} />
@@ -279,9 +257,7 @@ const LoginPage = () => {
                             Register
                         </Link>
                     </Typography>
-                </CardContent>
-            </Card>
-        </Box>
+        </AuthShell>
     );
 };
 

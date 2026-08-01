@@ -1,59 +1,91 @@
-import { useState } from "react";
-import { Box, Button, Card, CardContent, CircularProgress, Stack, TextField, Typography } from "@mui/material";
+import { useEffect, useState } from "react";
+import { Alert, Box, Button, Card, CardContent, CircularProgress, Container, Paper, Stack, TextField, Typography } from "@mui/material";
 import api from "../api/axios";
+import { BookmarkAddOutlined, BookmarkRounded } from "@mui/icons-material";
 
 const ExperiencesPage = () => {
     const [expCompany, setExpCompany] = useState("");
     const [expRole, setExpRole] = useState("");
     const [expLoading, setExpLoading] = useState(false);
     const [experiences, setExperiences] = useState([]);
+    const [searched, setSearched] = useState(false);
+    const [error, setError] = useState("");
+    const [savedUrls, setSavedUrls] = useState(new Set());
+
+    useEffect(() => {
+        api.get("/experiences/saved", { params: { page: 1, limit: 50 } })
+            .then(({ data }) => setSavedUrls(new Set((Array.isArray(data?.items) ? data.items : []).map((item) => item.url))))
+            .catch(() => {});
+    }, []);
+
+    const saveResult = async (item) => {
+        const { data } = await api.post("/experiences/saved", { ...item, company: expCompany.trim(), role: expRole.trim() });
+        if (data?.url) setSavedUrls((current) => new Set([...current, data.url]));
+    };
 
     const fetchExperiences = async () => {
         if (!expCompany.trim() || !expRole.trim()) return;
         setExpLoading(true);
+        setError("");
         try {
             const params = new URLSearchParams({ company: expCompany.trim(), role: expRole.trim() });
             const { data } = await api.get(`/experiences/search?${params.toString()}`);
             setExperiences(Array.isArray(data?.results) ? data.results : []);
         } catch {
             setExperiences([]);
+            setError("We couldn’t load experiences. Check your connection and try again.");
         } finally {
+            setSearched(true);
             setExpLoading(false);
         }
     };
 
     return (
-        <div style={{ padding: "2rem" }}>
-            <Typography variant="h5" gutterBottom>
-                Interview Experiences
-            </Typography>
-            <Box>
+        <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 5 } }}>
+            <Box sx={{ mb: 3 }}>
+                <Typography component="h1" variant="h4" fontWeight={800}>Interview experiences</Typography>
+                <Typography color="text.secondary" sx={{ mt: .75 }}>See what candidates have shared about interviews for a specific company and role.</Typography>
+            </Box>
+            <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 } }}>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }}>
-                    <TextField size="small" label="Company" value={expCompany} onChange={(e) => setExpCompany(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") fetchExperiences(); }} sx={{ minWidth: 220 }} />
-                    <TextField size="small" label="Role" value={expRole} onChange={(e) => setExpRole(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") fetchExperiences(); }} sx={{ minWidth: 220 }} />
-                    <Button variant="contained" onClick={fetchExperiences} disabled={expLoading || !expCompany || !expRole}>
+                    <TextField fullWidth size="small" label="Company" value={expCompany} onChange={(e) => setExpCompany(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") fetchExperiences(); }} />
+                    <TextField fullWidth size="small" label="Role" value={expRole} onChange={(e) => setExpRole(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") fetchExperiences(); }} />
+                    <Button variant="contained" onClick={fetchExperiences} disabled={expLoading || !expCompany.trim() || !expRole.trim()} sx={{ minWidth: 120 }}>
                         {expLoading ? "Searching..." : "Search"}
                     </Button>
                 </Stack>
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>Enter both a company and role to search.</Typography>
                 <Stack spacing={2} sx={{ mt: 2 }}>
-                    {expLoading ? (
+                    {error ? (
+                        <Alert severity="error">{error}</Alert>
+                    ) : expLoading ? (
                         <CircularProgress />
-                    ) : experiences.length === 0 ? (
-                        <Typography color="text.secondary">Enter company and role to find shared experiences.</Typography>
+                    ) : searched && experiences.length === 0 ? (
+                        <Alert severity="info">No shared experiences found. Try a broader role title or check the company spelling.</Alert>
+                    ) : !searched ? (
+                        <Typography color="text.secondary">Results will appear here.</Typography>
                     ) : (
                         experiences.map((item, idx) => (
                             <Card key={idx} variant="outlined">
                                 <CardContent>
                                     <Typography variant="subtitle1" gutterBottom>{item.title || "Result"}</Typography>
                                     <Typography variant="body2" color="text.secondary" gutterBottom>{item.snippet}</Typography>
-                                    <Button href={item.url} target="_blank" rel="noreferrer" size="small">Open</Button>
+                                    <Stack direction="row" spacing={1}>
+                                        <Button href={item.url} target="_blank" rel="noreferrer" size="small">Open source</Button>
+                                        <Button
+                                            size="small"
+                                            startIcon={savedUrls.has(item.url) ? <BookmarkRounded /> : <BookmarkAddOutlined />}
+                                            disabled={savedUrls.has(item.url)}
+                                            onClick={() => saveResult(item)}
+                                        >{savedUrls.has(item.url) ? "Saved" : "Save"}</Button>
+                                    </Stack>
                                 </CardContent>
                             </Card>
                         ))
                     )}
                 </Stack>
-            </Box>
-        </div>
+            </Paper>
+        </Container>
     );
 };
 

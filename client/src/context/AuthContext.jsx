@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useEffect, useState } from "react";
 
-import api from "../api/axios";
+import api, { clearAccessToken, setAccessToken, silentRefresh } from "../api/axios";
 
 export const AuthContext = createContext();
 
@@ -22,30 +22,19 @@ export const AuthProvider = ({ children }) => {
         const init = async () => {
             setLoading(true);
             try {
-                const stored = typeof window !== "undefined" ? window.localStorage.getItem("accessToken") : null;
-                if (stored) {
-                    await fetchProfile();
-                } else {
-                    setUser(null);
-                }
+                await silentRefresh();
+                await fetchProfile();
             } catch { setUser(null); }
             setLoading(false);
         };
         init();
     }, [fetchProfile]);
 
-    const setToken = (token) => {
-        try { if (token) window.localStorage.setItem("accessToken", token); } catch { /* Storage can be unavailable in privacy mode. */ }
-    };
-    const clearToken = () => {
-        try { window.localStorage.removeItem("accessToken"); } catch { /* Storage can be unavailable in privacy mode. */ }
-    };
-
     const login = async (email, password, captchaToken) => {
         const payload = { email, password };
         if (captchaToken) payload.captchaToken = captchaToken;
         const { data } = await api.post(`/auth/login`, payload);
-        if (data?.token) setToken(data.token);
+        if (data?.token) setAccessToken(data.token);
         await fetchProfile();
     };
 
@@ -58,7 +47,7 @@ export const AuthProvider = ({ children }) => {
 
     const googleLogin = async (idToken) => {
         const { data } = await api.post(`/auth/google`, { idToken });
-        if (data?.token) setToken(data.token);
+        if (data?.token) setAccessToken(data.token);
         await fetchProfile();
     };
 
@@ -83,14 +72,21 @@ export const AuthProvider = ({ children }) => {
 
     const logout = async () => {
         try { await api.post(`/auth/logout`); } catch { /* ignore */ }
-        clearToken();
+        clearAccessToken();
         setUser(null);
     };
 
-    const updateProfile = async ({ name, currentPassword, newPassword, preferredProgrammingLanguage }) => {
-        const { data } = await api.put(`/auth/profile`, { name, currentPassword, newPassword, preferredProgrammingLanguage });
-        if (data?.token) setToken(data.token);
+    const updateProfile = async (updates) => {
+        const { data } = await api.put(`/auth/profile`, updates);
+        if (data?.token) setAccessToken(data.token);
         if (data?.user) setUser(data.user);
+        return data;
+    };
+
+    const deleteAccount = async ({ confirmation, password }) => {
+        const { data } = await api.delete(`/auth/profile`, { data: { confirmation, password } });
+        clearAccessToken();
+        setUser(null);
         return data;
     };
 
@@ -107,6 +103,7 @@ export const AuthProvider = ({ children }) => {
                 resetPassword,
                 logout,
                 updateProfile,
+                deleteAccount,
             }}
         >
             {children}

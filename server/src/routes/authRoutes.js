@@ -1,4 +1,6 @@
 import express from "express";
+import { z } from "zod";
+import User from "../models/User.js";
 import {
     registerUser,
     loginUser,
@@ -10,6 +12,7 @@ import {
     updateProfile,
     forgotPassword,
     resetPassword,
+    deleteAccount,
 } from "../controllers/authController.js";
 import protect from "../middleware/authMiddleware.js";
 import {
@@ -34,6 +37,14 @@ import {
 } from "../validation/authSchemas.js";
 import { loginAttemptCheck } from "../middleware/loginLockout.js";
 import captcha from "../middleware/captcha.js";
+import ReminderDelivery from "../models/ReminderDelivery.js";
+import { sendTestPracticeReminder } from "../services/practiceReminders.js";
+import Interview from "../models/Interview.js";
+import Resume from "../models/Resume.js";
+import ResumeReview from "../models/ResumeReview.js";
+import SavedExperience from "../models/SavedExperience.js";
+import ProductFeedback from "../models/ProductFeedback.js";
+import ProductEvent from "../models/ProductEvent.js";
 
 const loginCaptcha = (req, res, next) => {
     if ((process.env.CAPTCHA_LOGIN_ENABLED || "").toLowerCase() === "true") {
@@ -270,8 +281,44 @@ router.post("/refresh", refreshAccessToken);
 // Protected
 router.post("/logout", protect, logoutUser);
 router.get("/profile", protect, (req, res) => {
-    res.json(req.user);
+    const { _id, name, email, role, provider, preferredProgrammingLanguage, practiceGoal, targetRole, weeklyPracticeTarget, reminderEnabled, reminderDay, reminderTime, reminderTimezone, plan, subscriptionStatus, isVerified } = req.user;
+    res.json({ _id, name, email, role, provider, preferredProgrammingLanguage, practiceGoal, targetRole, weeklyPracticeTarget, reminderEnabled, reminderDay, reminderTime, reminderTimezone, plan, subscriptionStatus, isVerified });
 });
 router.put("/profile", protect, validate(UpdateProfileSchema), updateProfile);
+router.post("/reminders/test", protect, async (req, res, next) => {
+    try {
+        await sendTestPracticeReminder(req.user);
+        return res.json({ message: "Test reminder sent" });
+    } catch (error) { return next(error); }
+});
+router.get("/reminders/deliveries", protect, async (req, res, next) => {
+    try {
+        const items = await ReminderDelivery.find({ user: req.user._id }).sort({ createdAt: -1 }).limit(10).select("reminderKey scheduledFor status attempts sentAt lastError").lean();
+        return res.json({ items });
+    } catch (error) { return next(error); }
+});
+router.get("/export", protect, async (req, res, next) => {
+    try {
+        const userId = req.user._id;
+        const [profile, interviews, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents] = await Promise.all([
+            User.findById(userId).select("name email role provider preferredProgrammingLanguage practiceGoal targetRole weeklyPracticeTarget reminderEnabled reminderDay reminderTime reminderTimezone plan subscriptionStatus isVerified createdAt updatedAt").lean(),
+            Interview.find({ user: userId }).lean(),
+            Resume.find({ user: userId }).select("-cloudinaryUrl -secureUrl").lean(),
+            ResumeReview.find({ user: userId }).lean(),
+            SavedExperience.find({ user: userId }).lean(),
+            ProductFeedback.find({ user: userId }).lean(),
+            ReminderDelivery.find({ user: userId }).lean(),
+            ProductEvent.find({ user: userId }).lean(),
+        ]);
+        res.setHeader("Content-Disposition", `attachment; filename="companionai-export-${new Date().toISOString().slice(0, 10)}.json"`);
+        return res.json({ exportedAt: new Date().toISOString(), profile, interviews, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents });
+    } catch (error) { return next(error); }
+});
+router.delete(
+    "/profile",
+    protect,
+    validate(z.object({ confirmation: z.literal("DELETE"), password: z.string().max(128).optional() })),
+    deleteAccount
+);
 
 export default router;

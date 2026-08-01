@@ -7,6 +7,17 @@ export default defineConfig({
         globals: true,
     },
     plugins: [react()],
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks(id) {
+                    if (id.includes("monaco-editor") || id.includes("react-monaco-editor")) return "monaco";
+                    if (id.includes("@mui") || id.includes("@emotion")) return "mui";
+                    if (/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(id)) return "react";
+                },
+            },
+        },
+    },
     server: {
         headers: {
             "Cross-Origin-Opener-Policy": "same-origin-allow-popups",

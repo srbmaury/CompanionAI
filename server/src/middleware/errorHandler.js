@@ -1,4 +1,5 @@
 import metrics from "../metrics/index.js";
+import { normalizeRoute } from "../metrics/routes.js";
 
 // Central error handler - keeps responses uniform and redacts sensitive data
 // eslint-disable-next-line no-unused-vars
@@ -15,7 +16,7 @@ const errorHandler = (err, req, res, next) => {
     // Log server-side with minimal PII
     try {
         console.error(JSON.stringify({ level: "error", requestId, status, message: err.message, stack: err.stack }));
-        try { metrics.errorsTotal.labels(String(status), req.route?.path || req.path).inc(); } catch {}
+        try { metrics.errorsTotal.labels(String(status), normalizeRoute(req)).inc(); } catch {}
     } catch {}
     // Optional: Sentry or other error tracking
     try {

@@ -16,12 +16,16 @@ export const httpRequestDurationSeconds = new client.Histogram({
     labelNames: ["method", "route", "status"],
     buckets: [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
 });
+export const httpRequestsInFlight = new client.Gauge({ name: "http_requests_in_flight", help: "HTTP requests currently being processed", labelNames: ["method"] });
+export const httpResponseSizeBytes = new client.Histogram({ name: "http_response_size_bytes", help: "HTTP response size in bytes", labelNames: ["method", "route", "status"], buckets: [256, 1024, 4096, 16384, 65536, 262144, 1048576] });
+export const httpRequestTimeoutsTotal = new client.Counter({ name: "http_request_timeouts_total", help: "HTTP requests closed before a response completed", labelNames: ["method", "route"] });
 
 // Security and errors
 export const rateLimitHitsTotal = new client.Counter({ name: "rate_limit_hits_total", help: "Rate limit hits", labelNames: ["route"] });
 export const csrfDeniedTotal = new client.Counter({ name: "csrf_denied_total", help: "CSRF denials", labelNames: ["route"] });
 export const originDeniedTotal = new client.Counter({ name: "origin_denied_total", help: "Origin/Referer denials", labelNames: ["route"] });
 export const errorsTotal = new client.Counter({ name: "errors_total", help: "Unhandled errors", labelNames: ["status", "route"] });
+export const authorizationDeniedTotal = new client.Counter({ name: "authorization_denied_total", help: "Authorization denials", labelNames: ["reason", "route"] });
 
 // Auth
 export const authLoginAttemptsTotal = new client.Counter({
@@ -45,10 +49,37 @@ export const quotasDeniedTotal = new client.Counter({ name: "quotas_denied_total
 export const tokensRotatedTotal = new client.Counter({ name: "tokens_rotated_total", help: "Refresh tokens rotated" });
 export const sessionsRevokedTotal = new client.Counter({ name: "sessions_revoked_total", help: "Sessions revoked", labelNames: ["scope"] }); // scope: one|all
 
+// Dependencies and asynchronous work
+export const componentReady = new client.Gauge({ name: "component_ready", help: "Whether a required component is ready", labelNames: ["component"] });
+export const dependencyOperationDurationSeconds = new client.Histogram({ name: "dependency_operation_duration_seconds", help: "Dependency operation duration", labelNames: ["component", "operation", "outcome"], buckets: [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10] });
+export const queueJobsTotal = new client.Counter({ name: "queue_jobs_total", help: "Queue jobs by terminal outcome", labelNames: ["queue", "outcome"] });
+export const queueJobDurationSeconds = new client.Histogram({ name: "queue_job_duration_seconds", help: "Queue job processing duration", labelNames: ["queue", "outcome"], buckets: [0.1, 0.5, 1, 2, 5, 10, 30, 60, 120] });
+export const queueDepth = new client.Gauge({ name: "queue_depth", help: "Queue jobs by state", labelNames: ["queue", "state"] });
+export const queueRetriesTotal = new client.Counter({ name: "queue_retries_total", help: "Queue jobs that will be retried", labelNames: ["queue"] });
+
+// AI, reminders, billing, and product funnel
+export const aiRequestsTotal = new client.Counter({ name: "ai_requests_total", help: "AI provider requests", labelNames: ["provider", "model", "outcome"] });
+export const aiRequestDurationSeconds = new client.Histogram({ name: "ai_request_duration_seconds", help: "AI request duration", labelNames: ["provider", "model", "outcome"], buckets: [0.25, 0.5, 1, 2, 5, 10, 20, 40, 120] });
+export const aiTokensTotal = new client.Counter({ name: "ai_tokens_total", help: "AI tokens reported by providers", labelNames: ["provider", "model", "type"] });
+export const aiFallbacksTotal = new client.Counter({ name: "ai_fallbacks_total", help: "AI provider fallbacks", labelNames: ["from", "to"] });
+export const aiInvalidResponsesTotal = new client.Counter({ name: "ai_invalid_responses_total", help: "AI responses that were empty or invalid", labelNames: ["provider", "model"] });
+export const reminderDeliveriesTotal = new client.Counter({ name: "reminder_deliveries_total", help: "Reminder delivery outcomes", labelNames: ["outcome"] });
+export const reminderDeliveryDurationSeconds = new client.Histogram({ name: "reminder_delivery_duration_seconds", help: "Reminder email delivery duration", labelNames: ["outcome"], buckets: [0.1, 0.25, 0.5, 1, 2, 5, 10, 30] });
+export const reminderDeliveryLagSeconds = new client.Histogram({ name: "reminder_delivery_lag_seconds", help: "Delay between scheduled and delivered reminder", buckets: [1, 30, 60, 300, 900, 3600, 21600, 86400] });
+export const reminderRetriesTotal = new client.Counter({ name: "reminder_retries_total", help: "Reminder retries scheduled" });
+export const billingWebhooksTotal = new client.Counter({ name: "billing_webhooks_total", help: "Stripe webhook outcomes", labelNames: ["event", "outcome"] });
+export const billingWebhookDurationSeconds = new client.Histogram({ name: "billing_webhook_duration_seconds", help: "Stripe webhook processing duration", labelNames: ["event", "outcome"], buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5] });
+export const billingCheckoutTotal = new client.Counter({ name: "billing_checkout_total", help: "Checkout-session creation outcomes", labelNames: ["outcome"] });
+export const billingSubscriptionTransitionsTotal = new client.Counter({ name: "billing_subscription_transitions_total", help: "Subscription status transitions observed from Stripe", labelNames: ["status"] });
+export const productEventsTotal = new client.Counter({ name: "product_events_total", help: "Allowlisted product funnel events", labelNames: ["event", "plan"] });
+
 export default {
     client,
     httpRequestsTotal,
     httpRequestDurationSeconds,
+    httpRequestsInFlight,
+    httpResponseSizeBytes,
+    httpRequestTimeoutsTotal,
     rateLimitHitsTotal,
     csrfDeniedTotal,
     originDeniedTotal,
@@ -65,4 +96,25 @@ export default {
     quotasDeniedTotal,
     tokensRotatedTotal,
     sessionsRevokedTotal,
+    authorizationDeniedTotal,
+    componentReady,
+    dependencyOperationDurationSeconds,
+    queueJobsTotal,
+    queueJobDurationSeconds,
+    queueDepth,
+    queueRetriesTotal,
+    aiRequestsTotal,
+    aiRequestDurationSeconds,
+    aiTokensTotal,
+    aiFallbacksTotal,
+    aiInvalidResponsesTotal,
+    reminderDeliveriesTotal,
+    reminderDeliveryDurationSeconds,
+    reminderDeliveryLagSeconds,
+    reminderRetriesTotal,
+    billingWebhooksTotal,
+    billingWebhookDurationSeconds,
+    billingCheckoutTotal,
+    billingSubscriptionTransitionsTotal,
+    productEventsTotal,
 };

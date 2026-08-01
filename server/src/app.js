@@ -13,6 +13,7 @@ import metrics from "./metrics/index.js";
 import requestId from "./middleware/requestId.js";
 import errorHandler from "./middleware/errorHandler.js";
 import httpLogger from "./middleware/logger.js";
+import { normalizeRoute } from "./metrics/routes.js";
 import originCheck from "./middleware/originCheck.js";
 
 import swaggerSpec from "./config/swagger.js";
@@ -29,11 +30,17 @@ import sttRoutes from "./routes/sttRoutes.js";
 import experienceRoutes from "./routes/experienceRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import jobsRoutes from "./routes/jobsRoutes.js";
+import productFeedbackRoutes from "./routes/productFeedbackRoutes.js";
+import billingRoutes from "./routes/billingRoutes.js";
+import recommendationRoutes from "./routes/recommendationRoutes.js";
+import billingWebhookRoutes from "./routes/billingWebhookRoutes.js";
+import productEventRoutes from "./routes/productEventRoutes.js";
 
 const app = express();
 
 // Middleware
 app.set("trust proxy", 1); // required for secure cookies behind proxies
+app.use("/api/billing/webhook", express.raw({ type: "application/json", limit: "1mb" }), billingWebhookRoutes);
 app.use(express.json({ limit: "200kb" }));
 app.use(cookieParser());
 const isLocalhostOrigin = (origin) => {
@@ -182,12 +189,28 @@ app.use(httpLogger);
 
 // Instrument requests before routes so completed API requests are observed.
 app.use((req, res, next) => {
-    const route = req.path;
-    const end = metrics.httpRequestDurationSeconds.startTimer({ method: req.method, route });
+    const startedAt = process.hrtime.bigint();
+    let finished = false;
+    metrics.httpRequestsInFlight.labels(req.method).inc();
     res.on("finish", () => {
+        finished = true;
         try {
+            const route = normalizeRoute(req);
+            const status = String(res.statusCode);
+            const elapsed = Number(process.hrtime.bigint() - startedAt) / 1e9;
             metrics.httpRequestsTotal.labels(req.method, route, String(res.statusCode)).inc();
-            end({ status: String(res.statusCode) });
+            metrics.httpRequestDurationSeconds.labels(req.method, route, status).observe(elapsed);
+            const bytes = Number(res.getHeader("content-length"));
+            if (Number.isFinite(bytes)) metrics.httpResponseSizeBytes.labels(req.method, route, status).observe(bytes);
+            metrics.httpRequestsInFlight.labels(req.method).dec();
+        } catch {}
+    });
+    res.on("close", () => {
+        if (finished) return;
+        try {
+            const route = normalizeRoute(req);
+            metrics.httpRequestTimeoutsTotal.labels(req.method, route).inc();
+            metrics.httpRequestsInFlight.labels(req.method).dec();
         } catch {}
     });
     next();
@@ -224,7 +247,7 @@ const makeLimiter = (windowMs, max, prefix = "rl") =>
             return userId ? `${prefix}:user:${userId}` : `${prefix}:ip:${req.ip}`;
         },
         handler: (req, res) => {
-            try { metrics.rateLimitHitsTotal.labels(req.route?.path || req.path).inc(); } catch {}
+            try { metrics.rateLimitHitsTotal.labels(normalizeRoute(req)).inc(); } catch {}
             res.status(429).json({ message: "Too many requests, please slow down." });
         },
     });
@@ -253,6 +276,10 @@ app.use("/api/stt", sttLimiter, sttRoutes);
 app.use("/api/experiences", experienceRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/jobs", jobsRoutes);
+app.use("/api/product-feedback", productFeedbackRoutes);
+app.use("/api/billing", billingRoutes);
+app.use("/api/recommendations", recommendationRoutes);
+app.use("/api/events", productEventRoutes);
 
 // Health endpoints
 app.get("/health/liveness", (req, res) => {
@@ -264,6 +291,7 @@ app.get("/health/readiness", async (req, res) => {
     let redisStatus = "disabled";
     try {
         if (process.env.REDIS_URL) {
+            const redisStartedAt = process.hrtime.bigint();
             const client = await getRedisClient();
             if (client && client.isOpen) {
                 try {
@@ -272,8 +300,10 @@ app.get("/health/readiness", async (req, res) => {
                         new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 500)),
                     ]);
                     redisStatus = pong === "PONG" ? "up" : "unknown";
+                    metrics.dependencyOperationDurationSeconds.labels("redis", "ping", redisStatus === "up" ? "success" : "failure").observe(Number(process.hrtime.bigint() - redisStartedAt) / 1e9);
                 } catch (e) {
                     redisStatus = "down";
+                    metrics.dependencyOperationDurationSeconds.labels("redis", "ping", "failure").observe(Number(process.hrtime.bigint() - redisStartedAt) / 1e9);
                 }
             } else {
                 redisStatus = "down";
@@ -283,6 +313,10 @@ app.get("/health/readiness", async (req, res) => {
         redisStatus = "down";
     }
 
+    metrics.componentReady.labels("mongo").set(mongoReady ? 1 : 0);
+    metrics.componentReady.labels("redis").set(redisStatus === "up" || redisStatus === "disabled" ? 1 : 0);
+    metrics.componentReady.labels("smtp").set(process.env.SMTP_HOST || process.env.NODE_ENV === "test" ? 1 : 0);
+    metrics.componentReady.labels("stripe").set(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && process.env.STRIPE_PRO_PRICE_ID ? 1 : 0);
     const allOk = mongoReady && (redisStatus === "up" || redisStatus === "disabled");
     const statusCode = allOk ? 200 : 503;
     return res.status(statusCode).json({

@@ -50,6 +50,13 @@ export const UpdateProfileSchema = z.object({
     currentPassword: z.string().min(1).optional(),
     newPassword: strongPassword.optional(),
     preferredProgrammingLanguage: z.enum(["javascript", "python", "cpp", "java"]).optional(),
+    practiceGoal: z.enum(["get-first-role", "switch-role", "promotion", "confidence", "other"]).optional(),
+    targetRole: z.string().trim().max(120).optional(),
+    weeklyPracticeTarget: z.number().int().min(1).max(7).optional(),
+    reminderEnabled: z.boolean().optional(),
+    reminderDay: z.enum(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]).optional(),
+    reminderTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+    reminderTimezone: z.string().min(1).max(80).refine((value) => { try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; } catch { return false; } }, "Invalid timezone").optional(),
 }).refine((data) => {
     if (data.newPassword && !data.currentPassword) return false;
     return true;
