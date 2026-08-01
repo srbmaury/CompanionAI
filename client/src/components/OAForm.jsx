@@ -1,4 +1,4 @@
-import { Box, Button, Card, CardContent, Skeleton, Stack, Typography } from "@mui/material";
+import { Box, Button, Card, CardContent, Skeleton, Stack, TextField, Typography } from "@mui/material";
 import VoiceControls from "./VoiceControls";
 import SkipRoundButton from "./SkipRoundButton";
 import { lazy, Suspense } from "react";
@@ -8,6 +8,10 @@ const CodeEditorField = lazy(() => import("./CodeEditorField"));
 const OAForm = ({
     questions,
     answers,
+    spokenAnswers,
+    codingEnabled,
+    onCodingModeChange,
+    onSpokenChange,
     onChange,
     onSubmit,
     onSkip,
@@ -38,10 +42,22 @@ const OAForm = ({
                                 <CodeEditorField
                                     value={answers?.[idx] || ""}
                                     onChange={(val) => onChange(idx, val)}
+                                    onModeChange={(enabled) => onCodingModeChange(idx, enabled)}
                                     minRows={5}
                                     outlinedInputSx={outlinedInputSx}
                                 />
                             </Suspense>
+
+                            {codingEnabled?.[idx] && <TextField
+                                label="Spoken explanation"
+                                value={spokenAnswers?.[idx] || ""}
+                                onChange={(event) => onSpokenChange(idx, event.target.value)}
+                                multiline
+                                minRows={2}
+                                fullWidth
+                                sx={{ mt: 1.5 }}
+                                helperText="Voice transcription is kept separate from your written or code answer."
+                            />}
 
                             <Box mt={1} sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, alignItems: { xs: "stretch", md: "center" } }}>
                                 <VoiceControls

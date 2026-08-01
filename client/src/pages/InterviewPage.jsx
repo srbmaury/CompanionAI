@@ -16,6 +16,7 @@ import ConversationalPanel from "../components/ConversationalPanel";
 import FeedbackPanel       from "../components/FeedbackPanel";
 import OAForm              from "../components/OAForm";
 import RoundList           from "../components/RoundList";
+import { composeAnswerParts } from "../utils/answerParts";
 
 const outlinedInputSx = {
     "& .MuiOutlinedInput-root": {
@@ -62,22 +63,23 @@ const InterviewPage = () => {
         return qList.some((q) => (q?.answerGiven || "").toString().trim() && !q?.feedback);
     }, [selectedRound?.questions]);
 
-    // ── Voice transcript routing (via refs to avoid circular hook ordering) ───
-    // Refs are updated after each render, so onTranscript always calls the latest setters.
+    // ── Voice transcript routing ──────────────────────────────────────────────
     const convAnswerSetterRef = useRef(null);
-    const oaAnswersSetterRef  = useRef(null);
+    const oaAnswersSetterRef = useRef(null);
+    const [convSpokenAnswer, setConvSpokenAnswer] = useState("");
+    const [oaSpokenAnswers, setOaSpokenAnswers] = useState([]);
+    const [convCodingEnabled, setConvCodingEnabled] = useState(false);
+    const [oaCodingEnabled, setOaCodingEnabled] = useState([]);
 
     const onTranscript = useCallback((target, text) => {
         if (target === "conv") {
-            convAnswerSetterRef.current?.((prev) => (prev ? prev + " " : "") + text);
+            if (convCodingEnabled) setConvSpokenAnswer((prev) => (prev ? `${prev} ${text}` : text));
+            else convAnswerSetterRef.current?.((prev) => (prev ? `${prev} ${text}` : text));
         } else if (typeof target === "number") {
-            oaAnswersSetterRef.current?.((prev) => {
-                const next = [...prev];
-                next[target] = ((next[target] || "") + " " + text).trimStart();
-                return next;
-            });
+            const setter = oaCodingEnabled[target] ? setOaSpokenAnswers : oaAnswersSetterRef.current;
+            setter?.((prev) => { const next = [...prev]; next[target] = ((next[target] || "") + " " + text).trimStart(); return next; });
         }
-    }, []);
+    }, [convCodingEnabled, oaCodingEnabled]);
 
     // ── Voice input ───────────────────────────────────────────────────────────
     const {
@@ -102,7 +104,6 @@ const InterviewPage = () => {
         showToast, clearDraftsForRound,
     });
     convAnswerSetterRef.current = setConvAnswer;
-
     // ── OA Form ───────────────────────────────────────────────────────────────
     const {
         oaAnswers, setOaAnswers,
@@ -114,6 +115,40 @@ const InterviewPage = () => {
         showToast, clearDraftsForRound,
     });
     oaAnswersSetterRef.current = setOaAnswers;
+
+    const changeConversationalCodingMode = useCallback((enabled) => {
+        setConvCodingEnabled(enabled);
+        if (!enabled && convSpokenAnswer.trim()) {
+            setConvAnswer((current) => `${current}${current ? "\n\n" : ""}${convSpokenAnswer}`);
+            setConvSpokenAnswer("");
+        }
+    }, [convSpokenAnswer, setConvAnswer]);
+
+    const changeOaCodingMode = useCallback((index, enabled) => {
+        setOaCodingEnabled((current) => { const next = [...current]; next[index] = enabled; return next; });
+        if (!enabled && (oaSpokenAnswers[index] || "").trim()) {
+            setOaAnswers((current) => { const next = [...current]; next[index] = `${next[index] || ""}${next[index] ? "\n\n" : ""}${oaSpokenAnswers[index]}`; return next; });
+            setOaSpokenAnswers((current) => { const next = [...current]; next[index] = ""; return next; });
+        }
+    }, [oaSpokenAnswers, setOaAnswers]);
+    const submitConversationalAnswer = useCallback(async () => {
+        await handleSubmitAnswer(composeAnswerParts(convAnswer, convSpokenAnswer));
+        setConvSpokenAnswer("");
+    }, [convAnswer, convSpokenAnswer, handleSubmitAnswer]);
+
+    const finishFollowUp = useCallback(() => {
+        handleFollowUpDone();
+        setConvSpokenAnswer("");
+    }, [handleFollowUpDone]);
+
+    const submitOaAnswers = useCallback(async () => {
+        const combined = Array.from(
+            { length: Math.max(oaAnswers.length, oaSpokenAnswers.length) },
+            (_, index) => composeAnswerParts(oaAnswers[index], oaSpokenAnswers[index]),
+        );
+        await handleOASubmit(combined);
+        setOaSpokenAnswers([]);
+    }, [handleOASubmit, oaAnswers, oaSpokenAnswers]);
 
     // ── Resume preview ────────────────────────────────────────────────────────
     const resumeUrl         = interview?.resume?.fileUrl  || "";
@@ -261,14 +296,18 @@ const InterviewPage = () => {
                                             convState={convViewState}
                                             convAnswer={convAnswer}
                                             setConvAnswer={setConvAnswer}
-                                            onSubmitAnswer={handleSubmitAnswer}
+                                            spokenAnswer={convSpokenAnswer}
+                                            setSpokenAnswer={setConvSpokenAnswer}
+                                            codingEnabled={convCodingEnabled}
+                                            onCodingModeChange={changeConversationalCodingMode}
+                                            onSubmitAnswer={submitConversationalAnswer}
                                             onClarify={handleClarify}
                                             onCompleteRound={handleCompleteRound}
                                             onSkip={handleSkipRound}
                                             savedAt={convSavedAt}
                                             target="conv"
                                             pendingFollowUp={pendingFollowUp}
-                                            onFollowUpDone={handleFollowUpDone}
+                                            onFollowUpDone={finishFollowUp}
                                             {...voiceProps}
                                         />
                                         {convRoundSubmitting && (
@@ -304,8 +343,12 @@ const InterviewPage = () => {
                                         <OAForm
                                             questions={selectedRound.questions}
                                             answers={oaAnswers}
+                                            spokenAnswers={oaSpokenAnswers}
+                                            codingEnabled={oaCodingEnabled}
+                                            onCodingModeChange={changeOaCodingMode}
+                                            onSpokenChange={(index, value) => setOaSpokenAnswers((current) => { const next = [...current]; next[index] = value; return next; })}
                                             onChange={handleOAChange}
-                                            onSubmit={handleOASubmit}
+                                            onSubmit={submitOaAnswers}
                                             onSkip={handleSkipRound}
                                             submitting={oaSubmitting}
                                             {...voiceProps}

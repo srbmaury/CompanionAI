@@ -12,6 +12,7 @@ import BillingEvent from "../../models/BillingEvent.js";
 import UsageCounter from "../../models/UsageCounter.js";
 import ReminderDelivery from "../../models/ReminderDelivery.js";
 import ProductEvent from "../../models/ProductEvent.js";
+import RefreshToken from "../../models/RefreshToken.js";
 import { currentMonth, PLAN_LIMITS } from "../../services/entitlements.js";
 import { deliverDuePracticeReminders } from "../../services/practiceReminders.js";
 import Stripe from "stripe";
@@ -40,6 +41,20 @@ describe("Happy flows E2E", () => {
         try { await mongoose.connection.close(); } catch {}
         if (replset) await replset.stop();
     }, 30000);
+
+    it("allows only the newest session for an account", async () => {
+        const origin = "http://localhost:5000";
+        await User.create({ name: "Single Session", email: "single-session@example.com", password: "Passw0rd!", isVerified: true });
+        const firstClient = request.agent(app);
+        const secondClient = request.agent(app);
+        const firstLogin = await firstClient.post("/api/auth/login").set("origin", origin).set("referer", `${origin}/`).send({ email: "single-session@example.com", password: "Passw0rd!" }).expect(200);
+        const secondLogin = await secondClient.post("/api/auth/login").set("origin", origin).set("referer", `${origin}/`).send({ email: "single-session@example.com", password: "Passw0rd!" }).expect(200);
+
+        await firstClient.get("/api/auth/profile").set("Authorization", `Bearer ${firstLogin.body.token}`).expect(401);
+        await secondClient.get("/api/auth/profile").set("Authorization", `Bearer ${secondLogin.body.token}`).expect(200);
+        const user = await User.findOne({ email: "single-session@example.com" });
+        expect(await RefreshToken.countDocuments({ user: user._id })).toBe(1);
+    });
 
     it("registers, logs in, uploads resume, creates interview, prepares first round", async () => {
         const origin = "http://localhost:5000";

@@ -6,6 +6,8 @@ const SpeechRecognitionCtor =
         ? (window.SpeechRecognition || window.webkitSpeechRecognition || null)
         : null;
 
+export const composeLiveTranscript = (finalText, interimText) => `${finalText || ""} ${interimText || ""}`.trim();
+
 /**
  * Dual-layer STT: MediaRecorder → Whisper on stop (high quality),
  * with Web Speech API running in parallel for live interim transcript display.
@@ -23,6 +25,8 @@ export const useVoiceInput = ({ onTranscript }) => {
     const mediaRecorderRef = useRef(null);  // MediaRecorder for Whisper audio
     const liveRecRef = useRef(null);        // Web Speech running in parallel for live preview
     const wsFinalsRef = useRef("");         // accumulated finals from parallel Web Speech
+    const wsInterimRef = useRef("");        // latest interim phrase, committed when the user stops
+    const liveTranscriptCommittedRef = useRef(false);
     const audioCtxRef = useRef(null);
     const analyserRef = useRef(null);
     const rafRef = useRef(null);
@@ -101,9 +105,20 @@ export const useVoiceInput = ({ onTranscript }) => {
         setInterimText("");
     }, []);
 
+    const commitLiveTranscript = useCallback((target) => {
+        const text = composeLiveTranscript(wsFinalsRef.current, wsInterimRef.current);
+        if (!text || liveTranscriptCommittedRef.current) return false;
+        liveTranscriptCommittedRef.current = true;
+        onTranscriptRef.current?.(target, text);
+        return true;
+    }, []);
+
     // Pure Web Speech fallback (used when getUserMedia is unavailable entirely)
     const fallbackSTT = useCallback(async (target) => {
         try {
+            wsFinalsRef.current = "";
+            wsInterimRef.current = "";
+            liveTranscriptCommittedRef.current = false;
             const Rec = SpeechRecognitionCtor;
             if (!Rec) throw new Error("Web Speech not available");
             if (liveRecRef.current) { liveRecRef.current.stop?.(); liveRecRef.current = null; }
@@ -119,6 +134,7 @@ export const useVoiceInput = ({ onTranscript }) => {
                     if (event.results[i].isFinal) finals += t + " ";
                     else interim += t;
                 }
+                wsInterimRef.current = interim;
                 if (finals.trim()) onTranscriptRef.current?.(target, finals.trim());
                 setInterimText(interim);
             };
@@ -151,6 +167,8 @@ export const useVoiceInput = ({ onTranscript }) => {
             }
             const chunks = [];
             wsFinalsRef.current = "";
+            wsInterimRef.current = "";
+            liveTranscriptCommittedRef.current = false;
             mediaRecorderRef.current = mr;
 
             // Parallel Web Speech for live interim transcript display
@@ -169,6 +187,7 @@ export const useVoiceInput = ({ onTranscript }) => {
                             else interim += t;
                         }
                         if (finals) wsFinalsRef.current += finals;
+                        wsInterimRef.current = interim;
                         setInterimText(interim);
                     };
                     rec.onend = () => setInterimText("");
@@ -197,9 +216,12 @@ export const useVoiceInput = ({ onTranscript }) => {
                         }
                     }
 
-                    // Prefer Whisper; fall back to accumulated Web Speech finals
-                    if (!finalText) finalText = wsFinalsRef.current.trim();
-                    if (finalText) onTranscriptRef.current?.(target, finalText);
+                    // The stop action immediately commits the browser transcript. Use
+                    // Whisper only when the browser had no usable speech result.
+                    if (!liveTranscriptCommittedRef.current) {
+                        if (!finalText) finalText = composeLiveTranscript(wsFinalsRef.current, wsInterimRef.current);
+                        if (finalText) onTranscriptRef.current?.(target, finalText);
+                    }
                 } finally {
                     setListening(false);
                     setListeningTarget(null);
@@ -219,6 +241,7 @@ export const useVoiceInput = ({ onTranscript }) => {
     }, [fallbackSTT, selectedDeviceId, startMeter, stopMeter, stopLiveRec]);
 
     const stopListening = useCallback(() => {
+        commitLiveTranscript(listeningTarget);
         stopLiveRec();
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
             try { mediaRecorderRef.current.stop(); } catch (e) { console.debug("stop error", e); }
@@ -227,7 +250,7 @@ export const useVoiceInput = ({ onTranscript }) => {
         setListening(false);
         setListeningTarget(null);
         try { stopMeter(); } catch { void 0; }
-    }, [stopMeter, stopLiveRec]);
+    }, [commitLiveTranscript, listeningTarget, stopMeter, stopLiveRec]);
 
     const speakNow = useCallback((text) => {
         try {

@@ -23,6 +23,10 @@ const ConversationalPanel = ({
     convState,
     convAnswer,
     setConvAnswer,
+    spokenAnswer,
+    setSpokenAnswer,
+    codingEnabled,
+    onCodingModeChange,
     onSubmitAnswer,
     onCompleteRound,
     onClarify,
@@ -356,7 +360,7 @@ const ConversationalPanel = ({
                                 </Button>
                             </Box>
                             <Typography variant="caption" color={isRecording ? "error.main" : "text.secondary"} fontWeight={isRecording ? 600 : 400}>
-                                {isRecording ? "Recording — tap to stop" : convAnswer ? "Tap to add more" : "Tap to speak"}
+                                {isRecording ? "Recording — tap to stop" : spokenAnswer ? "Tap to add more" : "Tap to speak"}
                             </Typography>
                             {isRecording && interimText && (
                                 <Typography variant="body2" sx={{ fontStyle: "italic", color: "text.secondary", textAlign: "center", maxWidth: 480, opacity: 0.85 }}>
@@ -370,9 +374,20 @@ const ConversationalPanel = ({
                             <CodeEditorField
                                 value={convAnswer}
                                 onChange={setConvAnswer}
+                                onModeChange={onCodingModeChange}
                                 outlinedInputSx={outlinedInputSx}
                             />
                         </Suspense>
+
+                        {codingEnabled && <TextField
+                            label="Spoken explanation"
+                            value={spokenAnswer || ""}
+                            onChange={(event) => setSpokenAnswer(event.target.value)}
+                            multiline
+                            minRows={3}
+                            fullWidth
+                            helperText="Voice transcription stays separate from the written or code answer."
+                        />}
 
                         {/* Actions */}
                         {pendingFollowUp ? (
@@ -394,7 +409,7 @@ const ConversationalPanel = ({
                                 <Button
                                     variant="contained"
                                     startIcon={convSubmitting ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
-                                    onClick={() => onSubmitAnswer(convAnswer)}
+                                    onClick={onSubmitAnswer}
                                     disabled={convSubmitting}
                                     sx={{ minWidth: 160 }}
                                 >

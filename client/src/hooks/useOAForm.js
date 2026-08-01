@@ -56,7 +56,7 @@ export const useOAForm = ({
         });
     }, []);
 
-    const handleOASubmit = useCallback(async () => {
+    const handleOASubmit = useCallback(async (answersOverride) => {
         if (!selectedRound || isConversational) return;
         if (roundLocked) {
             showToast("warning", "Complete the previous round first.");
@@ -66,7 +66,8 @@ export const useOAForm = ({
             showToast("warning", "No questions yet. Please wait or reselect the round.");
             return;
         }
-        if (!(oaAnswers || []).some((a) => (a || "").toString().trim().length > 0)) {
+        const answersToSubmit = Array.isArray(answersOverride) ? answersOverride : oaAnswers;
+        if (!(answersToSubmit || []).some((a) => (a || "").toString().trim().length > 0)) {
             showToast("warning", "Please provide at least one answer before submitting.");
             return;
         }
@@ -75,7 +76,7 @@ export const useOAForm = ({
             setOaFeedbackProgress(0);
             const outgoing = Array.from(
                 { length: selectedRound.questions.length },
-                (_, i) => (oaAnswers?.[i] ?? "").toString()
+                (_, i) => (answersToSubmit?.[i] ?? "").toString()
             );
             await api.post(`/questions/${selectedRound._id}/answers`, { answers: outgoing });
 

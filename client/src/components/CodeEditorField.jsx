@@ -27,7 +27,7 @@ const languages = [
     { label: "Java", value: "java" },
 ];
 
-const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
+const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx, onModeChange }) => {
     const muiTheme = useTheme();
     const [useEditor, setUseEditor] = useState(false);
     const [language, setLanguage] = useState("cpp");
@@ -154,7 +154,7 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx }) => {
                 <Typography variant="body2">
                     {useEditor ? "Code Editor:" : "Answer:"}
                 </Typography>
-                <IconButton onClick={() => setUseEditor(!useEditor)} size="small">
+                <IconButton onClick={() => setUseEditor((current) => { const next = !current; onModeChange?.(next); return next; })} size="small" aria-label={useEditor ? "Use text answer" : "Use code editor"}>
                     <CodeIcon />
                 </IconButton>
                 {useEditor && (
