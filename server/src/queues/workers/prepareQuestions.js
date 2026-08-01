@@ -27,7 +27,7 @@ export default async function prepareQuestionsProcessor(job) {
         }
     }
 
-    const limit = Math.min(Math.max(count || round.questionLimit || 8, 1), 20);
+    const limit = Math.min(Math.max(count || round.questionLimit || 5, 1), 20);
     if (!prefetch) {
         round.conversationalIndex = 0;
         round.status = "in_progress";
@@ -59,6 +59,7 @@ export default async function prepareQuestionsProcessor(job) {
         deliveryMode: round.deliveryMode,
         count: limit,
         excludeTexts: exclusionTexts,
+        grounding: interview.grounding,
     });
     job.updateProgress(70);
     const normalized = (Array.isArray(qTexts) ? qTexts : []).map((q) => (typeof q === "string" ? { text: q, tags: [] } : { text: String(q?.text || "").slice(0, 200), tags: Array.isArray(q?.tags) ? q.tags.slice(0, 10) : [] }));

@@ -43,6 +43,7 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 
 // Local components
 import RoundSelector from "../components/RoundSelector";
+import { getDefaultQuestionLimit } from "../utils/roundDefaults";
 
 const INTERVIEW_PRESETS = [
     { name: "Frontend", company: "Target company", jobRole: "Frontend Engineer", jobDescription: "Build accessible, performant web applications with React, JavaScript, testing, API integration, and modern frontend architecture." },
@@ -66,6 +67,7 @@ const CreateInterviewPage = () => {
     const [uploadConsent, setUploadConsent] = useState(false);
 
     const [suggestedRounds, setSuggestedRounds] = useState([]);
+    const [grounding, setGrounding] = useState(null);
     const [selectedRounds, setSelectedRounds] = useState([]);
     const [loadingRounds, setLoadingRounds] = useState(false);
     const [snack, setSnack] = useState({
@@ -143,13 +145,15 @@ const CreateInterviewPage = () => {
     const handleSuggestRounds = async () => {
         setLoadingRounds(true);
         setSelectedRounds([]);
+        setGrounding(null);
         try {
             const { data } = await api.post(`/rounds/suggest`, {
                 company: formData.company,
                 jobRole: formData.jobRole,
                 jobDescription: formData.jobDescription,
             });
-            const rounds = Array.isArray(data) ? data : [];
+            const rounds = Array.isArray(data) ? data : (Array.isArray(data?.rounds) ? data.rounds : []);
+            setGrounding(Array.isArray(data) ? null : data?.grounding || null);
             setSuggestedRounds(rounds);
             if (rounds.length > 0) setActiveStep(1);
             setSnack({
@@ -175,8 +179,8 @@ const CreateInterviewPage = () => {
             if (exists) {
                 return prev.filter((r) => r.roundName !== round.roundName);
             } else {
-                // Default deliveryMode to conversational
-                return [...prev, { ...round, deliveryMode: "conversational" }];
+                const deliveryMode = round.deliveryMode || "conversational";
+                return [...prev, { ...round, deliveryMode, questionLimit: getDefaultQuestionLimit({ ...round, deliveryMode }) }];
             }
         });
     };
@@ -190,7 +194,7 @@ const CreateInterviewPage = () => {
     };
 
     const handleChangeCount = (roundName, num) => {
-        const safe = Math.min(Math.max(Number(num) || 8, 1), 20);
+        const safe = Math.min(Math.max(Number(num) || 4, 1), 20);
         setSelectedRounds((prev) =>
             prev.map((r) =>
                 r.roundName === roundName ? { ...r, questionLimit: safe } : r
@@ -401,6 +405,13 @@ const CreateInterviewPage = () => {
                     {/* Show suggested rounds */}
                     {activeStep === 1 && <>
                     <Typography variant="h6" fontWeight={750}>Choose the rounds you want to practice</Typography>
+                    {grounding && (
+                        <Alert severity={grounding.status === "grounded" ? "success" : "info"}>
+                            {grounding.status === "grounded"
+                                ? `Grounded in ${grounding.sourceCount} public company/role experience source${grounding.sourceCount === 1 ? "" : "s"}. Questions will combine this evidence with your JD and resume.`
+                                : "Limited public company-specific evidence was found. This plan is clearly treated as an AI simulation based on the JD, role, and resume."}
+                        </Alert>
+                    )}
                     <RoundSelector
                         suggestedRounds={suggestedRounds}
                         selectedRounds={selectedRounds}

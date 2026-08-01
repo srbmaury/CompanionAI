@@ -14,6 +14,7 @@ import {
     Typography,
 } from "@mui/material";
 import { ChatBubbleOutlineRounded, CodeRounded } from "@mui/icons-material";
+import { getDefaultQuestionLimit } from "../utils/roundDefaults";
 
 const RoundsSelector = ({ suggestedRounds, selectedRounds, onToggleRound, onChangeMode, onChangeCount }) => {
     return (
@@ -73,12 +74,12 @@ const RoundsSelector = ({ suggestedRounds, selectedRounds, onToggleRound, onChan
                                             <MenuItem value="online-assessment">Online Assessment (all at once)</MenuItem>
                                         </Select>
                                     </FormControl>
-                                    <Tooltip title="Number of questions to ask in this round (1–20)">
+                                    <Tooltip title="Recommended for this round; adjust from 1–20">
                                         <TextField
                                             size="small"
                                             label="Questions"
                                             type="number"
-                                            value={selected?.questionLimit ?? 8}
+                                            value={selected?.questionLimit ?? getDefaultQuestionLimit(selected || round)}
                                             onChange={(e) => {
                                                 const n = Math.max(1, Math.min(20, Number(e.target.value) || 1));
                                                 onChangeCount?.(round.roundName, n);

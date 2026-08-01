@@ -61,6 +61,7 @@ export const generateQuestionsForRound = async ({
     count,
     excludeTexts = [],
     dsaCountOffset = 0,
+    grounding,
 }) => {
     if (process.env.TEST_FORCE_GENERATOR_EMPTY === "true") {
         return [];
@@ -71,7 +72,7 @@ export const generateQuestionsForRound = async ({
     const safeResume = sanitizeText(resumeText, 4000);
     const safeRound = sanitizeText(roundName, 60);
     const safeRoundDesc = sanitizeText(roundDescription, 400);
-    const num = Math.min(Math.max(Number(count) || 8, 1), 20);
+    const num = Math.min(Math.max(Number(count) || 5, 1), 20);
 
     try {
         // Build prompt and ask AI for JSON via OpenAI (fallback to Gemini)
@@ -95,6 +96,10 @@ export const generateQuestionsForRound = async ({
             .slice(0, 10)
             .map((q, i) => `- Ref${i + 1}: ${q}`)
             .join("\n") || "<none>";
+        const companyRefsBlock = (grounding?.reportedQuestions || [])
+            .slice(0, 15)
+            .map((question, index) => `- Reported${index + 1}: ${sanitizeText(question, 220)}`)
+            .join("\n") || "<none>";
         const replacements = {
             num: String(num),
             company: safeCompany,
@@ -108,6 +113,7 @@ export const generateQuestionsForRound = async ({
             candidateTopics: candidateListPreview.join(", "),
             exclusions: exclusionsPreview.join(" | "),
             webRefs: webRefsBlock,
+            companyRefs: companyRefsBlock,
         };
         const prompt = rawTemplate.replace(/\{\{(.*?)\}\}/g, (_, key) => {
             const k = String(key).trim();

@@ -11,8 +11,8 @@ export const getSuggestedRounds = async (req, res, next) => {
     }
 
     try {
-        const rounds = await suggestRounds(company, jobRole, jobDescription);
-        res.status(200).json(rounds);
+        const result = await suggestRounds(company, jobRole, jobDescription);
+        res.status(200).json(result);
     } catch (error) {
         return next(error instanceof Error ? error : new Error(String(error)));
     }

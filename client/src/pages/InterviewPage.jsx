@@ -7,7 +7,7 @@ import { useOAForm }           from "../hooks/useOAForm";
 import { useVoiceInput }       from "../hooks/useVoiceInput";
 import { useResumePdf }        from "../hooks/useResumePdf";
 
-import { Alert, Box, Button, Chip, CircularProgress, Divider, Drawer, IconButton, LinearProgress, Stack, Typography,
+import { Alert, Box, Button, Chip, CircularProgress, Divider, Drawer, IconButton, LinearProgress, Link, Stack, Typography,
          Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import HelpPopover   from "../components/HelpPopover";
@@ -181,6 +181,17 @@ const InterviewPage = () => {
                             {inlineStatus.message}
                         </Alert>
                     )}
+
+                    <Alert severity={interview?.grounding?.status === "grounded" ? "success" : "info"} sx={{ mb: 2 }}>
+                        {interview?.grounding?.status === "grounded"
+                            ? `Grounded in ${interview.grounding.sources?.length || 0} public experience source${interview.grounding.sources?.length === 1 ? "" : "s"}; questions also use your JD and resume.`
+                            : "AI simulation: limited public company-specific evidence was available, so questions rely on the JD, role, and resume."}
+                        {(interview?.grounding?.sources || []).slice(0, 3).map((source) => (
+                            <Link key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" sx={{ ml: 1 }}>
+                                {source.title}
+                            </Link>
+                        ))}
+                    </Alert>
 
                     {!selectedRound ? (
                         <Typography>Select a round to view details</Typography>
