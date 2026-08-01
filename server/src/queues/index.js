@@ -1,6 +1,7 @@
 import bullmqPkg from "bullmq";
 const { Queue, Worker, QueueScheduler } = bullmqPkg;
 import getRedisClient from "../config/redis.js";
+import metrics from "../metrics/index.js";
 
 let connection = null;
 let queues = new Map();
@@ -55,6 +56,15 @@ export const getQueue = async (name) => {
         },
     });
     queues.set(name, q);
+    const refreshDepth = async () => {
+        try {
+            const counts = await q.getJobCounts("waiting", "active", "delayed", "failed", "completed");
+            for (const [state, count] of Object.entries(counts)) metrics.queueDepth.labels(name, state).set(count);
+        } catch {}
+    };
+    refreshDepth();
+    const depthTimer = setInterval(refreshDepth, 30000);
+    depthTimer.unref?.();
     if (!schedulers.has(name)) {
         try {
             const sch = new QueueScheduler(name, { connection: conn });
@@ -69,7 +79,15 @@ export const createWorker = async (name, processor) => {
     if (!conn) return null;
     const concurrency = Math.max(parseInt(process.env.WORKER_CONCURRENCY || "1", 10) || 1, 1);
     const worker = new Worker(name, processor, { connection: conn, concurrency });
+    worker.on("completed", (job) => {
+        metrics.queueJobsTotal.labels(name, "completed").inc();
+        if (job?.processedOn && job?.finishedOn) metrics.queueJobDurationSeconds.labels(name, "completed").observe(Math.max(0, job.finishedOn - job.processedOn) / 1000);
+    });
     worker.on("failed", (job, err) => {
+        const retrying = Number(job?.attemptsMade || 0) < Number(job?.opts?.attempts || 1);
+        metrics.queueJobsTotal.labels(name, retrying ? "failed_retryable" : "dead_letter").inc();
+        if (retrying) metrics.queueRetriesTotal.labels(name).inc();
+        if (job?.processedOn) metrics.queueJobDurationSeconds.labels(name, "failed").observe(Math.max(0, Date.now() - job.processedOn) / 1000);
         console.warn(`[worker:${name}] job ${job?.id} failed:`, err?.message || err);
     });
     worker.on("error", (err) => {

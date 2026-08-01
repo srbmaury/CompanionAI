@@ -1,6 +1,7 @@
 import User from "../models/User.js";
 import ReminderDelivery from "../models/ReminderDelivery.js";
 import { sendMail } from "../utils/mailer.js";
+import metrics from "../metrics/index.js";
 
 const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 const localParts = (date, timeZone) => Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone, weekday: "long", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date).filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
@@ -60,13 +61,19 @@ const deliverQueued = async (now) => {
             continue;
         }
         try {
+            const startedAt = process.hrtime.bigint();
             const info = await sendMail(mailFor(delivery.user));
             await ReminderDelivery.updateOne({ _id: delivery._id }, { $set: { status: "sent", sentAt: new Date(), providerMessageId: info?.messageId || "", lastError: "" }, $unset: { lockedAt: 1 } });
             sent += 1;
+            metrics.reminderDeliveriesTotal.labels("sent").inc();
+            metrics.reminderDeliveryDurationSeconds.labels("sent").observe(Number(process.hrtime.bigint() - startedAt) / 1e9);
+            metrics.reminderDeliveryLagSeconds.observe(Math.max(0, Date.now() - new Date(delivery.scheduledFor).getTime()) / 1000);
         } catch (error) {
             const nextAttemptAt = new Date(now.getTime() + retryDelayMs(delivery.attempts));
             await ReminderDelivery.updateOne({ _id: delivery._id }, { $set: { status: "failed", nextAttemptAt, lastError: String(error?.message || error).slice(0, 500) }, $unset: { lockedAt: 1 } });
             failed += 1;
+            metrics.reminderDeliveriesTotal.labels("failed").inc();
+            metrics.reminderRetriesTotal.inc();
         }
     }
     return { sent, failed };

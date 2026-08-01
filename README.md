@@ -1,28 +1,34 @@
 # CompanionAI
 
-AI‑assisted interview preparation: create multi‑round interviews from a job description, practice answers with voice or code editor, and get automatic feedback.
+AI-assisted interview preparation: build multi-round interviews from a job description, practice with voice or code, review resumes, and turn feedback into measurable progress.
 
 ## Key features
-- Authentication: email verification, Google Sign‑In, logout; profile update and password reset
+- Authentication: email verification, Google Sign-In, rotating access/refresh tokens, logout, password reset, and account deletion
 - Resumes: upload to Cloudinary, type/size validation, tags/notes, search/sort, PDF inline preview
+- Resume reviews: saved AI reviews with paginated history
 - Interview rounds: AI‑suggested rounds from JD; supports conversational and online‑assessment (OA) modes
 - Question generation: per‑round question sets with de‑duplication across rounds
 - Feedback: per‑question feedback with score and improvement suggestions
-- Voice: TTS, STT via server Whisper endpoint with Vosk/Web Speech fallbacks
-- Experiences: dedicated page to search web‑shared interview experiences by company and role
-- Dashboard pagination: GET /api/interviews supports pagination; dashboard paginates when >10 interviews
+- Voice: browser TTS, server-side Whisper transcription, and Web Speech fallback
+- Experiences: search public interview experiences and save useful results
+- Progress: score trends, completion history, monthly plan usage, and goal-based recommendations
+- Reminders: timezone-aware weekly email reminders with durable delivery records, retries, history, and test delivery
+- Billing: Stripe-hosted Checkout, customer portal, signed/idempotent webhooks, dynamic pricing, and monthly usage limits
+- Admin: role-protected feedback inbox with filtering, pagination, and status management
+- Privacy: user data export and complete account-data deletion
+- Product analytics: authenticated, allowlisted funnel events with automatic 180-day expiry
 - API docs: OpenAPI/Swagger at `/api-docs`
 
 ## Architecture
 - Client: React (Vite), Material UI, React Router, Axios (with credentials)
-- Server: Express, Mongoose (MongoDB), Zod validators, Cloudinary, Nodemailer
+- Server: Express, Mongoose/MongoDB, Redis/BullMQ, Zod, Stripe, Cloudinary, Nodemailer, Prometheus, and Sentry
 
 Monorepo layout
 ```
 client/                  # React app (Vite, MUI)
 server/                  # Express API
   src/
-    routes/              # REST routes (auth, interviews, questions, feedback, resumes, stt, run-code, experiences)
+    routes/              # Auth, interviews, reviews, billing, admin, analytics, reminders, jobs, STT, and code execution
     controllers/         # Controllers per domain
     models/              # Mongoose models (User, Resume, Interview, Round, Question, Feedback)
     utils/               # AI, code runner, mailer, parsing, etc.
@@ -30,8 +36,9 @@ server/                  # Express API
 ```
 
 ## Getting started
-Prerequisites: Node 20+, MongoDB, Cloudinary account, SMTP (Gmail app password or a transactional email provider).
-Optional: Judge0 for code execution, OpenAI/Gemini for AI, Redis for quotas/sessions in prod.
+Prerequisites: Node 20+, MongoDB, Cloudinary, and at least one AI provider.
+
+Production also requires Redis, SMTP, CAPTCHA, Stripe, HTTPS, and MongoDB transaction support. Judge0 is required only when code execution is enabled.
 
 1) Install
 ```bash
@@ -41,8 +48,10 @@ cd server && npm i && cd ../client && npm i
 2) Configure environment
 
 - Server: copy the example and fill required values
-  - Minimal required: `MONGO_URI`, `JWT_SECRET`, `CLIENT_ORIGIN`, all `SMTP_*`, all `CLOUDINARY_*`
-  - Optional feature flags: `ENABLE_CODE_EXEC`, `ENABLE_STT`, `CAPTCHA_*`, quotas and rate limits
+  - Local minimum: `MONGO_URI`, `JWT_SECRET`, `CLIENT_ORIGIN`, Cloudinary credentials, and `OPENAI_API_KEY` or `GEMINI_API_KEY`
+  - SMTP is required for verification, password reset, and reminders
+  - Stripe requires `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `STRIPE_PRO_PRICE_ID`
+  - Production startup fails fast if Redis, metrics protection, CAPTCHA, or enabled feature dependencies are missing
   - Full list and sane defaults live in `server/.env.example`
 ```bash
 cp server/.env.example server/.env
@@ -62,30 +71,48 @@ cd client && npm run dev
 ```
 Client: http://localhost:5173 • Server: http://localhost:5000
 
+4) Verify
+```bash
+cd client && npm run lint && npm test -- --run && npm run build
+cd ../server && npm test -- --run && npm run audit
+```
+
+GitHub Actions runs these checks on pushes and pull requests. Dependabot checks dependencies weekly.
+
 ## API and docs
 - OpenAPI UI: `GET /api-docs`
 - OpenAPI JSON: `GET /api-docs.json`
 
 Highlighted endpoints
-- Auth: `/api/auth/*` (register, login, logout, verify-email, resend-verification, forgot/reset-password, profile)
-- Interviews: `GET /api/interviews?page&limit` (paginated) · `POST /api/interviews` · `POST /api/interviews/bulk` · `GET /api/interviews/{id}`
+- Auth: `/api/auth/*` (register, login, logout, refresh, verify-email, password reset, profile, reminder test/history, data export, deletion)
+- Interviews: `GET /api/interviews?page&limit` (paginated) · `POST /api/interviews` · `GET /api/interviews/{id}` · `GET /api/interviews/analytics/progress`
 - Rounds: `POST /api/rounds/suggest` (AI) · `POST /api/rounds` (manual)
 - Questions: `POST /api/questions/{interviewId}/rounds/{roundId}/prepare` · `POST /api/questions/{roundId}/answer` · `POST /api/questions/{roundId}/answers` · `POST /api/questions/{roundId}/complete` · `DELETE /api/questions/{interviewId}/rounds/{roundId}`
 - Feedback: `POST /api/feedback/{questionId}` · `GET /api/feedback/{questionId}` · `POST /api/feedback/bulk` · `POST /api/feedback/attach/{roundId}`
-- Resumes: `POST /api/resumes` · `GET /api/resumes` (sort/tag/q) · `PUT /api/resumes/{id}` · `DELETE /api/resumes/{id}` · `GET /api/resumes/{id}/preview`
+- Resumes: `POST /api/resumes` · `GET /api/resumes` (sort/tag/q) · `PUT /api/resumes/{id}` · `DELETE /api/resumes/{id}` · `GET /api/resumes/{id}/preview` · `POST /api/resumes/{id}/review` · `GET /api/resumes/reviews`
 - STT: `POST /api/stt/transcribe` (multipart `audio`)
 - Run Code: `POST /api/run-code`
 - Experiences: `GET /api/experiences/search?company=&role=`
+- Billing: `GET /api/billing/entitlements` · `POST /api/billing/checkout-session` · `POST /api/billing/portal-session` · `POST /api/billing/webhook`
+- Recommendations: `GET /api/recommendations`
+- Product feedback: `POST /api/product-feedback`
+- Product events: `POST /api/events`
+- Admin: `GET /api/admin/feedback` · `PATCH /api/admin/feedback/{feedbackId}`
+- Operations: `GET /health/liveness` · `GET /health/readiness` · `GET /metrics`
 
 ## Frontend routes
 - `/login`, `/register`, `/verify-email`, `/forgot-password`, `/reset-password`
-- `/dashboard` (paginated interviews)
+- `/` (product landing page)
+- `/dashboard`, `/progress`
 - `/create-interview`, `/interviews/:interviewId`
-- `/experiences` (search interview experiences)
-- `/profile`
+- `/experiences`, `/saved-experiences`
+- `/resume-review`, `/resume-reviews`, `/resumes`
+- `/pricing`, `/billing/success`
+- `/profile`, `/admin/feedback`
+- `/privacy`, `/terms`
 
 ## Security highlights
-- CSRF protection, CORS allowlist, and origin checks by default
+- Short-lived bearer access tokens, HTTP-only rotating refresh cookies, CORS allowlists, and state-changing origin checks
 - Secure cookies (SameSite, domain) and JWT rotation; per‑user session caps
 - Quotas and rate limiting (Redis‑backed) across sensitive routes
 - CAPTCHA gates for auth endpoints (recommended in production)
@@ -94,11 +121,32 @@ Highlighted endpoints
 - Metrics endpoint protected by token; structured JSON logging with request IDs
 - Durable reminder delivery records with idempotency and retry backoff
 - Stripe webhook signature validation and event idempotency
+- Unconditional Zod request validation plus database-level constraints
+- CI dependency audits and weekly Dependabot updates
+
+## Background processing
+
+BullMQ handles question preparation and bulk feedback when Redis is configured. Reminder schedules are evaluated every five minutes, persisted as delivery records, atomically claimed, and retried with exponential backoff. For initial deployments, run one worker-enabled API replica; split workers and reminder dispatch into dedicated process types before horizontal scaling. See `RUNBOOK.md`.
+
+## Billing setup
+
+1. Create a recurring Stripe Price and set `STRIPE_PRO_PRICE_ID`.
+2. Set the restricted or secret server key as `STRIPE_SECRET_KEY`; never expose it to the client.
+3. Forward or configure Stripe webhooks at `/api/billing/webhook` and set the signing secret.
+4. Test checkout, subscription updates, failed/recovered payments, refunds, disputes, cancellation, and portal access in Stripe test mode before using live keys.
+
+The pricing UI reads amount, currency, and interval from Stripe rather than hard-coding them.
 
 ## Production checklist
 - Use TLS for MongoDB/Redis; enforce HTTPS, HSTS, and Helmet
 - Configure CSP allowlists via `CSP_*` envs and validate the client
 - Set up monitoring and alerts for `/health/readiness`, reminder failures, queue failures, and Stripe webhook failures
 - See `RUNBOOK.md` for deployment, rollback, health checks, backups, workers, and incident response
+- Use `observability/README.md` for Grafana panels, PromQL queries, and production alert thresholds
+- Review `SECURITY.md` and publish production-specific privacy, AI-processing, refund, and data-retention policies
+
+## Known dependency exception
+
+The current React Router advisory concerns React Server Components action handling. CompanionAI is a client-only BrowserRouter SPA and does not enable React Router framework/RSC actions. CI still fails on critical production advisories, and this exception should be removed when a patched upstream release is available.
 
 License: MIT

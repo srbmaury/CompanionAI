@@ -23,6 +23,7 @@ const sameOrigin = (value, allowed) => {
 };
 
 import metrics from "../metrics/index.js";
+import { normalizeRoute } from "../metrics/routes.js";
 
 const originCheck = () => (req, res, next) => {
     try {
@@ -36,10 +37,10 @@ const originCheck = () => (req, res, next) => {
         if (referer && sameOrigin(referer, allowed)) return next();
         // If neither header present, allow (non-browser clients) and rely on CSRF.
         if (!origin && !referer) return next();
-        try { metrics.originDeniedTotal.labels(req.route?.path || req.path).inc(); } catch {}
+        try { metrics.originDeniedTotal.labels(normalizeRoute(req)).inc(); } catch {}
         return res.status(403).json({ message: "Cross-origin request blocked" });
     } catch {
-        try { metrics.originDeniedTotal.labels(req.route?.path || req.path).inc(); } catch {}
+        try { metrics.originDeniedTotal.labels(normalizeRoute(req)).inc(); } catch {}
         return res.status(403).json({ message: "Cross-origin request blocked" });
     }
 };

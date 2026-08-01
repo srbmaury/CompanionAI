@@ -4,6 +4,7 @@ import UsageCounter from "../models/UsageCounter.js";
 import { currentMonth, limitsFor } from "../services/entitlements.js";
 import { getStripe } from "../config/stripe.js";
 import { getProPrice } from "../services/billingCatalog.js";
+import metrics from "../metrics/index.js";
 
 const router = express.Router();
 const clientOrigin = () => process.env.CLIENT_ORIGIN || "http://localhost:5173";
@@ -36,8 +37,9 @@ router.post("/checkout-session", protect, async (req, res, next) => {
             success_url: `${clientOrigin()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
             cancel_url: `${clientOrigin()}/pricing?checkout=cancelled`,
         });
+        metrics.billingCheckoutTotal.labels("success").inc();
         return res.json({ url: session.url });
-    } catch (error) { return next(error); }
+    } catch (error) { metrics.billingCheckoutTotal.labels("failure").inc(); return next(error); }
 });
 router.post("/portal-session", protect, async (req, res, next) => {
     try {

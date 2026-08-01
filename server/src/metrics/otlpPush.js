@@ -1,121 +1,98 @@
 import fetch from "node-fetch";
 import metrics from "./index.js";
 
-const WHITELIST = new Set([
-    "http_requests_total",
-    "errors_total",
-    "csrf_denied_total",
-    "origin_denied_total",
-    "auth_login_attempts_total",
-    "auth_register_total",
-    "auth_verify_total",
-    "auth_reset_total",
-    "auth_logout_total",
-    "security_password_change_total",
-    "upload_resume_total",
-    "stt_transcribe_total",
-    "run_code_total",
-    "tokens_rotated_total",
-    "sessions_revoked_total",
-]);
+const toOtelAttributes = (labels = {}) => Object.entries(labels).map(([key, value]) => ({
+    key: String(key),
+    value: { stringValue: String(value) },
+}));
 
-const toOtelAttributes = (labelsObj) => {
-    return Object.entries(labelsObj || {}).map(([key, value]) => ({
-        key: String(key),
-        value: { stringValue: String(value) },
-    }));
+const labelsKey = (labels = {}) => JSON.stringify(Object.entries(labels).sort(([a], [b]) => a.localeCompare(b)));
+
+const histogramDataPoints = (metric, nowNs) => {
+    const groups = new Map();
+    for (const value of metric.values || []) {
+        const labels = { ...(value.labels || {}) };
+        delete labels.le;
+        const key = labelsKey(labels);
+        if (!groups.has(key)) groups.set(key, { labels, buckets: [], sum: 0, count: 0 });
+        const group = groups.get(key);
+        if (value.metricName === `${metric.name}_sum`) group.sum = Number(value.value);
+        else if (value.metricName === `${metric.name}_count`) group.count = Number(value.value);
+        else if (value.metricName === `${metric.name}_bucket`) group.buckets.push({ upper: value.labels?.le, cumulative: Number(value.value) });
+    }
+    return [...groups.values()].map((group) => {
+        const finite = group.buckets.filter((b) => b.upper !== "+Inf").sort((a, b) => Number(a.upper) - Number(b.upper));
+        const infinity = group.buckets.find((b) => b.upper === "+Inf");
+        let previous = 0;
+        const bucketCounts = finite.map((bucket) => {
+            const count = Math.max(0, bucket.cumulative - previous);
+            previous = bucket.cumulative;
+            return String(count);
+        });
+        bucketCounts.push(String(Math.max(0, (infinity?.cumulative ?? group.count) - previous)));
+        return {
+            timeUnixNano: nowNs,
+            attributes: toOtelAttributes(group.labels),
+            count: String(group.count),
+            sum: group.sum,
+            explicitBounds: finite.map((bucket) => Number(bucket.upper)),
+            bucketCounts,
+        };
+    });
 };
 
-const buildOtlpPayload = async (serviceName) => {
-    const nowNs = BigInt(Date.now()) * 1000000n;
-    const json = await metrics.client.register.getMetricsAsJSON();
+export const buildOtlpPayload = async (serviceName, registry = metrics.client.register) => {
+    const nowNs = (BigInt(Date.now()) * 1000000n).toString();
+    const json = await registry.getMetricsAsJSON();
+    const exported = [];
 
-    const scopeMetrics = [{
-        scope: { name: "companionai.prom-client" },
-        metrics: [],
-    }];
-
-    for (const m of json) {
-        if (!WHITELIST.has(m.name)) continue;
-        if (m.type === "counter" || m.type === "gauge") {
-            const dataPoints = (m.values || []).map((v) => ({
-                timeUnixNano: Number(nowNs),
-                attributes: toOtelAttributes(v.labels || {}),
-                asDouble: Number(v.value),
+    for (const metric of json) {
+        if (metric.type === "counter" || metric.type === "gauge") {
+            const dataPoints = (metric.values || []).map((value) => ({
+                timeUnixNano: nowNs,
+                attributes: toOtelAttributes(value.labels || {}),
+                asDouble: Number(value.value),
             }));
-            const metric = {
-                name: m.name,
+            exported.push({
+                name: metric.name,
                 unit: "1",
-                description: m.help || "",
-                // Counters are monotonic sums, gauges map to gauge
-                ...(m.type === "counter"
+                description: metric.help || "",
+                ...(metric.type === "counter"
                     ? { sum: { dataPoints, isMonotonic: true, aggregationTemporality: 2 } }
                     : { gauge: { dataPoints } }),
-            };
-            scopeMetrics[0].metrics.push(metric);
+            });
+        } else if (metric.type === "histogram") {
+            exported.push({
+                name: metric.name,
+                unit: metric.name.endsWith("_seconds") ? "s" : metric.name.endsWith("_bytes") ? "By" : "1",
+                description: metric.help || "",
+                histogram: { dataPoints: histogramDataPoints(metric, nowNs), aggregationTemporality: 2 },
+            });
         }
-        // Histograms can be added later if needed
     }
 
-    return {
-        resourceMetrics: [{
-            resource: {
-                attributes: [
-                    { key: "service.name", value: { stringValue: serviceName } },
-                ],
-            },
-            scopeMetrics,
-        }],
-    };
+    return { resourceMetrics: [{ resource: { attributes: [{ key: "service.name", value: { stringValue: serviceName } }] }, scopeMetrics: [{ scope: { name: "companionai.prom-client" }, metrics: exported }] }] };
 };
 
 export const startOtlpPush = () => {
     const instanceId = process.env.GRAFANA_INSTANCE_ID;
     const apiKey = process.env.GRAFANA_API_KEY;
-    if (!instanceId || !apiKey) return; // disabled
+    if (!instanceId || !apiKey) return;
     const url = process.env.GRAFANA_OTLP_URL || "https://otlp-gateway-prod-ap-south-0.grafana.net/otlp/v1/metrics";
     const serviceName = process.env.OTEL_SERVICE_NAME || "companionai-server";
-    const intervalMs = Number(process.env.OTLP_PUSH_INTERVAL_MS || 30000);
-
+    const intervalMs = Math.max(Number(process.env.OTLP_PUSH_INTERVAL_MS || 30000), 10000);
+    const authHeader = `Basic ${Buffer.from(`${instanceId}:${apiKey}`).toString("base64")}`;
     const push = async () => {
         try {
-            const payload = buildOtlpPayload(serviceName);
-            const resp = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-                // basic auth
-                // node-fetch supports url with auth? We pass via fetch option 'headers' Authorization
-                // Build manually:
-                // Authorization: Basic base64(instanceId:apiKey)
-                // Avoid logging secrets
-                // eslint-disable-next-line no-undef
-                redirect: "follow",
-            });
-            // If not using headers Authorization, use fetch with URL auth? We'll use basic header:
-        } catch {}
-    };
-
-    // Implement with basic auth header
-    const authHeader = "Basic " + Buffer.from(`${instanceId}:${apiKey}`).toString("base64");
-
-    const pushWithAuth = async () => {
-        try {
-            const payload = await buildOtlpPayload(serviceName);
-            await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: authHeader },
-                body: JSON.stringify(payload),
-            });
-        } catch (e) {
-            try { console.warn("[OTLP] push failed:", e?.message || e); } catch {}
+            const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: authHeader }, body: JSON.stringify(await buildOtlpPayload(serviceName)) });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        } catch (error) {
+            console.warn("[OTLP] push failed:", error?.message || error);
         }
     };
-
-    // Initial push and interval
-    pushWithAuth().catch(() => {});
-    const timer = setInterval(pushWithAuth, intervalMs);
+    push();
+    const timer = setInterval(push, intervalMs);
     timer.unref?.();
 };
 
-export default { startOtlpPush };
+export default { startOtlpPush, buildOtlpPayload };
