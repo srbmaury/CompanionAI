@@ -52,6 +52,8 @@ describe("Happy flows E2E", () => {
 
         await firstClient.get("/api/auth/profile").set("Authorization", `Bearer ${firstLogin.body.token}`).expect(401);
         await secondClient.get("/api/auth/profile").set("Authorization", `Bearer ${secondLogin.body.token}`).expect(200);
+        await secondClient.post("/api/auth/refresh").expect(200);
+        await secondClient.post("/api/auth/refresh").expect(200);
         const user = await User.findOne({ email: "single-session@example.com" });
         expect(await RefreshToken.countDocuments({ user: user._id })).toBe(1);
     });

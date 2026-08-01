@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import User from "../models/User.js";
-import { bumpTokenVersion, signAccessToken, issueRefreshToken, consumeRefreshToken, revokeAllRefreshTokens } from "../utils/tokens.js";
+import { bumpTokenVersion, signAccessToken, issueRefreshToken, validateRefreshToken, revokeAllRefreshTokens } from "../utils/tokens.js";
 import { OAuth2Client } from "google-auth-library";
 import metrics from "../metrics/index.js";
 import { sendMail, buildVerificationEmail } from "../utils/mailer.js";
@@ -149,7 +149,7 @@ export const refreshAccessToken = async (req, res, next) => {
     const raw = req.cookies?.refreshToken;
     if (!raw) return res.status(401).json({ message: "No refresh token" });
     try {
-        const userId = await consumeRefreshToken(raw);
+        const userId = await validateRefreshToken(raw);
         if (!userId) {
             clearRefreshCookie(res);
             return res.status(401).json({ message: "Refresh token invalid or expired" });
@@ -159,10 +159,9 @@ export const refreshAccessToken = async (req, res, next) => {
             clearRefreshCookie(res);
             return res.status(401).json({ message: "User not found" });
         }
-        // Issue a fresh access token + rotate refresh token
+        // Keep the one server-side refresh session stable. Rotating it on every
+        // request makes concurrent tab reloads invalidate each other.
         const token = signAccessToken(user._id, user.tokenVersion);
-        const { raw: newRaw, expiresAt } = await issueRefreshToken(user._id, { userAgent: req.get("user-agent"), ip: req.ip });
-        setRefreshCookie(res, newRaw, expiresAt);
         return res.json({ token });
     } catch (err) {
         return next(err instanceof Error ? err : new Error(String(err)));

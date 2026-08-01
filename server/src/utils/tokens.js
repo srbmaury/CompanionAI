@@ -31,11 +31,14 @@ export const issueRefreshToken = async (userId, { userAgent, ip } = {}) => {
     return { raw, expiresAt };
 };
 
-export const consumeRefreshToken = async (raw) => {
+export const validateRefreshToken = async (raw) => {
     const tokenHash = hashOpaqueToken(raw);
-    const record = await RefreshToken.findOneAndDelete({ tokenHash });
+    const record = await RefreshToken.findOne({ tokenHash }).lean();
     if (!record) return null;
-    if (record.expiresAt < new Date()) return null;
+    if (record.expiresAt < new Date()) {
+        await RefreshToken.deleteOne({ _id: record._id });
+        return null;
+    }
     return record.user;
 };
 
