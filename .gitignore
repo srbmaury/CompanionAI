@@ -19,6 +19,8 @@ client/.vite-cache/
 
 # Test coverage and caches
 coverage/
+client/playwright-report/
+client/test-results/
 .nyc_output/
 .jest/
 .eslintcache

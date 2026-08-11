@@ -114,6 +114,50 @@ export const listAssessments = async (req, res, next) => {
     } catch (error) { return next(error); }
 };
 
+export const getHiringOverview = async (req, res, next) => {
+    try {
+        const page = Math.max(Number(req.query.page) || 1, 1);
+        const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50);
+        const search = (req.query.search || "").toString().trim().slice(0, 100);
+        const status = ["started", "submitted"].includes(req.query.status) ? req.query.status : "";
+        const assessments = await Assessment.find({ owner: req.user._id }).select("title company jobRole status expiresAt createdAt").sort({ createdAt: -1 }).lean();
+        const assessmentIds = assessments.map((item) => item._id);
+        const assessmentById = new Map(assessments.map((item) => [String(item._id), item]));
+        const requestedAssessmentId = req.query.assessmentId;
+        const selectedAssessmentId = assessmentById.has(String(requestedAssessmentId || "")) ? requestedAssessmentId : null;
+        const attemptFilter = {
+            assessment: requestedAssessmentId
+                ? (selectedAssessmentId || { $in: [] })
+                : { $in: assessmentIds },
+        };
+        if (status) attemptFilter.status = status;
+        if (search) {
+            const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            attemptFilter.$or = [{ candidateName: new RegExp(escaped, "i") }, { candidateEmail: new RegExp(escaped, "i") }];
+        }
+        const allAttemptsFilter = { assessment: { $in: assessmentIds } };
+        const [totalCandidates, submitted, inProgress, scoreSummary, filteredTotal, attempts] = await Promise.all([
+            CandidateAttempt.countDocuments(allAttemptsFilter),
+            CandidateAttempt.countDocuments({ ...allAttemptsFilter, status: "submitted" }),
+            CandidateAttempt.countDocuments({ ...allAttemptsFilter, status: "started" }),
+            CandidateAttempt.aggregate([{ $match: { ...allAttemptsFilter, status: "submitted", overallScore: { $type: "number" } } }, { $group: { _id: null, average: { $avg: "$overallScore" } } }]),
+            CandidateAttempt.countDocuments(attemptFilter),
+            CandidateAttempt.find(attemptFilter).select("assessment candidateName candidateEmail status startedAt submittedAt overallScore updatedAt").sort({ updatedAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+        ]);
+        return res.json({
+            summary: {
+                assessments: assessments.length,
+                activeAssessments: assessments.filter((item) => item.status === "active").length,
+                totalCandidates, submitted, inProgress,
+                averageScore: scoreSummary[0]?.average == null ? null : Math.round(scoreSummary[0].average * 10) / 10,
+            },
+            assessments,
+            candidates: attempts.map((attempt) => ({ ...attempt, assessment: assessmentById.get(String(attempt.assessment)) || null })),
+            total: filteredTotal, page, totalPages: Math.max(Math.ceil(filteredTotal / limit), 1),
+        });
+    } catch (error) { return next(error); }
+};
+
 export const getAssessmentReport = async (req, res, next) => {
     try {
         const assessment = await Assessment.findOne({ _id: req.params.assessmentId, owner: req.user._id }).lean();

@@ -1,13 +1,13 @@
 # CompanionAI
 
-AI-assisted interview preparation: build multi-round interviews from a job description, practice with voice or code, review resumes, and turn feedback into measurable progress.
+AI-assisted interview practice and candidate screening: candidates can build role-specific practice sessions with voice or code, while hiring teams can create structured assessments, manage candidates, and review consistent reports.
 
 ## Key features
 - Authentication: email verification, Google Sign-In, rotating access/refresh tokens, logout, password reset, and account deletion
 - Resumes: upload to Cloudinary, type/size validation, tags/notes, search/sort, PDF inline preview
 - Resume reviews: saved AI reviews with paginated history
 - Interview rounds: AI‑suggested rounds from JD; supports conversational and online‑assessment (OA) modes
-- Candidate assessments: shareable fixed-question interviews, optional contextual AI follow-ups, private interviewer-only reports, and candidate-safe submission flows
+- Hiring workspace: hybrid AI/manual assessments, shareable candidate interviews, optional contextual follow-ups, a cross-interview candidate pipeline, and private interviewer-only reports
 - Question generation: per‑round question sets with de‑duplication across rounds
 - Feedback: per‑question feedback with score and improvement suggestions
 - Voice: browser TTS, server-side Whisper transcription, and Web Speech fallback
@@ -17,7 +17,7 @@ AI-assisted interview preparation: build multi-round interviews from a job descr
 - Billing: Stripe-hosted Checkout, customer portal, signed/idempotent webhooks, dynamic pricing, and monthly usage limits
 - Assessment limits: 2 new assessments/month on Free and 50/month on Pro by default; public attempt actions also have Redis-backed abuse quotas
 - Admin: role-protected feedback inbox with filtering, pagination, and status management
-- Privacy: user data export and complete account-data deletion
+- Privacy: complete account-data deletion; the incomplete JSON export remains disabled behind client and server feature flags
 - Product analytics: authenticated, allowlisted funnel events with automatic 180-day expiry
 - API docs: OpenAPI/Swagger at `/api-docs`
 
@@ -80,6 +80,16 @@ cd client && npm run lint && npm test -- --run && npm run build
 cd ../server && npm test -- --run && npm run audit
 ```
 
+Run the browser journeys on desktop and mobile Chromium with:
+
+```bash
+cd client
+npx playwright install chromium
+npm run test:e2e
+```
+
+The browser suite verifies dual-audience landing content, login restoration after a full reload, recruiter pipeline management, and the candidate assessment journey. API responses from external or stateful services are deterministic in this UI suite; the server API journeys provide the database and authorization coverage. CI retains Playwright traces, screenshots, videos, HTML output, and JUnit results when a run fails.
+
 Run the launch-critical end-to-end product journey separately with:
 
 ```bash
@@ -106,7 +116,7 @@ Highlighted endpoints
 - Experiences: `GET /api/experiences/search?company=&role=`
 - Billing: `GET /api/billing/entitlements` · `POST /api/billing/checkout-session` · `POST /api/billing/portal-session` · `POST /api/billing/webhook`
 - Recommendations: `GET /api/recommendations`
-- Candidate assessments: `POST /api/assessments` · `GET /api/assessments` · `GET /api/assessments/{id}` · public link endpoints under `/api/assessments/public/{shareToken}`
+- Candidate assessments: `POST /api/assessments` · `GET /api/assessments` · `GET /api/assessments/overview` · `GET /api/assessments/{id}` · public link endpoints under `/api/assessments/public/{shareToken}`
 - Product feedback: `POST /api/product-feedback`
 - Product events: `POST /api/events`
 - Admin: `GET /api/admin/feedback` · `PATCH /api/admin/feedback/{feedbackId}`

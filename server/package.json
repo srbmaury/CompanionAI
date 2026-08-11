@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
+    "test:unit": "vitest run src/test/unit",
     "test:e2e": "vitest run src/test/e2e --reporter=verbose",
     "test:launch": "vitest run src/test/e2e/happyFlows.test.js src/test/e2e/progressAnalytics.test.js --reporter=verbose",
     "test:watch": "vitest",

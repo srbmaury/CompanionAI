@@ -24,12 +24,26 @@ jobs:
       - run: npm run lint
       - run: npm test -- --run
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Upload browser test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            client/playwright-report
+            client/test-results
+          if-no-files-found: ignore
+          retention-days: 14
       # React Router's remaining advisory affects RSC action handling; this app
       # is a client-only BrowserRouter SPA. Critical findings still fail CI.
       - run: npm audit --omit=dev --audit-level=critical
 
   server:
     runs-on: ubuntu-latest
+    env:
+      NODE_ENV: test
     defaults:
       run:
         working-directory: server
@@ -41,5 +55,8 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
       - run: npm ci
-      - run: npm test -- --run
+      - name: Server unit tests
+        run: npm run test:unit
+      - name: Server API journeys
+        run: npm run test:e2e
       - run: npm audit --omit=dev --audit-level=high
