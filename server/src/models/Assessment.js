@@ -2,6 +2,9 @@ import mongoose from "mongoose";
 
 const assessmentQuestionSchema = new mongoose.Schema({
     text: { type: String, required: true, maxlength: 1000 },
+    weight: { type: Number, min: 0.1, max: 10, default: 1 },
+    competencies: [{ type: String, maxlength: 80 }],
+    knockout: { type: Boolean, default: false },
 }, { _id: true });
 
 const assessmentRoundSchema = new mongoose.Schema({
@@ -20,10 +23,28 @@ const assessmentSchema = new mongoose.Schema({
     shareToken: { type: String, required: true, unique: true, index: true },
     status: { type: String, enum: ["active", "closed"], default: "active", index: true },
     followUpsEnabled: { type: Boolean, default: true },
+    inviteOnly: { type: Boolean, default: false },
     candidateInstructions: { type: String, maxlength: 1200, default: "" },
     contactEmail: { type: String, maxlength: 254, default: "" },
     durationMinutes: { type: Number, min: 5, max: 240, default: 30 },
     expiresAt: Date,
+    integrity: {
+        enabled: { type: Boolean, default: false },
+        requireFullscreen: { type: Boolean, default: false },
+        trackFocus: { type: Boolean, default: true },
+        trackClipboard: { type: Boolean, default: true },
+        requireCamera: { type: Boolean, default: false },
+        retentionDays: { type: Number, min: 1, max: 365, default: 30 },
+    },
+    rubric: [{ name: { type: String, maxlength: 80 }, description: { type: String, maxlength: 300 }, weight: { type: Number, min: 1, max: 100, default: 1 } }],
+    templateName: { type: String, maxlength: 160, default: "" },
+    templateVersion: { type: Number, min: 1, default: 1 },
+    invitations: [{
+        email: { type: String, lowercase: true, trim: true, maxlength: 254 },
+        name: { type: String, maxlength: 120, default: "" },
+        status: { type: String, enum: ["invited", "opened", "started", "completed", "revoked"], default: "invited" },
+        invitedAt: { type: Date, default: Date.now }, lastSentAt: Date, openedAt: Date, revokedAt: Date,
+    }],
     rounds: { type: [assessmentRoundSchema], validate: (value) => value.length >= 1 && value.length <= 5 },
 }, { timestamps: true });
 

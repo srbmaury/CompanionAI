@@ -101,7 +101,7 @@ const userSchema = new mongoose.Schema(
             default: "UTC",
         },
         lastReminderKey: { type: String, default: "", select: false },
-        plan: { type: String, enum: ["free", "pro"], default: "free", index: true },
+        plan: { type: String, enum: ["free", "pro", "scale"], default: "free", index: true },
         subscriptionStatus: { type: String, enum: ["inactive", "incomplete", "incomplete_expired", "trialing", "active", "past_due", "canceled", "unpaid", "paused"], default: "inactive" },
         billingProvider: { type: String, enum: ["none", "stripe"], default: "none", select: false },
         billingCustomerId: { type: String, default: "", select: false },

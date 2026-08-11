@@ -2,6 +2,9 @@ import mongoose from "mongoose";
 
 const attemptQuestionSchema = new mongoose.Schema({
     text: { type: String, required: true, maxlength: 1000 },
+    weight: { type: Number, min: 0.1, max: 10, default: 1 },
+    competencies: [{ type: String, maxlength: 80 }],
+    knockout: { type: Boolean, default: false },
     answer: { type: String, maxlength: 20000, default: "" },
     spokenExplanation: { type: String, maxlength: 5000, default: "" },
     followUpQuestion: { type: String, maxlength: 1000, default: "" },
@@ -32,6 +35,13 @@ const candidateAttemptSchema = new mongoose.Schema({
     evaluationError: { type: String, maxlength: 500, default: "" },
     rounds: [attemptRoundSchema],
     overallScore: { type: Number, min: 0, max: 10 },
+    reviewerScore: { type: Number, min: 0, max: 10 },
+    reviewerDecision: { type: String, enum: ["", "advance", "hold", "reject"], default: "" },
+    reviewerNotes: { type: String, maxlength: 5000, default: "" },
+    reviewerRatings: [{ criterion: { type: String, maxlength: 80 }, score: { type: Number, min: 0, max: 10 }, note: { type: String, maxlength: 1000, default: "" } }],
+    reviewedAt: Date,
+    integrityConsentAt: Date,
+    integrityEvents: [{ type: { type: String, enum: ["tab_hidden", "window_blur", "fullscreen_exit", "copy", "paste", "offline", "online"] }, at: { type: Date, default: Date.now }, metadata: { type: mongoose.Schema.Types.Mixed } }],
 }, { timestamps: true });
 
 candidateAttemptSchema.index({ assessment: 1, candidateEmail: 1 }, { unique: true });

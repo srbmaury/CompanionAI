@@ -1,9 +1,11 @@
 import express from "express";
+import { z } from "zod";
 import protect from "../middleware/authMiddleware.js";
+import validate from "../middleware/validate.js";
 import UsageCounter from "../models/UsageCounter.js";
-import { currentMonth, limitsFor } from "../services/entitlements.js";
+import { currentMonth, limitsFor, PLAN_LIMITS } from "../services/entitlements.js";
 import { getStripe } from "../config/stripe.js";
-import { getProPrice } from "../services/billingCatalog.js";
+import { getPlanPrice } from "../services/billingCatalog.js";
 import metrics from "../metrics/index.js";
 
 const router = express.Router();
@@ -15,24 +17,28 @@ router.get("/entitlements", protect, async (req, res, next) => {
         const limits = limitsFor(req.user);
         const counters = await UsageCounter.find({ user: req.user._id, period }).lean();
         const used = Object.fromEntries(counters.map((item) => [item.metric, item.used]));
-        let proPrice = null;
-        try { if (process.env.NODE_ENV !== "test" && process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRO_PRICE_ID) proPrice = await getProPrice(); } catch (error) { console.warn("Stripe price lookup failed", error?.message || error); }
-        res.json({ period, plan: limits.plan, subscriptionStatus: req.user.subscriptionStatus, limits: { interviews: limits.interviewsPerMonth, resumeReviews: limits.resumeReviewsPerMonth, assessments: limits.assessmentsPerMonth }, used: { interviews: used.interviews || 0, resumeReviews: used.resumeReviews || 0, assessments: used.assessments || 0 }, proPrice, billingAvailable: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && proPrice) });
+        let proPrice = null; let scalePrice = null;
+        try { if (process.env.NODE_ENV !== "test" && process.env.STRIPE_SECRET_KEY) [proPrice, scalePrice] = await Promise.all([getPlanPrice("pro"), getPlanPrice("scale")]); } catch (error) { console.warn("Stripe price lookup failed", error?.message || error); }
+        const billingConfigured = Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
+        res.json({ period, plan: limits.plan, subscriptionStatus: req.user.subscriptionStatus, limits: { interviews: limits.interviewsPerMonth, resumeReviews: limits.resumeReviewsPerMonth, assessments: limits.assessmentsPerMonth }, planLimits: { free: { interviews: PLAN_LIMITS.free.interviewsPerMonth, resumeReviews: PLAN_LIMITS.free.resumeReviewsPerMonth, assessments: PLAN_LIMITS.free.assessmentsPerMonth }, pro: { interviews: PLAN_LIMITS.pro.interviewsPerMonth, resumeReviews: PLAN_LIMITS.pro.resumeReviewsPerMonth, assessments: PLAN_LIMITS.pro.assessmentsPerMonth }, scale: { interviews: PLAN_LIMITS.scale.interviewsPerMonth, resumeReviews: PLAN_LIMITS.scale.resumeReviewsPerMonth, assessments: PLAN_LIMITS.scale.assessmentsPerMonth } }, used: { interviews: used.interviews || 0, resumeReviews: used.resumeReviews || 0, assessments: used.assessments || 0 }, prices: { pro: proPrice, scale: scalePrice }, proPrice, billingAvailable: { pro: Boolean(billingConfigured && proPrice), scale: Boolean(billingConfigured && scalePrice) } });
     } catch (error) { next(error); }
 });
-router.post("/checkout-session", protect, async (req, res, next) => {
+router.post("/checkout-session", protect, validate(z.object({ plan: z.enum(["pro", "scale"]).optional().default("pro") })), async (req, res, next) => {
     try {
-        if (!process.env.STRIPE_PRO_PRICE_ID) return res.status(503).json({ message: "Pro checkout is not configured" });
-        if (limitsFor(req.user).plan === "pro") return res.status(409).json({ message: "You already have an active Pro subscription" });
+        const selectedPlan = req.body.plan;
+        const priceId = selectedPlan === "scale" ? process.env.STRIPE_SCALE_PRICE_ID : process.env.STRIPE_PRO_PRICE_ID;
+        if (!priceId) return res.status(503).json({ message: `${selectedPlan === "scale" ? "Scale" : "Pro"} checkout is not configured` });
+        if (limitsFor(req.user).plan === selectedPlan) return res.status(409).json({ message: `You already have an active ${selectedPlan === "scale" ? "Scale" : "Pro"} subscription` });
+        if (req.user.billingCustomerId && limitsFor(req.user).plan !== "free") return res.status(409).json({ message: "Use Manage billing to change your active subscription" });
         const stripe = getStripe();
         const session = await stripe.checkout.sessions.create({
             mode: "subscription",
-            line_items: [{ price: process.env.STRIPE_PRO_PRICE_ID, quantity: 1 }],
+            line_items: [{ price: priceId, quantity: 1 }],
             customer: req.user.billingCustomerId || undefined,
             customer_email: req.user.billingCustomerId ? undefined : req.user.email,
             client_reference_id: String(req.user._id),
-            metadata: { userId: String(req.user._id) },
-            subscription_data: { metadata: { userId: String(req.user._id) } },
+            metadata: { userId: String(req.user._id), plan: selectedPlan },
+            subscription_data: { metadata: { userId: String(req.user._id), plan: selectedPlan } },
             allow_promotion_codes: true,
             success_url: `${clientOrigin()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
             cancel_url: `${clientOrigin()}/pricing?checkout=cancelled`,

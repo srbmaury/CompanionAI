@@ -37,7 +37,7 @@ Reminder deliveries are persisted in MongoDB and retried with exponential backof
 
 ## Stripe incidents
 
-Check webhook signing secret, event delivery status, `billingevents`, and the affected user's Stripe customer/subscription IDs. Replay failed webhook events from Stripe after fixing the cause. Never grant Pro access solely from a client redirect.
+Check webhook signing secret, event delivery status, `billingevents`, the configured Pro/Scale price IDs, and the affected user's Stripe customer/subscription IDs. Replay failed webhook events from Stripe after fixing the cause. Never grant paid-plan access solely from a client redirect.
 
 ## Security incident
 

@@ -40,6 +40,7 @@ export default function Header() {
     const handleLogout = async () => { await logout(); navigate("/login", { replace: true }); };
     const close = () => setAnchor(null);
     const goBack = useSafeBack(Boolean(user));
+    const openNewAssessment = () => navigate("/assessments?create=1", { state: { openCreate: Date.now() } });
 
     return (
         <AppBar position="sticky" color="transparent" elevation={0} sx={{ bgcolor: "background.paper", borderBottom: "1px solid", borderColor: "divider", color: "text.primary", backdropFilter: "blur(18px)", zIndex: 1200 }}>
@@ -66,7 +67,7 @@ export default function Header() {
                                 <Button component={RouterLink} to="/dashboard" sx={navSx("/dashboard")}>Dashboard</Button>
                                 {workspace === "practice" ? <Button component={RouterLink} to="/resume-review" sx={navSx("/resume-review")}>Resume review</Button> : <Button component={RouterLink} to="/assessments" sx={navSx("/assessments")}>Assessments</Button>}
                                 {user?.role === "admin" && <Button component={RouterLink} to="/admin/feedback" sx={navSx("/admin/feedback")}>Feedback inbox</Button>}
-                                <Button component={RouterLink} to={workspace === "hiring" ? "/assessments?create=1" : "/create-interview"} variant="contained" startIcon={<AddRounded />} sx={{ ml: 1, px: 2 }}>{workspace === "hiring" ? "New assessment" : "New practice"}</Button>
+                                <Button component={workspace === "hiring" ? "button" : RouterLink} to={workspace === "hiring" ? undefined : "/create-interview"} onClick={workspace === "hiring" ? openNewAssessment : undefined} variant="contained" startIcon={<AddRounded />} sx={{ ml: 1, px: 2 }}>{workspace === "hiring" ? "New assessment" : "New practice"}</Button>
                                 <Tooltip title="Account and navigation"><IconButton onClick={(event) => setProfileAnchor(event.currentTarget)} aria-label="Open account menu"><Avatar sx={{ width: 36, height: 36, bgcolor: "primary.main", fontSize: 14, fontWeight: 800 }}>{user?.name?.charAt(0)?.toUpperCase() || "U"}</Avatar></IconButton></Tooltip>
                                 <Menu anchorEl={profileAnchor} open={Boolean(profileAnchor)} onClose={() => setProfileAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }}>
                                     <MenuItem selected={workspace === "practice"} onClick={() => switchWorkspace("practice")}>Practice workspace</MenuItem>
@@ -84,7 +85,7 @@ export default function Header() {
                             <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={close} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }}>
                                 <MenuItem component={RouterLink} to="/dashboard" onClick={close}>Dashboard</MenuItem>
                                 <MenuItem onClick={() => { close(); switchWorkspace(workspace === "practice" ? "hiring" : "practice"); }}>Switch to {workspace === "practice" ? "hiring" : "practice"} workspace</MenuItem>
-                                <MenuItem component={RouterLink} to="/create-interview" onClick={close}>New practice</MenuItem>
+                                {workspace === "hiring" ? <MenuItem onClick={() => { close(); openNewAssessment(); }}>New assessment</MenuItem> : <MenuItem component={RouterLink} to="/create-interview" onClick={close}>New practice</MenuItem>}
                                 <MenuItem component={RouterLink} to="/experiences" onClick={close}>Experiences</MenuItem>
                                 <MenuItem component={RouterLink} to="/resume-review" onClick={close}>Resume review</MenuItem>
                                 <MenuItem component={RouterLink} to="/assessments" onClick={close}>Assess candidates</MenuItem>

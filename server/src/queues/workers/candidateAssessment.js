@@ -1,6 +1,7 @@
 import CandidateAttempt from "../../models/CandidateAttempt.js";
 import { generateFeedbackForAnswer } from "../../utils/generateFeedback.js";
 import metrics from "../../metrics/index.js";
+import Assessment from "../../models/Assessment.js";
 
 export default async function candidateAssessmentProcessor(job) {
     const attempt = await CandidateAttempt.findOne({ _id: job.data?.attemptId, status: "evaluating" });
@@ -8,7 +9,7 @@ export default async function candidateAssessmentProcessor(job) {
     try {
         const items = attempt.rounds.flatMap((round) => round.questions);
         let completed = 0;
-        const allScores = [];
+        const allScores = []; let weightedTotal = 0; let totalWeight = 0;
         for (const round of attempt.rounds) {
             const roundScores = [];
             for (const item of round.questions) {
@@ -16,12 +17,14 @@ export default async function candidateAssessmentProcessor(job) {
                 const feedback = await generateFeedbackForAnswer({ questionText: item.text, userAnswer: combined });
                 item.feedbackComment = feedback.comment; item.suggestions = feedback.suggestions; item.score = feedback.score;
                 roundScores.push(feedback.score); allScores.push(feedback.score);
+                const weight = Number(item.weight) || 1; weightedTotal += feedback.score * weight; totalWeight += weight;
                 completed += 1; await job.updateProgress?.(Math.round(completed / items.length * 100));
             }
             round.score = roundScores.length ? Math.round((roundScores.reduce((a, b) => a + b, 0) / roundScores.length) * 10) / 10 : 0;
         }
-        attempt.overallScore = allScores.length ? Math.round((allScores.reduce((a, b) => a + b, 0) / allScores.length) * 10) / 10 : 0;
+        attempt.overallScore = totalWeight ? Math.round((weightedTotal / totalWeight) * 10) / 10 : 0;
         attempt.status = "submitted"; attempt.submittedAt = new Date(); attempt.evaluationError = ""; await attempt.save();
+        await Assessment.updateOne({ _id: attempt.assessment, "invitations.email": attempt.candidateEmail }, { $set: { "invitations.$.status": "completed" } });
         try { metrics.candidateAssessmentCompletionDurationSeconds.observe(Math.max((attempt.submittedAt.getTime() - attempt.startedAt.getTime()) / 1000, 0)); } catch {}
         return { submitted: true, score: attempt.overallScore };
     } catch (error) {

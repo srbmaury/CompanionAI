@@ -9,8 +9,10 @@ import { transcribe } from "./sttController.js";
 import { getQueue } from "../queues/index.js";
 import { createJobId } from "../queues/jobIds.js";
 import candidateAssessmentProcessor from "../queues/workers/candidateAssessment.js";
+import { sendMail } from "../utils/mailer.js";
 
 const tokenHash = (value) => crypto.createHash("sha256").update(value).digest("hex");
+const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 const followupLabel = (assessment) => assessment == null ? "unknown" : assessment.followUpsEnabled ? "enabled" : "disabled";
 const observeCandidateAction = (action, outcome, assessment) => { try { metrics.candidateAssessmentActionsTotal.labels(action, outcome, followupLabel(assessment)).inc(); } catch {} };
 const publicAssessment = (assessment) => ({
@@ -21,7 +23,9 @@ const publicAssessment = (assessment) => ({
     contactEmail: assessment.contactEmail,
     durationMinutes: assessment.durationMinutes,
     followUpsEnabled: assessment.followUpsEnabled,
+    inviteOnly: assessment.inviteOnly,
     expiresAt: assessment.expiresAt,
+    integrity: assessment.integrity || { enabled: false },
     capabilities: {
         codeExecution: process.env.ENABLE_CODE_EXEC === "true",
         transcription: process.env.ENABLE_STT === "true",
@@ -88,7 +92,7 @@ export const transcribeCandidateAudio = async (req, res, next) => {
 
 export const createAssessment = async (req, res, next) => {
     try {
-        const { title, company = "", jobRole, jobDescription, followUpsEnabled = true, candidateInstructions = "", contactEmail = "", durationMinutes = 30, expiresAt, rounds } = req.body;
+        const { title, company = "", jobRole, jobDescription, followUpsEnabled = true, inviteOnly = false, candidateInstructions = "", contactEmail = "", durationMinutes = 30, expiresAt, rounds, integrity, rubric = [], templateName = "" } = req.body;
         const generatedRounds = [];
         const excludeTexts = [];
         for (const input of rounds) {
@@ -105,11 +109,11 @@ export const createAssessment = async (req, res, next) => {
             const texts = [...manualTexts, ...(Array.isArray(generated) ? generated : []).map((item) => typeof item === "string" ? item : item?.text).map((item) => (item || "").toString().trim()).filter(Boolean)].slice(0, count);
             while (texts.length < count) texts.push(`Describe how you would approach ${input.name} challenge ${texts.length + 1} for a ${jobRole}.`);
             excludeTexts.push(...texts);
-            generatedRounds.push({ name: input.name, description: input.description || "", deliveryMode: input.deliveryMode || "conversational", questions: texts.map((text) => ({ text })) });
+            generatedRounds.push({ name: input.name, description: input.description || "", deliveryMode: input.deliveryMode || "conversational", questions: texts.map((text, index) => ({ text, weight: input.questions?.[index]?.weight || 1, competencies: input.questions?.[index]?.competencies || [], knockout: Boolean(input.questions?.[index]?.knockout) })) });
         }
         const assessment = await Assessment.create({
-            owner: req.user._id, title, company, jobRole, jobDescription, followUpsEnabled,
-            candidateInstructions, contactEmail, durationMinutes, expiresAt: expiresAt || undefined, rounds: generatedRounds,
+            owner: req.user._id, title, company, jobRole, jobDescription, followUpsEnabled, inviteOnly,
+            candidateInstructions, contactEmail, durationMinutes, expiresAt: expiresAt || undefined, rounds: generatedRounds, integrity, rubric, templateName,
             shareToken: crypto.randomBytes(24).toString("base64url"),
         });
         try { metrics.assessmentsTotal.labels("create", "success").inc(); metrics.assessmentQuestions.observe(generatedRounds.reduce((sum, round) => sum + round.questions.length, 0)); } catch {}
@@ -220,8 +224,10 @@ export const updateAssessment = async (req, res, next) => {
 
 export const getPublicAssessment = async (req, res, next) => {
     try {
-        const assessment = await findPublicAssessment(req.params.shareToken).lean();
+        const assessment = await findPublicAssessment(req.params.shareToken);
         if (!assessment) { observeCandidateAction("view", "unavailable", null); return res.status(404).json({ message: "Assessment unavailable" }); }
+        const invitation = req.query.invite ? assessment.invitations?.id(req.query.invite) : null;
+        if (invitation && invitation.status === "invited") { invitation.status = "opened"; invitation.openedAt = new Date(); await assessment.save(); }
         observeCandidateAction("view", "success", assessment);
         return res.json(publicAssessment(assessment));
     } catch (error) { return next(error); }
@@ -232,16 +238,90 @@ export const startCandidateAttempt = async (req, res, next) => {
         const assessment = await findPublicAssessment(req.params.shareToken);
         if (!assessment) { observeCandidateAction("start", "unavailable", null); return res.status(404).json({ message: "Assessment unavailable" }); }
         const candidateEmail = req.body.email.toLowerCase().trim();
+        const activeInvitation = assessment.invitations?.find((item) => item.email === candidateEmail && item.status !== "revoked");
+        if (assessment.inviteOnly && !activeInvitation) return res.status(403).json({ message: "This assessment is invitation-only. Use the email address that was invited." });
         const existing = await CandidateAttempt.findOne({ assessment: assessment._id, candidateEmail });
         if (existing) { observeCandidateAction("start", "duplicate", assessment); return res.status(409).json({ message: existing.status === "submitted" ? "This email has already submitted an attempt" : "An attempt for this email is already in progress. Continue from the browser where it was started or contact the interviewer." }); }
         const rawToken = crypto.randomBytes(32).toString("base64url");
-        const rounds = assessment.rounds.map((round) => ({ name: round.name, description: round.description, deliveryMode: round.deliveryMode || "conversational", questions: round.questions.map((question) => ({ text: question.text })) }));
+        const rounds = assessment.rounds.map((round) => ({ name: round.name, description: round.description, deliveryMode: round.deliveryMode || "conversational", questions: round.questions.map((question) => ({ text: question.text, weight: question.weight, competencies: question.competencies, knockout: question.knockout })) }));
         const attempt = new CandidateAttempt({ assessment: assessment._id, candidateEmail });
         attempt.candidateName = req.body.name.trim(); attempt.accessTokenHash = tokenHash(rawToken); attempt.rounds = rounds; attempt.status = "started"; attempt.startedAt = new Date();
+        if (assessment.integrity?.enabled && req.body.integrityConsent) attempt.integrityConsentAt = new Date();
+        const invitation = activeInvitation;
+        if (invitation) invitation.status = "started";
         await attempt.save();
+        if (invitation) await assessment.save();
         observeCandidateAction("start", "success", assessment);
         return res.status(201).json({ attemptToken: rawToken, attempt: publicAttempt(attempt) });
     } catch (error) { observeCandidateAction("start", "failure", null); return next(error); }
+};
+
+export const recordIntegrityEvent = async (req, res, next) => {
+    try {
+        const assessment = await findPublicAssessment(req.params.shareToken);
+        if (!assessment?.integrity?.enabled) return res.status(204).end();
+        const attempt = await findAttempt(assessment._id, req.params.attemptId, req.get("x-attempt-token"));
+        if (!attempt || attempt.status !== "started") return res.status(401).json({ message: "Attempt unavailable" });
+        if (attempt.integrityEvents.length >= 500) return res.status(202).json({ recorded: false });
+        attempt.integrityEvents.push({ type: req.body.type, at: new Date(), metadata: req.body.metadata || {} });
+        await attempt.save();
+        return res.status(201).json({ recorded: true });
+    } catch (error) { return next(error); }
+};
+
+export const inviteCandidates = async (req, res, next) => {
+    try {
+        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, owner: req.user._id });
+        if (!assessment) return res.status(404).json({ message: "Assessment not found" });
+        const appUrl = (process.env.CLIENT_URL || "http://localhost:5173").split(",")[0].trim();
+        const link = `${appUrl}/assessment/${assessment.shareToken}`;
+        const results = [];
+        for (const entry of req.body.candidates) {
+            const email = entry.email.toLowerCase().trim();
+            let invitation = assessment.invitations.find((item) => item.email === email);
+            if (!invitation) { assessment.invitations.push({ email, name: entry.name || "", status: "invited", invitedAt: new Date(), lastSentAt: new Date() }); invitation = assessment.invitations.at(-1); }
+            else { invitation.status = "invited"; invitation.revokedAt = undefined; invitation.lastSentAt = new Date(); }
+            const candidateLink = `${link}?invite=${invitation._id}`;
+            try {
+                await sendMail({ to: email, subject: `Invitation: ${assessment.title}`, text: `Hi ${entry.name || "there"},\n\nYou have been invited to complete ${assessment.title} for ${assessment.jobRole}.\n\nOpen assessment: ${candidateLink}\n\nDeadline: ${assessment.expiresAt ? assessment.expiresAt.toLocaleString() : "No fixed deadline"}.`, html: `<p>Hi ${escapeHtml(entry.name || "there")},</p><p>You have been invited to complete <strong>${escapeHtml(assessment.title)}</strong> for ${escapeHtml(assessment.jobRole)}.</p><p><a href="${escapeHtml(candidateLink)}">Start assessment</a></p><p>Deadline: ${assessment.expiresAt ? escapeHtml(assessment.expiresAt.toLocaleString()) : "No fixed deadline"}.</p>` });
+                results.push({ email, sent: true });
+            } catch { results.push({ email, sent: false }); }
+        }
+        await assessment.save();
+        return res.json({ invitations: assessment.invitations, results });
+    } catch (error) { return next(error); }
+};
+
+export const revokeInvitation = async (req, res, next) => {
+    try {
+        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, owner: req.user._id });
+        if (!assessment) return res.status(404).json({ message: "Assessment not found" });
+        const invitation = assessment.invitations.id(req.params.invitationId);
+        if (!invitation) return res.status(404).json({ message: "Invitation not found" });
+        invitation.status = "revoked"; invitation.revokedAt = new Date(); await assessment.save();
+        return res.json({ invitation });
+    } catch (error) { return next(error); }
+};
+
+export const reviewCandidateAttempt = async (req, res, next) => {
+    try {
+        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, owner: req.user._id });
+        if (!assessment) return res.status(404).json({ message: "Assessment not found" });
+        const attempt = await CandidateAttempt.findOne({ _id: req.params.attemptId, assessment: assessment._id });
+        if (!attempt) return res.status(404).json({ message: "Candidate attempt not found" });
+        Object.assign(attempt, { reviewerScore: req.body.reviewerScore, reviewerDecision: req.body.reviewerDecision, reviewerNotes: req.body.reviewerNotes, reviewerRatings: req.body.reviewerRatings || [], reviewedAt: new Date() });
+        await attempt.save(); return res.json({ attempt });
+    } catch (error) { return next(error); }
+};
+
+export const duplicateAssessment = async (req, res, next) => {
+    try {
+        const source = await Assessment.findOne({ _id: req.params.assessmentId, owner: req.user._id }).lean();
+        if (!source) return res.status(404).json({ message: "Assessment not found" });
+        const { _id, createdAt, updatedAt, __v, invitations, ...copy } = source;
+        const assessment = await Assessment.create({ ...copy, owner: req.user._id, title: req.body.title || `${source.title} copy`, status: "active", shareToken: crypto.randomBytes(24).toString("base64url"), invitations: [], templateVersion: (source.templateVersion || 1) + 1 });
+        return res.status(201).json(assessment);
+    } catch (error) { return next(error); }
 };
 
 export const saveCandidateAnswer = async (req, res, next) => {

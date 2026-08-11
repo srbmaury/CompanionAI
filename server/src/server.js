@@ -16,6 +16,7 @@ import * as Sentry from "@sentry/node";
 import { startOtlpPush } from "./metrics/otlpPush.js";
 import { deliverDuePracticeReminders } from "./services/practiceReminders.js";
 import CandidateAttempt from "./models/CandidateAttempt.js";
+import Assessment from "./models/Assessment.js";
 import { getQueue } from "./queues/index.js";
 import { createJobId } from "./queues/jobIds.js";
 
@@ -197,6 +198,16 @@ const server = app.listen(PORT, async () => {
         });
         if (process.env.REMINDER_DELIVERY_ENABLED === "true") console.log("[REMINDERS] Delivery scheduler started");
     } catch (error) { console.warn("[REMINDERS] Scheduler failed", error?.message || error); }
+
+    try {
+        cron.schedule("15 3 * * *", async () => {
+            const assessments = await Assessment.find({ "integrity.enabled": true }).select("integrity.retentionDays").lean();
+            for (const assessment of assessments) {
+                const cutoff = new Date(Date.now() - (assessment.integrity?.retentionDays || 30) * 86400000);
+                await CandidateAttempt.updateMany({ assessment: assessment._id }, { $pull: { integrityEvents: { at: { $lt: cutoff } } } });
+            }
+        });
+    } catch (error) { console.warn("[INTEGRITY] Retention cleanup scheduler failed", error?.message || error); }
 
     // Start OTLP push if configured
     try { startOtlpPush(); } catch {}

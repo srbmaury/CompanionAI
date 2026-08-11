@@ -4,12 +4,18 @@ import { getStripe } from "../config/stripe.js";
 import metrics from "../metrics/index.js";
 
 const activeStatuses = new Set(["active", "trialing"]);
+const subscriptionPlan = (subscription) => {
+    const priceId = subscription.items?.data?.[0]?.price?.id;
+    if (priceId && priceId === process.env.STRIPE_SCALE_PRICE_ID) return "scale";
+    if (priceId && priceId === process.env.STRIPE_PRO_PRICE_ID) return "pro";
+    return ["pro", "scale"].includes(subscription.metadata?.plan) ? subscription.metadata.plan : "pro";
+};
 const syncSubscription = async (subscription) => {
     const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id;
     const userId = subscription.metadata?.userId;
     const filter = userId ? { _id: userId } : { billingCustomerId: customerId };
     if (!userId && !customerId) return;
-    await User.updateOne(filter, { $set: { billingProvider: "stripe", billingCustomerId: customerId || "", billingSubscriptionId: subscription.id, subscriptionStatus: subscription.status, plan: activeStatuses.has(subscription.status) ? "pro" : "free" } });
+    await User.updateOne(filter, { $set: { billingProvider: "stripe", billingCustomerId: customerId || "", billingSubscriptionId: subscription.id, subscriptionStatus: subscription.status, plan: activeStatuses.has(subscription.status) ? subscriptionPlan(subscription) : "free" } });
     metrics.billingSubscriptionTransitionsTotal.labels(subscription.status || "unknown").inc();
 };
 

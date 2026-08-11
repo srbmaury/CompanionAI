@@ -51,11 +51,14 @@ describe("assessment workspace hierarchy", () => {
         expect(await screen.findByDisplayValue("Describe a specific React performance issue you diagnosed and how you measured the result.")).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: "Add manual question" }));
         fireEvent.change(screen.getByLabelText(/Question 3/), { target: { value: "Review this component API and identify its accessibility risks." } });
+        fireEvent.click(screen.getByLabelText("Only allow explicitly invited email addresses to start"));
+        fireEvent.change(screen.getByLabelText(/Candidate email addresses/), { target: { value: "one@example.com, two@example.com" } });
         fireEvent.click(screen.getByRole("button", { name: "Create and publish assessment" }));
         await vi.waitFor(() => expect(post).toHaveBeenCalledWith("/assessments", expect.objectContaining({ rounds: [expect.objectContaining({ deliveryMode: "online-assessment", questionCount: 3, questions: [
-            { text: "Describe a specific React performance issue you diagnosed and how you measured the result." },
-            { text: "How do you test keyboard accessibility?" },
-            { text: "Review this component API and identify its accessibility risks." },
+            expect.objectContaining({ text: "Describe a specific React performance issue you diagnosed and how you measured the result.", weight: 1 }),
+            expect.objectContaining({ text: "How do you test keyboard accessibility?", weight: 1 }),
+            expect.objectContaining({ text: "Review this component API and identify its accessibility risks.", weight: 1 }),
         ] })] })));
+        await vi.waitFor(() => expect(post).toHaveBeenCalledWith("/assessments/created/invitations", { candidates: [{ email: "one@example.com" }, { email: "two@example.com" }] }));
     });
 });
