@@ -10,7 +10,7 @@ const interviewSchema = new mongoose.Schema(
         resume: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Resume",
-            required: true,
+            default: null,
         },
         company: {
             type: String,

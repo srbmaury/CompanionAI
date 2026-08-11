@@ -23,6 +23,7 @@ VITE_TURNSTILE_SITE_KEY=<your_turnstile_site_key>
 # VITE_CAPTCHA_PROVIDER=recaptcha
 # VITE_RECAPTCHA_SITE_KEY=<your_recaptcha_site_key>
 VITE_GOOGLE_CLIENT_ID=<your_google_oauth_client_id>
+VITE_ACCOUNT_DATA_EXPORT_ENABLED=false
 ```
 
 On the server, set `CAPTCHA_ENABLED=true` and `CAPTCHA_SECRET` and optionally enable `CAPTCHA_LOGIN_ENABLED` and `CAPTCHA_REGISTER_ENABLED`.

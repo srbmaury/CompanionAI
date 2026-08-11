@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import client from "prom-client";
 import { normalizeRoute } from "../../metrics/routes.js";
 import { buildOtlpPayload } from "../../metrics/otlpPush.js";
+import metrics from "../../metrics/index.js";
 
 describe("observability metrics", () => {
     it("normalizes unmatched dynamic identifiers without retaining sensitive cardinality", () => {
@@ -20,5 +21,18 @@ describe("observability metrics", () => {
         const metric = payload.resourceMetrics[0].scopeMetrics[0].metrics[0];
         expect(metric.histogram.dataPoints[0]).toMatchObject({ count: "2", explicitBounds: [1, 2], bucketCounts: ["1", "0", "1"] });
         expect(typeof metric.histogram.dataPoints[0].timeUnixNano).toBe("string");
+    });
+
+    it("registers bounded assessment funnel metrics", async () => {
+        const names = (await metrics.client.register.getMetricsAsJSON()).map((metric) => metric.name);
+        expect(names).toEqual(expect.arrayContaining([
+            "assessments_total",
+            "assessment_questions",
+            "candidate_assessment_actions_total",
+            "candidate_assessment_completion_duration_seconds",
+            "assessment_reports_viewed_total",
+        ]));
+        const funnel = metrics.client.register.getSingleMetric("candidate_assessment_actions_total");
+        expect(funnel.labelNames).toEqual(["action", "outcome", "followups"]);
     });
 });

@@ -17,7 +17,7 @@ router.get("/entitlements", protect, async (req, res, next) => {
         const used = Object.fromEntries(counters.map((item) => [item.metric, item.used]));
         let proPrice = null;
         try { if (process.env.NODE_ENV !== "test" && process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PRO_PRICE_ID) proPrice = await getProPrice(); } catch (error) { console.warn("Stripe price lookup failed", error?.message || error); }
-        res.json({ period, plan: limits.plan, subscriptionStatus: req.user.subscriptionStatus, limits: { interviews: limits.interviewsPerMonth, resumeReviews: limits.resumeReviewsPerMonth }, used: { interviews: used.interviews || 0, resumeReviews: used.resumeReviews || 0 }, proPrice, billingAvailable: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && proPrice) });
+        res.json({ period, plan: limits.plan, subscriptionStatus: req.user.subscriptionStatus, limits: { interviews: limits.interviewsPerMonth, resumeReviews: limits.resumeReviewsPerMonth, assessments: limits.assessmentsPerMonth }, used: { interviews: used.interviews || 0, resumeReviews: used.resumeReviews || 0, assessments: used.assessments || 0 }, proPrice, billingAvailable: Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET && proPrice) });
     } catch (error) { next(error); }
 });
 router.post("/checkout-session", protect, async (req, res, next) => {

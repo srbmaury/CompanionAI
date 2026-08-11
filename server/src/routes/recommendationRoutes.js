@@ -16,7 +16,12 @@ router.get("/", protect, async (req, res, next) => {
         const recent = await Interview.find({ user: req.user._id }).sort({ createdAt: -1 }).limit(1).populate({ path: "rounds.round", select: "status" }).lean();
         const last = recent[0];
         const hasIncomplete = Boolean(last?.rounds?.some((entry) => entry.round?.status !== "completed"));
-        const actions = (goalCopy[req.user.practiceGoal] || goalCopy.confidence).map((title, index) => ({ id: `${req.user.practiceGoal || "confidence"}-${index}`, title, href: index === 1 && hasIncomplete ? `/interviews/${last._id}` : index === 2 ? "/progress" : "/create-interview" }));
+        const actions = (goalCopy[req.user.practiceGoal] || goalCopy.confidence).map((title, index) => ({
+            id: `${req.user.practiceGoal || "confidence"}-${index}`,
+            title,
+            href: index === 1 && hasIncomplete ? `/interviews/${last._id}` : index === 2 ? "/progress" : "/create-interview",
+            reason: index === 1 && hasIncomplete ? "Continue your latest unfinished session while the context is fresh." : index === 2 ? `Track progress toward your ${req.user.weeklyPracticeTarget || 3}-session weekly goal.` : req.user.targetRole ? `Create focused practice for your ${req.user.targetRole} target.` : "Set a target role through a focused practice session.",
+        }));
         res.json({ goal: req.user.practiceGoal || "confidence", targetRole: req.user.targetRole || "", weeklyTarget: req.user.weeklyPracticeTarget || 3, hasIncomplete, actions });
     } catch (error) { next(error); }
 });

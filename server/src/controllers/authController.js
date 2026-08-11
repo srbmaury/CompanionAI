@@ -19,6 +19,8 @@ import ProductFeedback from "../models/ProductFeedback.js";
 import UsageCounter from "../models/UsageCounter.js";
 import ReminderDelivery from "../models/ReminderDelivery.js";
 import ProductEvent from "../models/ProductEvent.js";
+import Assessment from "../models/Assessment.js";
+import CandidateAttempt from "../models/CandidateAttempt.js";
 import cloudinary from "../config/cloudinaryConfig.js";
 
 const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7);
@@ -348,6 +350,7 @@ export const deleteAccount = async (req, res, next) => {
         const sharedQuestionIds = await Round.distinct("questions.question", { _id: { $nin: roundIds }, "questions.question": { $in: questionIds } });
         const sharedSet = new Set(sharedQuestionIds.map(String));
         const privateQuestionIds = questionIds.filter((id) => !sharedSet.has(String(id)));
+        const assessmentIds = await Assessment.distinct("_id", { owner: user._id });
 
         await Promise.all([
             Feedback.deleteMany({ $or: [{ user: user._id }, { _id: { $in: feedbackIds } }] }),
@@ -361,6 +364,8 @@ export const deleteAccount = async (req, res, next) => {
             UsageCounter.deleteMany({ user: user._id }),
             ReminderDelivery.deleteMany({ user: user._id }),
             ProductEvent.deleteMany({ user: user._id }),
+            CandidateAttempt.deleteMany({ assessment: { $in: assessmentIds } }),
+            Assessment.deleteMany({ owner: user._id }),
             RefreshToken.deleteMany({ user: user._id }),
             AuditLog.deleteMany({ user: user._id }),
         ]);

@@ -34,6 +34,7 @@ router.post(
     codeExecLimiter,
     quotas({
         key: (req) => `user:${req.user?._id || "anon"}:run-code`,
+        metricKey: "run_code",
         windowSeconds: 60 * 60, // 1 hour
         maxPerWindow: Number(process.env.QUOTA_RUN_CODE_PER_HOUR || 120),
     }),

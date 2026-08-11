@@ -1,9 +1,10 @@
 import getRedisClient from "../config/redis.js";
 import metrics from "../metrics/index.js";
 
-// quotas({ key, windowSeconds, maxPerWindow })
+// quotas({ key, metricKey, windowSeconds, maxPerWindow })
 // key: function(req) -> stable key per user/action, e.g., `user:${req.user._id}:run-code`
-const quotas = ({ key, windowSeconds, maxPerWindow }) => {
+// metricKey: bounded action name. Never use the Redis key because it may contain identifiers.
+const quotas = ({ key, metricKey = "unknown", windowSeconds, maxPerWindow }) => {
     return async (req, res, next) => {
         try {
             const client = await getRedisClient();
@@ -15,7 +16,7 @@ const quotas = ({ key, windowSeconds, maxPerWindow }) => {
             const count = await client.incr(redisKey);
             if (count === 1) await client.expire(redisKey, windowSeconds + 5);
             if (count > maxPerWindow) {
-                try { metrics.quotasDeniedTotal.labels(k).inc(); } catch {}
+                try { metrics.quotasDeniedTotal.labels(metricKey).inc(); } catch {}
                 return res.status(429).json({ message: "Quota exceeded. Please try again later." });
             }
             return next();

@@ -23,6 +23,8 @@ const DashboardPage = () => {
     const [recommendations, setRecommendations] = useState([]);
     const [entitlements, setEntitlements] = useState(null);
     const [resumeCount, setResumeCount] = useState(0);
+    const [workspaceChosen, setWorkspaceChosen] = useState(() => Boolean(localStorage.getItem("companionai:workspace")));
+    const chooseWorkspace = (workspace) => { localStorage.setItem("companionai:workspace", workspace); setWorkspaceChosen(true); window.dispatchEvent(new CustomEvent("companionai:workspace", { detail: workspace })); if (workspace === "hiring") navigate("/assessments"); };
 
     useEffect(() => {
         if (!user?._id) return;
@@ -69,7 +71,7 @@ const DashboardPage = () => {
             <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }} spacing={2} mb={4}>
                 <Box>
                     <Typography variant="overline" color="primary.main" fontWeight={800}>Practice dashboard</Typography>
-                    <Typography variant="h3" fontWeight={800} letterSpacing="-.035em">Ready for the next one, {firstName}?</Typography>
+                    <Typography component="h1" variant="h3" sx={{ fontSize: { xs: "2.45rem", sm: "3rem" } }} fontWeight={800} letterSpacing="-.035em">Ready for the next one, {firstName}?</Typography>
                     <Typography color="text.secondary" mt={1}>Keep your momentum going with focused, role-specific practice.</Typography>
                 </Box>
                 <Button variant="contained" size="large" startIcon={<Add />} onClick={() => navigate("/create-interview")} sx={{ flexShrink: 0 }}>
@@ -77,6 +79,8 @@ const DashboardPage = () => {
                 </Button>
                 <Button variant="outlined" size="large" startIcon={<InsightsOutlined />} onClick={() => navigate("/progress")} sx={{ flexShrink: 0 }}>View progress</Button>
             </Stack>
+
+            {!workspaceChosen && <Alert severity="info" sx={{ mb: 3 }}><Typography fontWeight={800}>What would you like to do first?</Typography><Typography variant="body2" sx={{ mt: .5, mb: 1.5 }}>You can switch workspaces anytime from your account menu.</Typography><Stack direction={{ xs: "column", sm: "row" }} gap={1}><Button variant="contained" onClick={() => chooseWorkspace("practice")}>Prepare for interviews</Button><Button variant="outlined" onClick={() => chooseWorkspace("hiring")}>Interview candidates</Button></Stack></Alert>}
 
             {!user?.targetRole && <Alert severity="info" sx={{ mb: 3 }} action={<Button color="inherit" size="small" onClick={() => navigate("/profile")}>Set my goal</Button>}>
                 Personalize your plan with a target role and weekly practice goal.
@@ -90,10 +94,10 @@ const DashboardPage = () => {
                 { done: Number(progress.completed || 0) > 0, label: "Complete one round and review feedback", action: "Continue", href: interviews[0]?._id ? `/interviews/${interviews[0]._id}` : "/create-interview" },
             ].map((step) => <Stack key={step.label} direction="row" alignItems="center" spacing={1.5} sx={{ p: 1.25, borderRadius: 2, bgcolor: step.done ? "action.hover" : "transparent" }}>{step.done ? <CheckCircleOutline color="success" /> : <RadioButtonUnchecked color="disabled" />}<Typography flex={1} fontWeight={step.done ? 500 : 700} color={step.done ? "text.secondary" : "text.primary"}>{step.label}</Typography>{!step.done && <Button size="small" onClick={() => navigate(step.href)}>{step.action}</Button>}</Stack>)}</Stack></CardContent></Card>}
 
-            {recommendations.length > 0 && <Box mb={4}><Typography variant="h5" fontWeight={750} mb={2}>Recommended next steps</Typography><Grid container spacing={2}>{recommendations.map((item) => <Grid size={{ xs: 12, md: 4 }} key={item.id}><Card variant="outlined" sx={{ height: "100%" }}><CardActionArea onClick={() => navigate(item.href)} sx={{ height: "100%" }}><CardContent><Typography fontWeight={750}>{item.title}</Typography><Typography variant="body2" color="text.secondary" mt={1}>Based on your saved goal and latest practice.</Typography><ArrowForward color="primary" sx={{ mt: 2 }} /></CardContent></CardActionArea></Card></Grid>)}</Grid></Box>}
+            {recommendations.length > 0 && <Box mb={4}><Typography component="h2" variant="h5" fontWeight={750} mb={2}>Recommended next steps</Typography><Grid container spacing={2}>{recommendations.map((item, index) => <Grid size={{ xs: 12, md: index === 0 ? 6 : 3 }} key={item.id}><Card variant="outlined" sx={{ height: "100%", borderColor: index === 0 ? "primary.light" : undefined }}><CardActionArea onClick={() => navigate(item.href)} sx={{ height: "100%" }}><CardContent><Typography component="h3" variant={index === 0 ? "h6" : "body1"} fontWeight={750}>{item.title}</Typography><Typography variant="body2" color="text.secondary" mt={1}>{item.reason || "Based on your saved goal and latest practice."}</Typography><ArrowForward color="primary" sx={{ mt: 2 }} /></CardContent></CardActionArea></Card></Grid>)}</Grid></Box>}
 
             {entitlements && <Alert severity={entitlements.plan === "pro" ? "success" : "info"} sx={{ mb: 3 }} action={entitlements.plan === "free" ? <Button color="inherit" size="small" onClick={() => navigate("/pricing")}>View Pro</Button> : <Button color="inherit" size="small" onClick={() => navigate("/pricing")}>Manage</Button>}>
-                <strong>{entitlements.plan === "pro" ? "Pro" : "Free"} plan:</strong> {entitlements.used.interviews} of {entitlements.limits.interviews} interview sessions used in {entitlements.period}.
+                <strong>{entitlements.plan === "pro" ? "Pro" : "Free"} plan:</strong> {entitlements.used.interviews} of {entitlements.limits.interviews} practice interviews, {entitlements.used.resumeReviews} of {entitlements.limits.resumeReviews} resume reviews, and {entitlements.used.assessments || 0} of {entitlements.limits.assessments || 0} candidate assessments used in {entitlements.period}.
             </Alert>}
 
             {!loading && interviews.length > 0 && (
@@ -114,7 +118,7 @@ const DashboardPage = () => {
             )}
 
             <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }} spacing={2} mb={2}>
-                <Typography variant="h5" fontWeight={750}>Your interviews</Typography>
+                <Typography component="h2" variant="h5" fontWeight={750}>Your interviews</Typography>
                 {!loading && interviews.length > 0 && (
                     <ToggleButtonGroup value={statusFilter} exclusive onChange={(_, v) => setStatusFilter(v || "all")} size="small" color="primary" aria-label="Filter interviews on this page">
                         <ToggleButton value="all">All</ToggleButton>
@@ -178,7 +182,7 @@ const DashboardPage = () => {
                             <CardContent>
                                 <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={2}>
                                     <Box><Typography variant="h6" fontWeight={750}>{interview.jobRole}</Typography><Typography color="text.secondary">{interview.company} · {new Date(interview.createdAt).toLocaleDateString()}</Typography></Box>
-                                    <ArrowForward color="action" />
+                                    <Stack direction="row" alignItems="center" gap={.5}><Typography variant="body2" fontWeight={700} color="primary.main">{interview.isCompleted ? "Review" : "Continue"}</Typography><ArrowForward color="primary" /></Stack>
                                 </Stack>
                                 <Stack direction="row" spacing={1} mt={2.5} mb={1.5} alignItems="center">
                                     <Chip size="small" label={interview.isCompleted ? "Completed" : "In Progress"} color={interview.isCompleted ? "success" : "warning"} />

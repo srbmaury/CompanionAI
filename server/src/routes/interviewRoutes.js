@@ -77,7 +77,7 @@ const RoundInput = z.object({
 });
 
 const CreateInterviewSchema = z.object({
-    resumeId: z.string().min(1),
+    resumeId: z.union([z.string().min(1), z.literal(""), z.null()]).optional().default(""),
     company: z.string().max(120).optional().default(""),
     jobRole: z.string().min(1).max(120),
     jobDescription: z.string().min(1).max(4000),
@@ -94,6 +94,7 @@ router.post(
     protect,
     quotas({
         key: (req) => `user:${req.user?._id || "anon"}:interview:create`,
+        metricKey: "interview_create",
         windowSeconds: 60 * 60,
         maxPerWindow: Number(process.env.QUOTA_INTERVIEW_CREATE_PER_HOUR || 30),
     }),

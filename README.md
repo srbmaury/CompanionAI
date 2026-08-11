@@ -7,6 +7,7 @@ AI-assisted interview preparation: build multi-round interviews from a job descr
 - Resumes: upload to Cloudinary, type/size validation, tags/notes, search/sort, PDF inline preview
 - Resume reviews: saved AI reviews with paginated history
 - Interview rounds: AI‑suggested rounds from JD; supports conversational and online‑assessment (OA) modes
+- Candidate assessments: shareable fixed-question interviews, optional contextual AI follow-ups, private interviewer-only reports, and candidate-safe submission flows
 - Question generation: per‑round question sets with de‑duplication across rounds
 - Feedback: per‑question feedback with score and improvement suggestions
 - Voice: browser TTS, server-side Whisper transcription, and Web Speech fallback
@@ -14,6 +15,7 @@ AI-assisted interview preparation: build multi-round interviews from a job descr
 - Progress: score trends, completion history, monthly plan usage, and goal-based recommendations
 - Reminders: timezone-aware weekly email reminders with durable delivery records, retries, history, and test delivery
 - Billing: Stripe-hosted Checkout, customer portal, signed/idempotent webhooks, dynamic pricing, and monthly usage limits
+- Assessment limits: 2 new assessments/month on Free and 50/month on Pro by default; public attempt actions also have Redis-backed abuse quotas
 - Admin: role-protected feedback inbox with filtering, pagination, and status management
 - Privacy: user data export and complete account-data deletion
 - Product analytics: authenticated, allowlisted funnel events with automatic 180-day expiry
@@ -61,6 +63,7 @@ cp server/.env.example server/.env
   - Typical: `VITE_API_BASE_URL=/api`
   - If enabling CAPTCHA or Google Sign‑In, set corresponding `VITE_*` keys
   - See `client/README.md` for details
+  - Account-data export is hidden and blocked by default. Enable it only after the archive is complete and sanitized by setting both `VITE_ACCOUNT_DATA_EXPORT_ENABLED=true` and server-side `ACCOUNT_DATA_EXPORT_ENABLED=true`.
 
 3) Run locally
 ```bash
@@ -76,6 +79,14 @@ Client: http://localhost:5173 • Server: http://localhost:5000
 cd client && npm run lint && npm test -- --run && npm run build
 cd ../server && npm test -- --run && npm run audit
 ```
+
+Run the launch-critical end-to-end product journey separately with:
+
+```bash
+cd server && npm run test:launch
+```
+
+The journey covers authentication and single-session enforcement, profile goals and reminders, resume metadata and pagination, saved experiences, interviews and authorization, admin feedback, Stripe webhook idempotency, entitlements, assessments and candidate privacy, export, analytics, usage limits, and account deletion. External AI generation is forced into deterministic test mode so CI does not spend provider credits or depend on network availability. Use `npm run test:e2e` to run every server E2E file.
 
 GitHub Actions runs these checks on pushes and pull requests. Dependabot checks dependencies weekly.
 
@@ -95,6 +106,7 @@ Highlighted endpoints
 - Experiences: `GET /api/experiences/search?company=&role=`
 - Billing: `GET /api/billing/entitlements` · `POST /api/billing/checkout-session` · `POST /api/billing/portal-session` · `POST /api/billing/webhook`
 - Recommendations: `GET /api/recommendations`
+- Candidate assessments: `POST /api/assessments` · `GET /api/assessments` · `GET /api/assessments/{id}` · public link endpoints under `/api/assessments/public/{shareToken}`
 - Product feedback: `POST /api/product-feedback`
 - Product events: `POST /api/events`
 - Admin: `GET /api/admin/feedback` · `PATCH /api/admin/feedback/{feedbackId}`
@@ -105,6 +117,7 @@ Highlighted endpoints
 - `/` (product landing page)
 - `/dashboard`, `/progress`
 - `/create-interview`, `/interviews/:interviewId`
+- `/assessments`, `/assessments/:assessmentId`, `/assessment/:shareToken`
 - `/experiences`, `/saved-experiences`
 - `/resume-review`, `/resume-reviews`, `/resumes`
 - `/pricing`, `/billing/success`
@@ -122,6 +135,7 @@ Highlighted endpoints
 - Durable reminder delivery records with idempotency and retry backoff
 - Stripe webhook signature validation and event idempotency
 - Unconditional Zod request validation plus database-level constraints
+- Unguessable assessment links plus hashed per-attempt credentials; public candidate responses never include scores or private feedback
 - CI dependency audits and weekly Dependabot updates
 
 ## Background processing

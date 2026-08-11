@@ -45,6 +45,9 @@ import ResumeReview from "../models/ResumeReview.js";
 import SavedExperience from "../models/SavedExperience.js";
 import ProductFeedback from "../models/ProductFeedback.js";
 import ProductEvent from "../models/ProductEvent.js";
+import Assessment from "../models/Assessment.js";
+import CandidateAttempt from "../models/CandidateAttempt.js";
+import requireFeature from "../middleware/featureFlags.js";
 
 const loginCaptcha = (req, res, next) => {
     if ((process.env.CAPTCHA_LOGIN_ENABLED || "").toLowerCase() === "true") {
@@ -297,10 +300,11 @@ router.get("/reminders/deliveries", protect, async (req, res, next) => {
         return res.json({ items });
     } catch (error) { return next(error); }
 });
-router.get("/export", protect, async (req, res, next) => {
+router.get("/export", protect, requireFeature("ACCOUNT_DATA_EXPORT_ENABLED"), async (req, res, next) => {
     try {
         const userId = req.user._id;
-        const [profile, interviews, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents] = await Promise.all([
+        const assessmentIds = await Assessment.distinct("_id", { owner: userId });
+        const [profile, interviews, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents, assessments, candidateAttempts] = await Promise.all([
             User.findById(userId).select("name email role provider preferredProgrammingLanguage practiceGoal targetRole weeklyPracticeTarget reminderEnabled reminderDay reminderTime reminderTimezone plan subscriptionStatus isVerified createdAt updatedAt").lean(),
             Interview.find({ user: userId }).lean(),
             Resume.find({ user: userId }).select("-cloudinaryUrl -secureUrl").lean(),
@@ -309,9 +313,11 @@ router.get("/export", protect, async (req, res, next) => {
             ProductFeedback.find({ user: userId }).lean(),
             ReminderDelivery.find({ user: userId }).lean(),
             ProductEvent.find({ user: userId }).lean(),
+            Assessment.find({ owner: userId }).lean(),
+            CandidateAttempt.find({ assessment: { $in: assessmentIds } }).lean(),
         ]);
         res.setHeader("Content-Disposition", `attachment; filename="companionai-export-${new Date().toISOString().slice(0, 10)}.json"`);
-        return res.json({ exportedAt: new Date().toISOString(), profile, interviews, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents });
+        return res.json({ exportedAt: new Date().toISOString(), profile, interviews, assessments, candidateAttempts, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents });
     } catch (error) { return next(error); }
 });
 router.delete(

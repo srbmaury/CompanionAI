@@ -27,6 +27,7 @@ router.post(
     protect,
     quotas({
         key: (req) => `user:${req.user?._id || "anon"}:job:prepare`,
+        metricKey: "job_prepare",
         windowSeconds: 60 * 60,
         maxPerWindow: Number(process.env.QUOTA_JOB_PREPARE_PER_HOUR || 60),
     }),
@@ -65,6 +66,7 @@ router.post(
     protect,
     quotas({
         key: (req) => `user:${req.user?._id || "anon"}:job:bulk-feedback`,
+        metricKey: "job_bulk_feedback",
         windowSeconds: 60 * 60,
         maxPerWindow: Number(process.env.QUOTA_JOB_BULK_FEEDBACK_PER_HOUR || 60),
     }),

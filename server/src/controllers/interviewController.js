@@ -7,8 +7,8 @@ import { getCompanyGrounding } from "../services/companyGrounding.js";
 export const createInterview = async (req, res, next) => {
     const { resumeId, company, jobRole, jobDescription, rounds } = req.body;
 
-    if (!resumeId || !jobRole || !jobDescription || !Array.isArray(rounds) || rounds.length === 0) {
-        return res.status(400).json({ message: "All fields and at least one round are required" });
+    if (!jobRole || !jobDescription || !Array.isArray(rounds) || rounds.length === 0) {
+        return res.status(400).json({ message: "Role, job description, and at least one round are required" });
     }
 
     const companyName = (company || "").toString().trim() || "Open role";
@@ -17,8 +17,8 @@ export const createInterview = async (req, res, next) => {
     session.startTransaction();
     const ops = [];
     try {
-        const ownedResume = await Resume.exists({ _id: resumeId, user: req.user._id }).session(session);
-        if (!ownedResume) {
+        const ownedResume = resumeId ? await Resume.exists({ _id: resumeId, user: req.user._id }).session(session) : null;
+        if (resumeId && !ownedResume) {
             await session.abortTransaction();
             session.endSession();
             return res.status(404).json({ message: "Resume not found" });
@@ -55,7 +55,7 @@ export const createInterview = async (req, res, next) => {
             [
                 {
                     user: req.user._id,
-                    resume: resumeId,
+                    resume: resumeId || null,
                     company: companyName,
                     jobRole,
                     jobDescription,

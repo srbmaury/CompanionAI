@@ -6,8 +6,8 @@ import api from "../api/axios";
 import { trackEvent } from "../utils/analytics";
 
 const plans = [
-    { id: "free", name: "Free", description: "Build a consistent practice habit.", features: ["3 interview sessions each month", "3 resume reviews each month", "Progress tracking", "Practice reminders"] },
-    { id: "pro", name: "Pro", description: "Practice deeply without the free-plan ceiling.", features: ["100 interview sessions each month", "100 resume reviews each month", "All interview formats", "Billing management and invoices"] },
+    { id: "free", name: "Free", description: "Build a consistent practice habit.", features: ["Progress tracking", "Practice reminders"] },
+    { id: "pro", name: "Pro", description: "Practice and assess candidates without the free-plan ceiling.", features: ["All interview formats", "Billing management and invoices"] },
 ];
 
 export default function PricingPage() {
@@ -23,11 +23,11 @@ export default function PricingPage() {
         <Stack alignItems="center" textAlign="center" mb={4}><Typography variant="overline" color="primary.main" fontWeight={850}>Simple plans</Typography><Typography component="h1" variant="h3" fontWeight={850}>Practice at the pace you need</Typography><Typography color="text.secondary" mt={1}>Checkout is securely hosted by Stripe. Pricing below is read directly from the configured Stripe product.</Typography></Stack>
         {params.get("checkout") === "cancelled" && <Alert severity="info" sx={{ mb: 3 }}>Checkout was canceled. Nothing was charged.</Alert>}
         {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
-        <Grid container spacing={3}>{plans.map((plan) => <Grid size={{ xs: 12, md: 6 }} key={plan.id}><Card variant="outlined" sx={{ height: "100%", borderColor: plan.id === "pro" ? "primary.main" : "divider" }}><CardContent sx={{ p: 3 }}>
+        <Grid container spacing={3}>{plans.map((plan) => { const planLimits = plan.id === entitlements?.plan ? entitlements?.limits : plan.id === "free" ? { interviews: 3, resumeReviews: 3, assessments: 2 } : { interviews: 100, resumeReviews: 100, assessments: 50 }; const features = [`${planLimits.interviews} practice interviews each month`, `${planLimits.resumeReviews} resume reviews each month`, `${planLimits.assessments} candidate assessments each month`, ...plan.features]; return <Grid size={{ xs: 12, md: 6 }} key={plan.id}><Card variant="outlined" sx={{ height: "100%", borderColor: plan.id === "pro" ? "primary.main" : "divider" }}><CardContent sx={{ p: 3 }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="h4" fontWeight={850}>{plan.name}</Typography>{plan.id === "pro" && <Chip label="For serious practice" color="primary" />}</Stack>{plan.id === "pro" && priceLabel && <Typography variant="h5" fontWeight={800} mt={1}>{priceLabel}<Typography component="span" color="text.secondary" fontSize="1rem"> / {intervalLabel}</Typography></Typography>}<Typography color="text.secondary" mt={1}>{plan.description}</Typography>
-            <List>{plan.features.map((feature) => <ListItem key={feature} disableGutters><CheckCircleOutline color="success" sx={{ mr: 1.5 }} /><ListItemText primary={feature} /></ListItem>)}</List>
+            <List>{features.map((feature) => <ListItem key={feature} disableGutters><CheckCircleOutline color="success" sx={{ mr: 1.5 }} /><ListItemText primary={feature} /></ListItem>)}</List>
             <Box mt={2}>{plan.id === "free" ? <Button fullWidth variant="outlined" disabled>Current free access</Button> : entitlements?.plan === "pro" ? <Button fullWidth variant="contained" disabled>Current plan</Button> : <Button fullWidth variant="contained" disabled={loading || !entitlements?.billingAvailable} onClick={() => redirect("/billing/checkout-session")}>{loading ? "Opening checkout…" : entitlements?.billingAvailable ? "Upgrade securely" : "Checkout not configured"}</Button>}</Box>
-        </CardContent></Card></Grid>)}</Grid>
+        </CardContent></Card></Grid>; })}</Grid>
         {entitlements?.plan === "pro" && <Stack alignItems="center" mt={3}><Button onClick={() => redirect("/billing/portal-session")} disabled={loading}>Manage billing, invoices, or cancellation</Button></Stack>}
     </Container>;
 }

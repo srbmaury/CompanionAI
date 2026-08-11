@@ -213,7 +213,6 @@ const CreateInterviewPage = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!formData.resumeId) return;
         if (selectedRounds.length === 0) {
             setSnack({ open: true, severity: "warning", message: "Please select at least one round" });
             return;
@@ -253,13 +252,12 @@ const CreateInterviewPage = () => {
 
     const isFormValid =
         formData.jobRole &&
-        formData.jobDescription &&
-        formData.resumeId;
+        formData.jobDescription;
 
     return (
         <Paper elevation={0} variant="outlined" sx={{ p: { xs: 2.5, sm: 4.5 }, maxWidth: 920, mx: "auto", my: { xs: 3, md: 6 }, borderRadius: 4 }}>
             <Typography variant="overline" color="primary.main" fontWeight={850}>New practice session</Typography>
-            <Typography variant="h4" fontWeight={850} letterSpacing="-.03em" mt={.5}>Build your interview plan</Typography>
+            <Typography component="h1" variant="h4" fontWeight={850} letterSpacing="-.03em" mt={.5}>Build your interview plan</Typography>
             <Typography color="text.secondary" mt={1}>Tell us what you’re preparing for. You’ll review every suggested round before anything starts.</Typography>
             <Stepper activeStep={activeStep} sx={{ my: 4 }}>
                 <Step><StepLabel>Role and resume</StepLabel></Step>
@@ -283,7 +281,7 @@ const CreateInterviewPage = () => {
                 <Stack spacing={2}>
                     <Box sx={{ display: activeStep === 0 ? "block" : "none" }}>
                     <Stack spacing={2}>
-                    <Typography variant="h6" fontWeight={750}>Target role</Typography>
+                    <Typography component="h2" variant="h6" fontWeight={750}>Target role</Typography>
                     <Box>
                         <Typography variant="body2" color="text.secondary" mb={1}>Start quickly with a preset, then tailor every field to the actual job.</Typography>
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
@@ -296,6 +294,7 @@ const CreateInterviewPage = () => {
                         value={formData.company}
                         onChange={handleChange}
                         placeholder="Leave blank for general role practice"
+                        helperText="Adding a company can ground the plan in public role-specific interview information when available."
                     />
                     <TextField
                         label="Job Role"
@@ -312,15 +311,16 @@ const CreateInterviewPage = () => {
                         rows={4}
                         onChange={handleChange}
                         required
+                        helperText="Include responsibilities, seniority, required skills, and success criteria; these directly shape generated questions."
                     />
 
                     <Divider sx={{ my: 2.5 }} />
 
-                    <FormControl required error={!formData.resumeId}>
-                        <Typography variant="h6" fontWeight={750}>
+                    <FormControl>
+                        <Typography component="h2" variant="h6" fontWeight={750}>
                             Resume context
                         </Typography>
-                        <Typography variant="body2" color="text.secondary" mb={1}>Use the resume you’ll submit so questions reflect your actual experience.</Typography>
+                        <Typography variant="body2" color="text.secondary" mb={1}>Optional: add the resume you’ll submit for experience-specific questions, or continue with role-only practice.</Typography>
 
                         {/* Upload New Resume */}
                         <Box sx={{ my: 1 }}>
@@ -358,8 +358,8 @@ const CreateInterviewPage = () => {
                                         resumeId: e.target.value,
                                     })
                                 }
-                                required
                             >
+                                <MenuItem value="">Continue without a resume</MenuItem>
                                 {resumes.map((r) => (
                                     <MenuItem key={r._id} value={r._id}>
                                         {r.fileName || "Untitled Resume"} —{" "}
@@ -381,17 +381,13 @@ const CreateInterviewPage = () => {
                             </Stack>;
                         })()}
 
-                        {!formData.resumeId && (
-                            <FormHelperText>
-                                Please select or upload a resume
-                            </FormHelperText>
-                        )}
+                        {!formData.resumeId && <FormHelperText>Questions will use the role and job description without personal resume context.</FormHelperText>}
                     </FormControl>
 
                     <Divider sx={{ my: 2 }} />
 
                     {/* Suggest rounds */}
-                    <Tooltip title={!isFormValid ? "Fill in role, description, and select a resume first" : "AI will suggest interview rounds based on your details"}>
+                    <Tooltip title={!isFormValid ? "Fill in the role and job description first" : "AI will suggest interview rounds based on your details"}>
                         <span>
                             <Button
                                 variant="outlined"
@@ -413,7 +409,7 @@ const CreateInterviewPage = () => {
 
                     {/* Show suggested rounds */}
                     {activeStep === 1 && <>
-                    <Typography variant="h6" fontWeight={750}>Choose the rounds you want to practice</Typography>
+                    <Typography component="h2" variant="h6" fontWeight={750}>Choose the rounds you want to practice</Typography>
                     {grounding && (
                         <Alert severity={grounding.status === "grounded" ? "success" : "info"}>
                             {grounding.status === "grounded"

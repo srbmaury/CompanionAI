@@ -22,6 +22,12 @@ The server exports Prometheus metrics at `/metrics` and pushes OTLP metrics when
 | Interview grounding | `sum(increase(interview_grounding_total[24h])) by (outcome) or vector(0)` |
 | Grounding p95 latency | `histogram_quantile(0.95, sum(rate(interview_grounding_duration_seconds_bucket[1h])) by (le))` |
 | Authorization denials | `sum(increase(authorization_denied_total[1h])) by (reason, route) or vector(0)` |
+| Assessments created | `sum(increase(assessments_total{action="create"}[24h])) by (outcome) or vector(0)` |
+| Assessment size | `histogram_quantile(0.50, sum(rate(assessment_questions_bucket[24h])) by (le))` |
+| Candidate assessment funnel | `sum(increase(candidate_assessment_actions_total[24h])) by (action, outcome, followups) or vector(0)` |
+| Candidate completion p50/p95 | `histogram_quantile(0.50, sum(rate(candidate_assessment_completion_duration_seconds_bucket[24h])) by (le))` and `histogram_quantile(0.95, sum(rate(candidate_assessment_completion_duration_seconds_bucket[24h])) by (le))` |
+| Reports viewed | `sum(increase(assessment_reports_viewed_total[24h])) by (has_submissions) or vector(0)` |
+| Quota denials | `sum(increase(quotas_denied_total[1h])) by (actionKey) or vector(0)` |
 
 Replace the obsolete CSRF panel with authorization denials; the application uses bearer tokens plus origin checks rather than cookie CSRF middleware.
 
@@ -36,3 +42,5 @@ Replace the obsolete CSRF panel with authorization denials; the application uses
 - Billing failure: any processing failure for a Stripe webhook over 10 minutes.
 - AI degradation: failure ratio exceeds 20% over 15 minutes, with at least 10 requests.
 - Authentication spike: invalid or blocked login attempts exceed 30 over 10 minutes.
+- Candidate funnel degradation: assessment start or submit failures exceed 10% over 30 minutes, with at least 10 actions.
+- Assessment abuse pressure: any sustained increase in `quotas_denied_total{actionKey=~"assessment_.*"}` for 15 minutes.

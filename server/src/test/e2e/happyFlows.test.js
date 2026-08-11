@@ -13,18 +13,21 @@ import UsageCounter from "../../models/UsageCounter.js";
 import ReminderDelivery from "../../models/ReminderDelivery.js";
 import ProductEvent from "../../models/ProductEvent.js";
 import RefreshToken from "../../models/RefreshToken.js";
+import Assessment from "../../models/Assessment.js";
+import CandidateAttempt from "../../models/CandidateAttempt.js";
 import { currentMonth, PLAN_LIMITS } from "../../services/entitlements.js";
 import { deliverDuePracticeReminders } from "../../services/practiceReminders.js";
 import Stripe from "stripe";
 import Question from "../../models/Question.js";
 import connectDB from "../../config/db.js";
 import { signAccessToken } from "../../utils/tokens.js";
+import metrics from "../../metrics/index.js";
 
 let replset;
 let agent;
 let accessToken;
 
-describe("Happy flows E2E", () => {
+describe("Launch-critical full product journey E2E", () => {
     beforeAll(async () => {
         replset = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
         const uri = replset.getUri();
@@ -33,6 +36,7 @@ describe("Happy flows E2E", () => {
         process.env.MONGO_TLS = "false";
         process.env.MONGO_REQUIRE_TRANSACTIONS = "false";
         process.env.TEST_FORCE_GENERATOR_EMPTY = "true";
+        process.env.ACCOUNT_DATA_EXPORT_ENABLED = "true";
         await connectDB();
         agent = request.agent(app);
     }, 60000);
@@ -101,6 +105,8 @@ describe("Happy flows E2E", () => {
             notes: "",
         });
         const resumeId = resumeDoc._id.toHexString();
+        const updatedResume = await agent.put(`/api/resumes/${resumeId}`).set(auth).set("origin", origin).set("referer", `${origin}/`).send({ fileName: "backend-resume.pdf", tags: ["backend", "node"], notes: "Primary launch-test resume" }).expect(200);
+        expect(updatedResume.body).toMatchObject({ fileName: "backend-resume.pdf", tags: ["backend", "node"], notes: "Primary launch-test resume" });
 
         await Resume.insertMany(Array.from({ length: 6 }, (_, index) => ({
             user: me._id, fileUrl: `http://localhost/resumes/${index}.pdf`, publicId: `resumes/test-${index}`,
@@ -126,6 +132,8 @@ describe("Happy flows E2E", () => {
         const experiencePage = await agent.get("/api/experiences/saved?page=2&limit=5").set(auth).expect(200);
         expect(experiencePage.body.items).toHaveLength(2);
         expect(experiencePage.body.totalPages).toBe(2);
+        const savedExperience = await agent.post("/api/experiences/saved").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ title: "Acme backend interview", url: "https://example.com/acme-backend", snippet: "APIs and system design", company: "Acme", role: "Backend Engineer" }).expect(201);
+        await agent.delete(`/api/experiences/saved/${savedExperience.body._id}`).set(auth).set("origin", origin).set("referer", `${origin}/`).expect(200);
 
         // Create interview with 2 rounds
         const create = await agent
@@ -189,7 +197,8 @@ describe("Happy flows E2E", () => {
         await agent.get("/api/jobs/status/not-a-queue/job-id").set(otherAuth).expect(400);
 
         // Product feedback is visible and mutable only to administrators.
-        const productFeedback = await ProductFeedback.create({ user: me._id, category: "idea", message: "Add more practice presets", page: "/dashboard" });
+        const submittedFeedback = await agent.post("/api/product-feedback").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ category: "idea", message: "Add more practice presets", page: "/dashboard" }).expect(201);
+        const productFeedback = await ProductFeedback.findById(submittedFeedback.body._id);
         await agent.get("/api/admin/feedback").set(auth).expect(403);
         await User.updateOne({ _id: otherUser._id }, { $set: { role: "admin" } });
         const adminFeedback = await agent.get("/api/admin/feedback?status=new&page=1&limit=10").set(otherAuth).expect(200);
@@ -241,6 +250,9 @@ describe("Happy flows E2E", () => {
         expect(exportResponse.headers["content-disposition"]).toContain("companionai-export");
         expect(exportResponse.body).toMatchObject({ profile: { email: "t@example.com" } });
         expect(exportResponse.body.productEvents).toHaveLength(1);
+        process.env.ACCOUNT_DATA_EXPORT_ENABLED = "false";
+        await agent.get("/api/auth/export").set(auth).expect(503);
+        process.env.ACCOUNT_DATA_EXPORT_ENABLED = "true";
         process.env.REMINDER_DELIVERY_ENABLED = previousReminderDelivery;
         const recommendations = await agent.get("/api/recommendations").set(auth).expect(200);
         expect(recommendations.body.goal).toBe("switch-role");
@@ -249,6 +261,74 @@ describe("Happy flows E2E", () => {
         expect(entitlements.body.plan).toBe("free");
         expect(entitlements.body.used.interviews).toBe(1);
         expect(entitlements.body.limits.interviews).toBeGreaterThan(0);
+        expect(entitlements.body.limits.assessments).toBe(PLAN_LIMITS.free.assessmentsPerMonth);
+
+        // Assessment links expose only candidate-safe fields; attempts require their opaque secret,
+        // duplicate emails cannot overwrite answers, and reports remain owner-only.
+        const assessmentCreate = await agent.post("/api/assessments").set(auth).set("origin", origin).set("referer", `${origin}/`).send({
+            title: "Backend candidate screen", company: "Acme", jobRole: "Backend Engineer",
+            jobDescription: "Build secure and reliable APIs using Node.js and MongoDB.",
+            followUpsEnabled: false, durationMinutes: 25, contactEmail: "hiring@example.com",
+            rounds: [{ name: "Technical", description: "Backend judgment", questionCount: 1 }],
+        }).expect(201);
+        const assessmentId = assessmentCreate.body._id;
+        const shareToken = assessmentCreate.body.shareToken;
+        expect(await Assessment.exists({ _id: assessmentId, owner: me._id })).toBeTruthy();
+        expect(assessmentCreate.body.rounds[0].questions[0].text).toMatch(/Describe how you would approach/);
+
+        // Reviewed manual questions are preserved exactly; AI generation endpoints are authenticated.
+        const hybridAssessment = await agent.post("/api/assessments").set(auth).set("origin", origin).set("referer", `${origin}/`).send({
+            title: "Hybrid backend screen", jobRole: "Backend Engineer",
+            jobDescription: "Design secure and observable Node.js services in production.",
+            rounds: [{ name: "Architecture", description: "System design", questionCount: 2, aiPrompt: "Include observability", questions: [
+                { text: "Describe a service you made more observable and the outcome." },
+                { text: "How would you protect an idempotent payment webhook?" },
+            ] }],
+        }).expect(201);
+        expect(hybridAssessment.body.rounds[0].questions.map((question) => question.text)).toEqual([
+            "Describe a service you made more observable and the outcome.",
+            "How would you protect an idempotent payment webhook?",
+        ]);
+        await agent.post("/api/assessments/questions/generate").send({ jobRole: "Engineer", jobDescription: "A sufficiently detailed job description here.", roundName: "Technical", prompt: "Generate API questions", count: 2 }).expect(401);
+        await agent.post("/api/assessments/questions/generate").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ jobRole: "Engineer", jobDescription: "A sufficiently detailed job description here.", roundName: "Technical", prompt: "Generate two API questions", count: 2 }).expect(503);
+        const improvedQuestion = await agent.post("/api/assessments/questions/improve").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ question: "Tell me about APIs?", jobRole: "Backend Engineer", jobDescription: "A sufficiently detailed job description here.", roundName: "Technical" }).expect(200);
+        expect(improvedQuestion.body.text).toBe("Tell me about APIs?");
+
+        const publicAssessment = await agent.get(`/api/assessments/public/${shareToken}`).expect(200);
+        expect(publicAssessment.body).toMatchObject({ title: "Backend candidate screen", durationMinutes: 25, contactEmail: "hiring@example.com", followUpsEnabled: false });
+        expect(publicAssessment.body.jobDescription).toBeUndefined();
+        expect(publicAssessment.body.shareToken).toBeUndefined();
+        expect(publicAssessment.body.rounds[0].questions).toBeUndefined();
+
+        const startedAttempt = await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "Candidate One", email: "candidate@example.com" }).expect(201);
+        const attemptId = startedAttempt.body.attempt._id;
+        const attemptToken = startedAttempt.body.attemptToken;
+        expect(attemptToken).toBeTruthy();
+        expect(startedAttempt.body.attempt.candidateEmail).toBeUndefined();
+        expect(startedAttempt.body.attempt.overallScore).toBeUndefined();
+        await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "Overwrite", email: "candidate@example.com" }).expect(409);
+        await agent.put(`/api/assessments/public/${shareToken}/attempts/${attemptId}/answer`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", "wrong-token").send({ roundIndex: 0, questionIndex: 0, answer: "Unauthorized overwrite" }).expect(401);
+        const savedAnswer = await agent.put(`/api/assessments/public/${shareToken}/attempts/${attemptId}/answer`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({ roundIndex: 0, questionIndex: 0, answer: "Use indexes, hashed credentials, and expiring sessions." }).expect(200);
+        expect(savedAnswer.body.attempt.rounds[0].questions[0].answer).toContain("hashed credentials");
+        expect(savedAnswer.body.attempt.rounds[0].questions[0].feedbackComment).toBeUndefined();
+        await CandidateAttempt.updateOne({ _id: attemptId }, { $set: { status: "submitted", submittedAt: new Date(), overallScore: 8, "rounds.0.score": 8, "rounds.0.questions.0.score": 8, "rounds.0.questions.0.feedbackComment": "Strong answer" } });
+        const ownerReport = await agent.get(`/api/assessments/${assessmentId}`).set(auth).expect(200);
+        expect(ownerReport.body.attempts[0]).toMatchObject({ candidateEmail: "candidate@example.com", overallScore: 8 });
+        expect(ownerReport.body.attempts[0].rounds[0].questions[0].feedbackComment).toBe("Strong answer");
+        await agent.get(`/api/assessments/${assessmentId}`).set(otherAuth).expect(404);
+        const assessmentList = await agent.get("/api/assessments?page=1&limit=10").set(auth).expect(200);
+        expect(assessmentList.body.items.find((item) => item._id === assessmentId)).toMatchObject({ attemptCount: 1, submittedCount: 1 });
+        const exportWithAssessments = await agent.get("/api/auth/export").set(auth).expect(200);
+        expect(exportWithAssessments.body.assessments).toHaveLength(2);
+        await agent.patch(`/api/assessments/${assessmentId}`).set(auth).set("origin", origin).set("referer", `${origin}/`).send({ status: "closed" }).expect(200);
+        await agent.get(`/api/assessments/public/${shareToken}`).expect(404);
+        expect(exportWithAssessments.body.candidateAttempts[0].accessTokenHash).toBeUndefined();
+        const lifecycleMetric = await metrics.assessmentsTotal.get();
+        expect(lifecycleMetric.values.find((value) => value.labels.action === "create" && value.labels.outcome === "success")?.value).toBeGreaterThanOrEqual(1);
+        const funnelMetric = await metrics.candidateAssessmentActionsTotal.get();
+        expect(funnelMetric.values.find((value) => value.labels.action === "start" && value.labels.outcome === "success" && value.labels.followups === "disabled")?.value).toBeGreaterThanOrEqual(1);
+        expect(funnelMetric.values.find((value) => value.labels.action === "answer" && value.labels.outcome === "unauthorized")?.value).toBeGreaterThanOrEqual(1);
+
         await UsageCounter.updateOne({ user: me._id, metric: "interviews", period: currentMonth() }, { $set: { used: PLAN_LIMITS.free.interviewsPerMonth } }, { upsert: true });
         const limited = await agent.post("/api/interviews").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ resumeId, company: "Limit Test", jobRole: "Engineer", jobDescription: "Validate plan enforcement", rounds: [{ roundName: "Screen", description: "A valid screening round" }] }).expect(429);
         expect(limited.body).toMatchObject({ code: "PLAN_LIMIT_REACHED", metric: "interviews", limit: PLAN_LIMITS.free.interviewsPerMonth });
@@ -301,5 +381,7 @@ describe("Happy flows E2E", () => {
             .expect(200);
         expect(await User.exists({ _id: me._id })).toBeNull();
         expect(await Resume.exists({ user: me._id })).toBeNull();
+        expect(await Assessment.exists({ owner: me._id })).toBeNull();
+        expect(await CandidateAttempt.exists({ assessment: assessmentId })).toBeNull();
     }, 120000);
 });

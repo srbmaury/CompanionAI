@@ -35,6 +35,7 @@ import billingRoutes from "./routes/billingRoutes.js";
 import recommendationRoutes from "./routes/recommendationRoutes.js";
 import billingWebhookRoutes from "./routes/billingWebhookRoutes.js";
 import productEventRoutes from "./routes/productEventRoutes.js";
+import assessmentRoutes from "./routes/assessmentRoutes.js";
 
 const app = express();
 
@@ -83,6 +84,7 @@ const corsOptions =
                   "X-CSRF-Token",
                   "X-XSRF-Token",
                   "X-Captcha-Token",
+                  "X-Attempt-Token",
               ],
               exposedHeaders: ["X-CSRF-Token", "X-XSRF-Token"],
               methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
@@ -99,6 +101,7 @@ const corsOptions =
                   "X-CSRF-Token",
                   "X-XSRF-Token",
                   "X-Captcha-Token",
+                  "X-Attempt-Token",
               ],
               exposedHeaders: ["X-CSRF-Token", "X-XSRF-Token"],
               methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
@@ -109,7 +112,7 @@ app.use(cors(corsOptions));
 // Prevent caching of auth endpoints (tokens, sensitive responses)
 app.use((req, res, next) => {
     try {
-        if (req.path.startsWith("/api/auth")) {
+        if (req.path.startsWith("/api/auth") || req.path.startsWith("/api/assessments")) {
             res.setHeader("Cache-Control", "no-store");
         }
     } catch {}
@@ -280,6 +283,7 @@ app.use("/api/product-feedback", productFeedbackRoutes);
 app.use("/api/billing", billingRoutes);
 app.use("/api/recommendations", recommendationRoutes);
 app.use("/api/events", productEventRoutes);
+app.use("/api/assessments", assessmentRoutes);
 
 // Health endpoints
 app.get("/health/liveness", (req, res) => {

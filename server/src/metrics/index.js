@@ -75,6 +75,11 @@ export const productEventsTotal = new client.Counter({ name: "product_events_tot
 export const interviewGroundingTotal = new client.Counter({ name: "interview_grounding_total", help: "Company interview grounding outcomes", labelNames: ["outcome"] });
 export const interviewGroundingDurationSeconds = new client.Histogram({ name: "interview_grounding_duration_seconds", help: "Company interview grounding search duration", labelNames: ["outcome"], buckets: [0.1, 0.25, 0.5, 1, 2, 5, 10, 30] });
 export const interviewGroundingSources = new client.Histogram({ name: "interview_grounding_sources", help: "Public sources retained per grounding search", buckets: [0, 1, 2, 3, 5, 8] });
+export const assessmentsTotal = new client.Counter({ name: "assessments_total", help: "Assessment lifecycle outcomes", labelNames: ["action", "outcome"] });
+export const assessmentQuestions = new client.Histogram({ name: "assessment_questions", help: "Questions generated per assessment", buckets: [1, 3, 5, 8, 10, 15, 25, 50] });
+export const candidateAssessmentActionsTotal = new client.Counter({ name: "candidate_assessment_actions_total", help: "Candidate assessment funnel actions", labelNames: ["action", "outcome", "followups"] });
+export const candidateAssessmentCompletionDurationSeconds = new client.Histogram({ name: "candidate_assessment_completion_duration_seconds", help: "Elapsed time from candidate attempt start to submission", buckets: [60, 300, 600, 1200, 1800, 3600, 7200, 14400] });
+export const assessmentReportsViewedTotal = new client.Counter({ name: "assessment_reports_viewed_total", help: "Private assessment reports viewed by an owner", labelNames: ["has_submissions"] });
 
 export default {
     client,
@@ -123,4 +128,9 @@ export default {
     interviewGroundingTotal,
     interviewGroundingDurationSeconds,
     interviewGroundingSources,
+    assessmentsTotal,
+    assessmentQuestions,
+    candidateAssessmentActionsTotal,
+    candidateAssessmentCompletionDurationSeconds,
+    assessmentReportsViewedTotal,
 };

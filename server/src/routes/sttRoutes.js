@@ -41,6 +41,7 @@ router.post(
     sttLimiter,
     quotas({
         key: (req) => `user:${req.user?._id || "anon"}:stt`,
+        metricKey: "stt",
         windowSeconds: 60 * 60, // 1 hour
         maxPerWindow: Number(process.env.QUOTA_STT_PER_HOUR || 120),
     }),

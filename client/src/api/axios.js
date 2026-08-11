@@ -57,7 +57,7 @@ api.interceptors.response.use(
         const status = error?.response?.status;
         const originalConfig = error?.config;
 
-        if (status === 401 && originalConfig && !originalConfig.__retried) {
+        if (status === 401 && originalConfig && !originalConfig.__retried && !originalConfig.skipAuthRedirect) {
             originalConfig.__retried = true;
             try {
                 const newToken = await silentRefresh();

@@ -6,6 +6,7 @@ import Header from "./components/Header";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
 import AdminRoute from "./components/AdminRoute";
+import GuestOnlyRoute from "./components/GuestOnlyRoute";
 
 const CreateInterviewPage = lazy(() => import("./pages/CreateInterviewPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
@@ -27,6 +28,9 @@ const ResumesPage = lazy(() => import("./pages/ResumesPage.jsx"));
 const PricingPage = lazy(() => import("./pages/PricingPage.jsx"));
 const BillingSuccessPage = lazy(() => import("./pages/BillingSuccessPage.jsx"));
 const AdminFeedbackPage = lazy(() => import("./pages/AdminFeedbackPage.jsx"));
+const AssessmentsPage = lazy(() => import("./pages/AssessmentsPage.jsx"));
+const AssessmentReportPage = lazy(() => import("./pages/AssessmentReportPage.jsx"));
+const CandidateAssessmentPage = lazy(() => import("./pages/CandidateAssessmentPage.jsx"));
 
 const PageLoader = () => (
     <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }} role="status" aria-label="Loading page">
@@ -72,14 +76,15 @@ function App() {
                 <Suspense fallback={<PageLoader />}>
                 <Routes>
                 {/* Public routes */}
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/register" element={<RegisterPage />} />
+                <Route path="/" element={<GuestOnlyRoute><LandingPage /></GuestOnlyRoute>} />
+                <Route path="/login" element={<GuestOnlyRoute><LoginPage /></GuestOnlyRoute>} />
+                <Route path="/register" element={<GuestOnlyRoute><RegisterPage /></GuestOnlyRoute>} />
                 <Route path="/verify-email" element={<VerifyEmailPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="/privacy" element={<LegalPage type="privacy" />} />
                 <Route path="/terms" element={<LegalPage type="terms" />} />
+                <Route path="/assessment/:shareToken" element={<CandidateAssessmentPage />} />
 
                 {/* Protected routes */}
                 <Route
@@ -113,6 +118,8 @@ function App() {
                 <Route path="/pricing" element={<ProtectedRoute><PricingPage /></ProtectedRoute>} />
                 <Route path="/billing/success" element={<ProtectedRoute><BillingSuccessPage /></ProtectedRoute>} />
                 <Route path="/admin/feedback" element={<ProtectedRoute><AdminRoute><AdminFeedbackPage /></AdminRoute></ProtectedRoute>} />
+                <Route path="/assessments" element={<ProtectedRoute><AssessmentsPage /></ProtectedRoute>} />
+                <Route path="/assessments/:assessmentId" element={<ProtectedRoute><AssessmentReportPage /></ProtectedRoute>} />
                 <Route
                     path="/create-interview"
                     element={
