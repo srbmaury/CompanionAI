@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, memo } from "react";
 import { Box, Tooltip, Typography } from "@mui/material";
 import PersonIcon from "@mui/icons-material/Person";
 
-const WebcamPreview = () => {
+const WebcamPreview = ({ autoStart = false }) => {
     const videoRef = useRef(null);
     const streamRef = useRef(null);
     const [on, setOn] = useState(false);
@@ -38,6 +38,7 @@ const WebcamPreview = () => {
     };
 
     useEffect(() => () => streamRef.current?.getTracks().forEach((t) => t.stop()), []);
+    useEffect(() => { if (autoStart) start(); }, [autoStart]);
 
     return (
         <Tooltip title={on ? "Click ✕ to turn off camera" : denied ? "Camera access denied" : "Click to turn on camera"} placement="left">

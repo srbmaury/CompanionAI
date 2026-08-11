@@ -3,8 +3,12 @@ import Assessment from "../models/Assessment.js";
 import CandidateAttempt from "../models/CandidateAttempt.js";
 import { generateQuestionsForRound, improveAssessmentQuestion } from "../utils/generateQuestions.js";
 import { generateFollowUp } from "../utils/generateQuestions/followUp.js";
-import { generateFeedbackForAnswer } from "../utils/generateFeedback.js";
 import metrics from "../metrics/index.js";
+import runCode from "../utils/runCode.js";
+import { transcribe } from "./sttController.js";
+import { getQueue } from "../queues/index.js";
+import { createJobId } from "../queues/jobIds.js";
+import candidateAssessmentProcessor from "../queues/workers/candidateAssessment.js";
 
 const tokenHash = (value) => crypto.createHash("sha256").update(value).digest("hex");
 const followupLabel = (assessment) => assessment == null ? "unknown" : assessment.followUpsEnabled ? "enabled" : "disabled";
@@ -18,7 +22,11 @@ const publicAssessment = (assessment) => ({
     durationMinutes: assessment.durationMinutes,
     followUpsEnabled: assessment.followUpsEnabled,
     expiresAt: assessment.expiresAt,
-    rounds: assessment.rounds.map((round) => ({ name: round.name, description: round.description, questionCount: round.questions.length })),
+    capabilities: {
+        codeExecution: process.env.ENABLE_CODE_EXEC === "true",
+        transcription: process.env.ENABLE_STT === "true",
+    },
+    rounds: assessment.rounds.map((round) => ({ name: round.name, description: round.description, deliveryMode: round.deliveryMode || "conversational", questionCount: round.questions.length })),
 });
 const publicAttempt = (attempt) => ({
     _id: attempt._id,
@@ -30,10 +38,12 @@ const publicAttempt = (attempt) => ({
         _id: round._id,
         name: round.name,
         description: round.description,
+        deliveryMode: round.deliveryMode || "conversational",
         questions: round.questions.map((question) => ({
             _id: question._id,
             text: question.text,
             answer: question.answer,
+            spokenExplanation: question.spokenExplanation,
             followUpQuestion: question.followUpQuestion,
             followUpAnswer: question.followUpAnswer,
         })),
@@ -43,6 +53,37 @@ const findPublicAssessment = (shareToken) => Assessment.findOne({ shareToken, st
 const findAttempt = async (assessmentId, attemptId, rawToken) => {
     if (!rawToken) return null;
     return CandidateAttempt.findOne({ _id: attemptId, assessment: assessmentId, accessTokenHash: tokenHash(rawToken) }).select("+accessTokenHash");
+};
+
+const authorizeCandidateTool = async (req, res) => {
+    const assessment = await findPublicAssessment(req.params.shareToken);
+    if (!assessment) { res.status(404).json({ message: "Assessment unavailable" }); return null; }
+    const attempt = await findAttempt(assessment._id, req.params.attemptId, req.get("x-attempt-token"));
+    if (!attempt || attempt.status !== "started") { res.status(401).json({ message: "Attempt unavailable" }); return null; }
+    return attempt;
+};
+
+export const protectCandidateTool = async (req, res, next) => {
+    try {
+        const attempt = await authorizeCandidateTool(req, res);
+        if (!attempt) return;
+        req.candidateAttempt = attempt;
+        return next();
+    } catch (error) { return next(error); }
+};
+
+export const runCandidateCode = async (req, res, next) => {
+    try {
+        if (!req.candidateAttempt && !await authorizeCandidateTool(req, res)) return;
+        return runCode(req, res);
+    } catch (error) { return next(error); }
+};
+
+export const transcribeCandidateAudio = async (req, res, next) => {
+    try {
+        if (!req.candidateAttempt && !await authorizeCandidateTool(req, res)) return;
+        return transcribe(req, res, next);
+    } catch (error) { return next(error); }
 };
 
 export const createAssessment = async (req, res, next) => {
@@ -58,13 +99,13 @@ export const createAssessment = async (req, res, next) => {
                 generated = await generateQuestionsForRound({
                     company, jobRole, jobDescription, resumeText: "", roundName: input.name,
                     roundDescription: [input.description, input.aiPrompt ? `Interviewer generation request: ${input.aiPrompt}` : ""].filter(Boolean).join("\n"),
-                    deliveryMode: "online-assessment", count: count - manualTexts.length, excludeTexts: [...excludeTexts, ...manualTexts],
+                    deliveryMode: input.deliveryMode || "conversational", count: count - manualTexts.length, excludeTexts: [...excludeTexts, ...manualTexts],
                 });
             } catch { /* use deterministic fallback below */ }
             const texts = [...manualTexts, ...(Array.isArray(generated) ? generated : []).map((item) => typeof item === "string" ? item : item?.text).map((item) => (item || "").toString().trim()).filter(Boolean)].slice(0, count);
             while (texts.length < count) texts.push(`Describe how you would approach ${input.name} challenge ${texts.length + 1} for a ${jobRole}.`);
             excludeTexts.push(...texts);
-            generatedRounds.push({ name: input.name, description: input.description || "", questions: texts.map((text) => ({ text })) });
+            generatedRounds.push({ name: input.name, description: input.description || "", deliveryMode: input.deliveryMode || "conversational", questions: texts.map((text) => ({ text })) });
         }
         const assessment = await Assessment.create({
             owner: req.user._id, title, company, jobRole, jobDescription, followUpsEnabled,
@@ -119,7 +160,7 @@ export const getHiringOverview = async (req, res, next) => {
         const page = Math.max(Number(req.query.page) || 1, 1);
         const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50);
         const search = (req.query.search || "").toString().trim().slice(0, 100);
-        const status = ["started", "submitted"].includes(req.query.status) ? req.query.status : "";
+        const status = ["started", "evaluating", "submitted", "evaluation_failed"].includes(req.query.status) ? req.query.status : "";
         const assessments = await Assessment.find({ owner: req.user._id }).select("title company jobRole status expiresAt createdAt").sort({ createdAt: -1 }).lean();
         const assessmentIds = assessments.map((item) => item._id);
         const assessmentById = new Map(assessments.map((item) => [String(item._id), item]));
@@ -139,7 +180,7 @@ export const getHiringOverview = async (req, res, next) => {
         const [totalCandidates, submitted, inProgress, scoreSummary, filteredTotal, attempts] = await Promise.all([
             CandidateAttempt.countDocuments(allAttemptsFilter),
             CandidateAttempt.countDocuments({ ...allAttemptsFilter, status: "submitted" }),
-            CandidateAttempt.countDocuments({ ...allAttemptsFilter, status: "started" }),
+            CandidateAttempt.countDocuments({ ...allAttemptsFilter, status: { $in: ["started", "evaluating", "evaluation_failed"] } }),
             CandidateAttempt.aggregate([{ $match: { ...allAttemptsFilter, status: "submitted", overallScore: { $type: "number" } } }, { $group: { _id: null, average: { $avg: "$overallScore" } } }]),
             CandidateAttempt.countDocuments(attemptFilter),
             CandidateAttempt.find(attemptFilter).select("assessment candidateName candidateEmail status startedAt submittedAt overallScore updatedAt").sort({ updatedAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
@@ -194,7 +235,7 @@ export const startCandidateAttempt = async (req, res, next) => {
         const existing = await CandidateAttempt.findOne({ assessment: assessment._id, candidateEmail });
         if (existing) { observeCandidateAction("start", "duplicate", assessment); return res.status(409).json({ message: existing.status === "submitted" ? "This email has already submitted an attempt" : "An attempt for this email is already in progress. Continue from the browser where it was started or contact the interviewer." }); }
         const rawToken = crypto.randomBytes(32).toString("base64url");
-        const rounds = assessment.rounds.map((round) => ({ name: round.name, description: round.description, questions: round.questions.map((question) => ({ text: question.text })) }));
+        const rounds = assessment.rounds.map((round) => ({ name: round.name, description: round.description, deliveryMode: round.deliveryMode || "conversational", questions: round.questions.map((question) => ({ text: question.text })) }));
         const attempt = new CandidateAttempt({ assessment: assessment._id, candidateEmail });
         attempt.candidateName = req.body.name.trim(); attempt.accessTokenHash = tokenHash(rawToken); attempt.rounds = rounds; attempt.status = "started"; attempt.startedAt = new Date();
         await attempt.save();
@@ -209,10 +250,11 @@ export const saveCandidateAnswer = async (req, res, next) => {
         if (!assessment) { observeCandidateAction("answer", "unavailable", null); return res.status(404).json({ message: "Assessment unavailable" }); }
         const attempt = await findAttempt(assessment._id, req.params.attemptId, req.get("x-attempt-token"));
         if (!attempt || attempt.status !== "started") { observeCandidateAction("answer", "unauthorized", assessment); return res.status(401).json({ message: "Attempt unavailable" }); }
-        const { roundIndex, questionIndex, answer, followUpAnswer } = req.body;
+        const { roundIndex, questionIndex, answer, spokenExplanation, followUpAnswer } = req.body;
         const item = attempt.rounds?.[roundIndex]?.questions?.[questionIndex];
         if (!item) { observeCandidateAction("answer", "invalid_question", assessment); return res.status(400).json({ message: "Invalid question" }); }
-        if (answer !== undefined) item.answer = answer.toString().trim().slice(0, 5000);
+        if (answer !== undefined) item.answer = answer.toString().trim().slice(0, 20000);
+        if (spokenExplanation !== undefined) item.spokenExplanation = spokenExplanation.toString().trim().slice(0, 5000);
         if (followUpAnswer !== undefined) item.followUpAnswer = followUpAnswer.toString().trim().slice(0, 5000);
         if (assessment.followUpsEnabled && item.answer && !item.followUpQuestion) {
             try {
@@ -229,25 +271,29 @@ export const submitCandidateAttempt = async (req, res, next) => {
     try {
         const assessment = await findPublicAssessment(req.params.shareToken);
         if (!assessment) { observeCandidateAction("submit", "unavailable", null); return res.status(404).json({ message: "Assessment unavailable" }); }
-        const attempt = await findAttempt(assessment._id, req.params.attemptId, req.get("x-attempt-token"));
-        if (!attempt || attempt.status !== "started") { observeCandidateAction("submit", "unauthorized", assessment); return res.status(401).json({ message: "Attempt unavailable" }); }
+        const authorized = await findAttempt(assessment._id, req.params.attemptId, req.get("x-attempt-token"));
+        if (!authorized) { observeCandidateAction("submit", "unauthorized", assessment); return res.status(401).json({ message: "Attempt unavailable" }); }
+        if (authorized.status === "evaluating") return res.status(202).json({ submitted: true, status: "evaluating", message: "Your assessment is being evaluated." });
+        if (authorized.status === "submitted") return res.json({ submitted: true, status: "submitted", message: "Your assessment has already been submitted." });
+        if (authorized.status !== "started" && authorized.status !== "evaluation_failed") return res.status(409).json({ message: "Attempt cannot be submitted" });
+        const attempt = authorized;
         const unanswered = attempt.rounds.flatMap((round) => round.questions).some((item) => !item.answer || (item.followUpQuestion && !item.followUpAnswer));
         if (unanswered) { observeCandidateAction("submit", "incomplete", assessment); return res.status(400).json({ message: "Answer every question and follow-up before submitting" }); }
-        const allScores = [];
-        for (const round of attempt.rounds) {
-            const roundScores = [];
-            for (const item of round.questions) {
-                const combined = `${item.answer}${item.followUpQuestion ? `\n\nFollow-up question: ${item.followUpQuestion}\nFollow-up answer: ${item.followUpAnswer}` : ""}`;
-                const feedback = await generateFeedbackForAnswer({ questionText: item.text, userAnswer: combined });
-                item.feedbackComment = feedback.comment; item.suggestions = feedback.suggestions; item.score = feedback.score;
-                roundScores.push(feedback.score); allScores.push(feedback.score);
-            }
-            round.score = roundScores.length ? Math.round((roundScores.reduce((a, b) => a + b, 0) / roundScores.length) * 10) / 10 : 0;
+        const evaluationStartedAt = new Date();
+        const claimed = await CandidateAttempt.findOneAndUpdate({ _id: attempt._id, status: { $in: ["started", "evaluation_failed"] } }, { $set: { status: "evaluating", evaluationError: "", evaluationStartedAt } }, { new: true });
+        if (!claimed) return res.status(202).json({ submitted: true, status: "evaluating", message: "Your assessment is already being evaluated." });
+        if (process.env.NODE_ENV === "test") {
+            await candidateAssessmentProcessor({ data: { attemptId: String(attempt._id) }, updateProgress: () => {} });
+            return res.json({ submitted: true, status: "submitted", message: "Your assessment has been submitted to the interviewer." });
         }
-        attempt.overallScore = allScores.length ? Math.round((allScores.reduce((a, b) => a + b, 0) / allScores.length) * 10) / 10 : 0;
-        attempt.status = "submitted"; attempt.submittedAt = new Date(); await attempt.save();
-        observeCandidateAction("submit", "success", assessment);
-        try { metrics.candidateAssessmentCompletionDurationSeconds.observe(Math.max((attempt.submittedAt.getTime() - attempt.startedAt.getTime()) / 1000, 0)); } catch {}
-        return res.json({ submitted: true, message: "Your assessment has been submitted to the interviewer." });
+        const queue = await getQueue("candidate-assessment");
+        if (!queue) {
+            await CandidateAttempt.updateOne({ _id: attempt._id, status: "evaluating" }, { $set: { status: "evaluation_failed", evaluationError: "Evaluation service unavailable" } });
+            return res.status(503).json({ message: "Evaluation is temporarily unavailable. Please try again." });
+        }
+        const jobId = createJobId("candidate-assessment", { attemptId: String(attempt._id), evaluationStartedAt: claimed.evaluationStartedAt.toISOString() });
+        await queue.add("evaluate", { attemptId: String(attempt._id) }, { jobId, removeOnComplete: { age: 86400, count: 1000 }, removeOnFail: { age: 604800, count: 1000 } });
+        observeCandidateAction("submit", "accepted", assessment);
+        return res.status(202).json({ submitted: true, status: "evaluating", message: "Your assessment was submitted and is being evaluated." });
     } catch (error) { observeCandidateAction("submit", "failure", null); return next(error); }
 };

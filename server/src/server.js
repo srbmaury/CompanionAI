@@ -8,12 +8,16 @@ import Resume from "./models/Resume.js";
 import { createWorker } from "./queues/index.js";
 import prepareQuestionsProcessor from "./queues/workers/prepareQuestions.js";
 import bulkFeedbackProcessor from "./queues/workers/bulkFeedback.js";
+import candidateAssessmentProcessor from "./queues/workers/candidateAssessment.js";
 import { z } from "zod";
 import mongoose from "mongoose";
 import getRedisClient from "./config/redis.js";
 import * as Sentry from "@sentry/node";
 import { startOtlpPush } from "./metrics/otlpPush.js";
 import { deliverDuePracticeReminders } from "./services/practiceReminders.js";
+import CandidateAttempt from "./models/CandidateAttempt.js";
+import { getQueue } from "./queues/index.js";
+import { createJobId } from "./queues/jobIds.js";
 
 dotenv.config();
 
@@ -136,6 +140,15 @@ const server = app.listen(PORT, async () => {
             console.log("[Workers] prepare-questions worker started");
             await createWorker("bulk-feedback", bulkFeedbackProcessor);
             console.log("[Workers] bulk-feedback worker started");
+            await createWorker("candidate-assessment", candidateAssessmentProcessor);
+            console.log("[Workers] candidate-assessment worker started");
+            const assessmentQueue = await getQueue("candidate-assessment");
+            const strandedAttempts = await CandidateAttempt.find({ status: "evaluating", evaluationStartedAt: { $ne: null } }).select("evaluationStartedAt").lean();
+            for (const attempt of strandedAttempts) {
+                const jobId = createJobId("candidate-assessment", { attemptId: String(attempt._id), evaluationStartedAt: attempt.evaluationStartedAt.toISOString() });
+                await assessmentQueue.add("evaluate", { attemptId: String(attempt._id) }, { jobId, removeOnComplete: { age: 86400, count: 1000 }, removeOnFail: { age: 604800, count: 1000 } });
+            }
+            if (strandedAttempts.length) console.log(`[Workers] recovered ${strandedAttempts.length} candidate assessment evaluations`);
         } catch (e) {
             console.warn("[Workers] Failed to start prepare-questions worker", e?.message || e);
         }

@@ -80,10 +80,64 @@ test("candidate completes an assessment without seeing private feedback", async 
     await page.getByLabel("Email address").fill("asha@example.com");
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: "Start assessment" }).click();
-    await page.getByLabel("Your answer").fill("I use idempotency, timeouts, retries, monitoring, and tested rollback paths.");
+    await page.getByPlaceholder("Answer by typing or speaking...").fill("I use idempotency, timeouts, retries, monitoring, and tested rollback paths.");
     await page.getByRole("button", { name: "Save answer" }).click();
     await expect(page.getByText("1 of 1 complete")).toBeVisible();
     await page.getByRole("button", { name: "Submit assessment" }).click();
     await expect(page.getByRole("heading", { name: "Assessment submitted" })).toBeVisible();
     await expect(page.getByText(/score|feedback/i)).toHaveCount(0);
+});
+
+test("recruiter coding assessment uses the full interview workspace", async ({ page }) => {
+    await mockSignedOut(page);
+    const assessment = { title: "Frontend practical", company: "Acme", jobRole: "Frontend Engineer", durationMinutes: 30, followUpsEnabled: true, candidateInstructions: "Explain your tradeoffs aloud.", rounds: [{ name: "Coding", deliveryMode: "online-assessment", questionCount: 1 }] };
+    const attempt = { _id: "attempt-code", rounds: [{ _id: "round-code", name: "Coding", description: "Implementation and communication", deliveryMode: "online-assessment", questions: [{ _id: "question-code", text: "Implement a function that removes duplicate IDs.", answer: "" }] }] };
+    await page.route("**/api/assessments/public/share-code", (route) => json(route, assessment));
+    await page.route("**/api/assessments/public/share-code/start", (route) => json(route, { attempt, attemptToken: "attempt-code-secret" }, 201));
+
+    await page.goto("/assessment/share-code");
+    await page.getByLabel("Full name").fill("Dev Candidate");
+    await page.getByLabel("Email address").fill("dev@example.com");
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Start assessment" }).click();
+
+    await expect(page.getByText("Coding / written")).toBeVisible();
+    await expect(page.getByText("Interview in progress")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Speak question" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start voice" })).toBeVisible();
+    await expect(page.getByLabel("Spoken explanation")).toBeVisible();
+    await expect(page.getByText("Voice will fill: Spoken explanation")).toBeVisible();
+    await page.getByRole("button", { name: "Use text answer" }).click();
+    await expect(page.getByPlaceholder("Answer by typing or speaking...")).toBeVisible();
+    await expect(page.getByLabel("Spoken explanation")).toHaveCount(0);
+    await page.getByPlaceholder("Answer by typing or speaking...").focus();
+    await expect(page.getByText("Voice will fill: Answer")).toBeVisible();
+    await page.getByRole("button", { name: "Use code editor" }).click();
+    await expect(page.getByLabel("Spoken explanation")).toBeVisible();
+    await page.getByLabel("Spoken explanation").focus();
+    await expect(page.getByText("Voice will fill: Spoken explanation")).toBeVisible();
+});
+
+test("candidate stays on the question when saving fails", async ({ page }) => {
+    await mockSignedOut(page);
+    const assessment = { title: "Reliability screen", jobRole: "Engineer", durationMinutes: 20, followUpsEnabled: false, rounds: [{ name: "Technical", deliveryMode: "conversational", questionCount: 2 }] };
+    const attempt = { _id: "attempt-failure", rounds: [{ _id: "round-failure", name: "Technical", deliveryMode: "conversational", questions: [
+        { _id: "question-failure-1", text: "Describe your rollback strategy.", answer: "" },
+        { _id: "question-failure-2", text: "How do you monitor deployments?", answer: "" },
+    ] }] };
+    await page.route("**/api/assessments/public/share-failure", (route) => json(route, assessment));
+    await page.route("**/api/assessments/public/share-failure/start", (route) => json(route, { attempt, attemptToken: "attempt-failure-secret" }, 201));
+    await page.route("**/api/assessments/public/share-failure/attempts/attempt-failure/answer", (route) => json(route, { message: "Temporary save failure" }, 503));
+
+    await page.goto("/assessment/share-failure");
+    await page.getByLabel("Full name").fill("Resilient Candidate");
+    await page.getByLabel("Email address").fill("resilient@example.com");
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Start assessment" }).click();
+    const answer = page.getByPlaceholder("Answer by typing or speaking...");
+    await answer.fill("I use health gates, canaries, and a tested rollback command.");
+    await page.getByRole("button", { name: "Save answer" }).click();
+    await expect(page.getByText("Temporary save failure")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Describe your rollback strategy." })).toBeVisible();
+    await expect(answer).toHaveValue("I use health gates, canaries, and a tested rollback command.");
 });

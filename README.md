@@ -2,6 +2,8 @@
 
 AI-assisted interview practice and candidate screening: candidates can build role-specific practice sessions with voice or code, while hiring teams can create structured assessments, manage candidates, and review consistent reports.
 
+See [TESTING.md](TESTING.md) for the short test-command reference.
+
 ## Key features
 - Authentication: email verification, Google Sign-In, rotating access/refresh tokens, logout, password reset, and account deletion
 - Resumes: upload to Cloudinary, type/size validation, tags/notes, search/sort, PDF inline preview
@@ -150,7 +152,7 @@ Highlighted endpoints
 
 ## Background processing
 
-BullMQ handles question preparation and bulk feedback when Redis is configured. Reminder schedules are evaluated every five minutes, persisted as delivery records, atomically claimed, and retried with exponential backoff. For initial deployments, run one worker-enabled API replica; split workers and reminder dispatch into dedicated process types before horizontal scaling. See `RUNBOOK.md`.
+BullMQ handles question preparation, bulk feedback, and recruiter assessment evaluation when Redis is configured. Candidate submissions are atomically moved to an evaluating state, retried by the worker, and recovered on startup if an API process stopped before enqueueing. Reminder schedules are evaluated every five minutes, persisted as delivery records, atomically claimed, and retried with exponential backoff. For initial deployments, run one worker-enabled API replica; split workers and reminder dispatch into dedicated process types before horizontal scaling. See `RUNBOOK.md`.
 
 ## Billing setup
 

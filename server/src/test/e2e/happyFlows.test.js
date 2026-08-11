@@ -280,7 +280,7 @@ describe("Launch-critical full product journey E2E", () => {
         const hybridAssessment = await agent.post("/api/assessments").set(auth).set("origin", origin).set("referer", `${origin}/`).send({
             title: "Hybrid backend screen", jobRole: "Backend Engineer",
             jobDescription: "Design secure and observable Node.js services in production.",
-            rounds: [{ name: "Architecture", description: "System design", questionCount: 2, aiPrompt: "Include observability", questions: [
+            rounds: [{ name: "Architecture", description: "System design", deliveryMode: "online-assessment", questionCount: 2, aiPrompt: "Include observability", questions: [
                 { text: "Describe a service you made more observable and the outcome." },
                 { text: "How would you protect an idempotent payment webhook?" },
             ] }],
@@ -289,13 +289,14 @@ describe("Launch-critical full product journey E2E", () => {
             "Describe a service you made more observable and the outcome.",
             "How would you protect an idempotent payment webhook?",
         ]);
+        expect(hybridAssessment.body.rounds[0].deliveryMode).toBe("online-assessment");
         await agent.post("/api/assessments/questions/generate").send({ jobRole: "Engineer", jobDescription: "A sufficiently detailed job description here.", roundName: "Technical", prompt: "Generate API questions", count: 2 }).expect(401);
         await agent.post("/api/assessments/questions/generate").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ jobRole: "Engineer", jobDescription: "A sufficiently detailed job description here.", roundName: "Technical", prompt: "Generate two API questions", count: 2 }).expect(503);
         const improvedQuestion = await agent.post("/api/assessments/questions/improve").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ question: "Tell me about APIs?", jobRole: "Backend Engineer", jobDescription: "A sufficiently detailed job description here.", roundName: "Technical" }).expect(200);
         expect(improvedQuestion.body.text).toBe("Tell me about APIs?");
 
         const publicAssessment = await agent.get(`/api/assessments/public/${shareToken}`).expect(200);
-        expect(publicAssessment.body).toMatchObject({ title: "Backend candidate screen", durationMinutes: 25, contactEmail: "hiring@example.com", followUpsEnabled: false });
+        expect(publicAssessment.body).toMatchObject({ title: "Backend candidate screen", durationMinutes: 25, contactEmail: "hiring@example.com", followUpsEnabled: false, rounds: [{ deliveryMode: "conversational", questionCount: 1 }] });
         expect(publicAssessment.body.jobDescription).toBeUndefined();
         expect(publicAssessment.body.shareToken).toBeUndefined();
         expect(publicAssessment.body.rounds[0].questions).toBeUndefined();
@@ -306,12 +307,18 @@ describe("Launch-critical full product journey E2E", () => {
         expect(attemptToken).toBeTruthy();
         expect(startedAttempt.body.attempt.candidateEmail).toBeUndefined();
         expect(startedAttempt.body.attempt.overallScore).toBeUndefined();
+        expect(startedAttempt.body.attempt.rounds[0].deliveryMode).toBe("conversational");
+        await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/run-code`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", "wrong-token").send({ language: "javascript", code: "console.log('no')" }).expect(401);
+        await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/transcribe`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", "wrong-token").expect(401);
+        await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/run-code`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({}).expect(400);
+        await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/transcribe`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).expect(400);
         await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "Overwrite", email: "candidate@example.com" }).expect(409);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/submit`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", "wrong-token").expect(401);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/submit`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).expect(400);
         await agent.put(`/api/assessments/public/${shareToken}/attempts/${attemptId}/answer`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", "wrong-token").send({ roundIndex: 0, questionIndex: 0, answer: "Unauthorized overwrite" }).expect(401);
-        const savedAnswer = await agent.put(`/api/assessments/public/${shareToken}/attempts/${attemptId}/answer`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({ roundIndex: 0, questionIndex: 0, answer: "Use indexes, hashed credentials, and expiring sessions." }).expect(200);
+        const savedAnswer = await agent.put(`/api/assessments/public/${shareToken}/attempts/${attemptId}/answer`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({ roundIndex: 0, questionIndex: 0, answer: "Use indexes, hashed credentials, and expiring sessions.", spokenExplanation: "I would verify this with load and security tests." }).expect(200);
         expect(savedAnswer.body.attempt.rounds[0].questions[0].answer).toContain("hashed credentials");
+        expect(savedAnswer.body.attempt.rounds[0].questions[0].spokenExplanation).toBe("I would verify this with load and security tests.");
         expect(savedAnswer.body.attempt.rounds[0].questions[0].feedbackComment).toBeUndefined();
         await CandidateAttempt.updateOne({ _id: attemptId }, { $set: { status: "submitted", submittedAt: new Date(), overallScore: 8, "rounds.0.score": 8, "rounds.0.questions.0.score": 8, "rounds.0.questions.0.feedbackComment": "Strong answer" } });
         const ownerReport = await agent.get(`/api/assessments/${assessmentId}`).set(auth).expect(200);
@@ -319,7 +326,7 @@ describe("Launch-critical full product journey E2E", () => {
         expect(ownerReport.body.attempts[0].rounds[0].questions[0].feedbackComment).toBe("Strong answer");
         await agent.get(`/api/assessments/${assessmentId}`).expect(401);
         await agent.get(`/api/assessments/${assessmentId}`).set(otherAuth).expect(404);
-        await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/submit`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).expect(401);
+        await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/submit`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).expect(200).expect(({ body }) => expect(body.status).toBe("submitted"));
         const assessmentList = await agent.get("/api/assessments?page=1&limit=10").set(auth).expect(200);
         expect(assessmentList.body.items.find((item) => item._id === assessmentId)).toMatchObject({ attemptCount: 1, submittedCount: 1 });
         const hiringOverview = await agent.get("/api/assessments/overview?status=submitted&search=Candidate&page=1&limit=10").set(auth).expect(200);
@@ -334,6 +341,8 @@ describe("Launch-critical full product journey E2E", () => {
         await agent.patch(`/api/assessments/${assessmentId}`).set(auth).set("origin", origin).set("referer", `${origin}/`).send({ status: "closed" }).expect(200);
         await agent.get(`/api/assessments/public/${shareToken}`).expect(404);
         await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "Late Candidate", email: "late@example.com" }).expect(404);
+        await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/run-code`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({}).expect(404);
+        await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/transcribe`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).expect(404);
         expect(exportWithAssessments.body.candidateAttempts[0].accessTokenHash).toBeUndefined();
         const lifecycleMetric = await metrics.assessmentsTotal.get();
         expect(lifecycleMetric.values.find((value) => value.labels.action === "create" && value.labels.outcome === "success")?.value).toBeGreaterThanOrEqual(1);

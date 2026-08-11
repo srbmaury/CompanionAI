@@ -28,9 +28,9 @@ const languages = [
     { label: "Java", value: "java" },
 ];
 
-const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx, onModeChange, draftKey, suggestCode = false }) => {
+const CodeEditorField = ({ value, onChange, onFocus, minRows = 6, outlinedInputSx, onModeChange, draftKey, suggestCode = false, executionEndpoint = "/run-code", executionHeaders = {}, skipAuthRedirect = false, canRun = true }) => {
     const muiTheme = useTheme();
-    const [useEditor, setUseEditor] = useState(false);
+    const [useEditor, setUseEditor] = useState(() => Boolean(suggestCode));
     const [language, setLanguage] = useState("cpp");
     const [stdin, setStdin] = useState("");
     const [isRunning, setIsRunning] = useState(false);
@@ -103,11 +103,11 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx, onMode
 
         try {
             setIsRunning(true);
-            const response = await api.post("/run-code", {
+            const response = await api.post(executionEndpoint, {
                 language,
                 code: value,
                 stdin,
-            });
+            }, { skipAuthRedirect, headers: executionHeaders });
             const d = response?.data || {};
             setOutput(d?.output ?? "");
             setExecMeta({
@@ -130,7 +130,7 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx, onMode
         } finally {
             setIsRunning(false);
         }
-    }, [useEditor, value, language, stdin]);
+    }, [useEditor, value, language, stdin, executionEndpoint, executionHeaders, skipAuthRedirect]);
 
     const handleEditorDidMount = useCallback((editor, monaco) => {
         editorRef.current = editor;
@@ -144,15 +144,18 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx, onMode
             const contentHeight = editorRef.current.getContentHeight();
             const nextHeight = Math.max(contentHeight, minimumEditorHeight);
             const clampedHeight = Math.min(nextHeight, maximumEditorHeight);
-            setEditorHeight(clampedHeight);
-            editorRef.current.layout();
+            // Monaco emits another content-size event when its container is laid
+            // out. Avoid setting identical height state (and explicitly laying
+            // out from inside that event), which otherwise creates a render loop.
+            setEditorHeight((current) => current === clampedHeight ? current : clampedHeight);
         };
 
         editor.onDidContentSizeChange(updateEditorHeight);
+        editor.onDidFocusEditorText(() => onFocus?.());
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => { handleRunCode(); });
         editor.addCommand(monaco.KeyCode.F9, () => { handleRunCode(); });
         updateEditorHeight();
-    }, [handleRunCode, minRows]);
+    }, [handleRunCode, minRows, onFocus]);
 
     const outputValue = execMeta?.isError
         ? execMeta?.errorType === "compile"
@@ -173,7 +176,7 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx, onMode
                 <IconButton onClick={() => setUseEditor((current) => { const next = !current; onModeChange?.(next); return next; })} size="small" aria-label={useEditor ? "Use text answer" : "Use code editor"}>
                     <CodeIcon />
                 </IconButton>
-                {useEditor && (
+                {useEditor && canRun && (
                     <Tooltip title={isLightTheme ? "Switch to dark theme" : "Switch to light theme"}>
                         <IconButton onClick={toggleTheme} size="small">
                             {isLightTheme ? <Brightness4Icon /> : <Brightness7Icon />}
@@ -443,6 +446,7 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx, onMode
                     placeholder="Answer by typing or speaking..."
                     value={value}
                     onChange={(e) => onChange(e.target.value)}
+                    onFocus={onFocus}
                     variant="outlined"
                     sx={outlinedInputSx}
                 />

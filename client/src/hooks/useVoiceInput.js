@@ -13,7 +13,7 @@ export const composeLiveTranscript = (finalText, interimText) => `${finalText ||
  * with Web Speech API running in parallel for live interim transcript display.
  * On stop, Whisper result wins; if Whisper fails, accumulated Web Speech finals are used.
  */
-export const useVoiceInput = ({ onTranscript }) => {
+export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcribe", transcribeHeaders = {}, enableServerTranscription = true, skipAuthRedirect = false }) => {
     const [listening, setListening] = useState(false);
     const [listeningTarget, setListeningTarget] = useState(null);
     const [interimText, setInterimText] = useState("");   // live preview while speaking
@@ -34,7 +34,7 @@ export const useVoiceInput = ({ onTranscript }) => {
     useEffect(() => { onTranscriptRef.current = onTranscript; }, [onTranscript]);
 
     const supportsTTS = typeof window !== "undefined" && "speechSynthesis" in window;
-    const supportsSTT = true;
+    const supportsSTT = enableServerTranscription || Boolean(SpeechRecognitionCtor);
 
     // Mic permissions + device enumeration
     useEffect(() => {
@@ -152,6 +152,8 @@ export const useVoiceInput = ({ onTranscript }) => {
     }, []);
 
     const startListening = useCallback(async (target) => {
+        if (!supportsSTT) return;
+        if (!enableServerTranscription && SpeechRecognitionCtor) return fallbackSTT(target);
         try {
             const constraints = selectedDeviceId && selectedDeviceId !== "default"
                 ? { audio: { deviceId: { exact: selectedDeviceId } }, video: false }
@@ -186,7 +188,10 @@ export const useVoiceInput = ({ onTranscript }) => {
                             if (event.results[i].isFinal) finals += t + " ";
                             else interim += t;
                         }
-                        if (finals) wsFinalsRef.current += finals;
+                        if (finals.trim()) {
+                            liveTranscriptCommittedRef.current = true;
+                            onTranscriptRef.current?.(target, finals.trim());
+                        }
                         wsInterimRef.current = interim;
                         setInterimText(interim);
                     };
@@ -209,7 +214,7 @@ export const useVoiceInput = ({ onTranscript }) => {
                         try {
                             const form = new FormData();
                             form.append("audio", blob, "audio.webm");
-                            const resp = await api.post("/stt/transcribe", form, { headers: { "Content-Type": "multipart/form-data" } });
+                            const resp = await api.post(transcribeEndpoint, form, { skipAuthRedirect, headers: { "Content-Type": "multipart/form-data", ...transcribeHeaders } });
                             finalText = (resp?.data?.text || "").trim();
                         } catch (e) {
                             console.warn("Whisper transcribe failed, using Web Speech fallback", e);
@@ -238,7 +243,7 @@ export const useVoiceInput = ({ onTranscript }) => {
             console.debug("getUserMedia failed, falling back to Web Speech", err);
             await fallbackSTT(target);
         }
-    }, [fallbackSTT, selectedDeviceId, startMeter, stopMeter, stopLiveRec]);
+    }, [enableServerTranscription, fallbackSTT, selectedDeviceId, skipAuthRedirect, startMeter, stopMeter, stopLiveRec, supportsSTT, transcribeEndpoint, transcribeHeaders]);
 
     const stopListening = useCallback(() => {
         commitLiveTranscript(listeningTarget);
@@ -251,6 +256,10 @@ export const useVoiceInput = ({ onTranscript }) => {
         setListeningTarget(null);
         try { stopMeter(); } catch { void 0; }
     }, [commitLiveTranscript, listeningTarget, stopMeter, stopLiveRec]);
+
+    const retargetListening = useCallback((target) => {
+        if (listening && target) setListeningTarget(target);
+    }, [listening]);
 
     const speakNow = useCallback((text) => {
         try {
@@ -276,6 +285,6 @@ export const useVoiceInput = ({ onTranscript }) => {
         micLevel, micPermission,
         inputDevices, selectedDeviceId, setSelectedDeviceId,
         supportsSTT, supportsTTS,
-        startListening, stopListening, speakNow,
+        startListening, stopListening, retargetListening, speakNow,
     };
 };

@@ -41,6 +41,8 @@ describe("assessment workspace hierarchy", () => {
         fireEvent.change(screen.getByLabelText(/Assessment title/), { target: { value: "Frontend screen" } });
         fireEvent.change(screen.getByLabelText(/Job role/), { target: { value: "Senior frontend engineer" } });
         fireEvent.change(screen.getByLabelText(/Job description and success criteria/), { target: { value: "Own React architecture, accessibility, testing, and web performance." } });
+        fireEvent.mouseDown(screen.getByLabelText("Candidate experience"));
+        fireEvent.click(await screen.findByRole("option", { name: "Coding / written assessment" }));
         fireEvent.change(screen.getByLabelText("Tell AI what to generate"), { target: { value: "Generate 3 questions about React and accessibility" } });
         fireEvent.click(screen.getByRole("button", { name: "Generate with AI" }));
         expect(await screen.findByDisplayValue("Explain how you diagnose a slow React render.")).toBeTruthy();
@@ -50,7 +52,7 @@ describe("assessment workspace hierarchy", () => {
         fireEvent.click(screen.getByRole("button", { name: "Add manual question" }));
         fireEvent.change(screen.getByLabelText(/Question 3/), { target: { value: "Review this component API and identify its accessibility risks." } });
         fireEvent.click(screen.getByRole("button", { name: "Create and publish assessment" }));
-        await vi.waitFor(() => expect(post).toHaveBeenCalledWith("/assessments", expect.objectContaining({ rounds: [expect.objectContaining({ questionCount: 3, questions: [
+        await vi.waitFor(() => expect(post).toHaveBeenCalledWith("/assessments", expect.objectContaining({ rounds: [expect.objectContaining({ deliveryMode: "online-assessment", questionCount: 3, questions: [
             { text: "Describe a specific React performance issue you diagnosed and how you measured the result." },
             { text: "How do you test keyboard accessibility?" },
             { text: "Review this component API and identify its accessibility risks." },
