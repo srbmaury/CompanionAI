@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { useInterviewSession } from "../hooks/useInterviewSession";
@@ -17,6 +17,7 @@ import FeedbackPanel       from "../components/FeedbackPanel";
 import OAForm              from "../components/OAForm";
 import RoundList           from "../components/RoundList";
 import { composeAnswerParts } from "../utils/answerParts";
+import { storage, storageKeys } from "../utils/interviewStorage";
 
 const outlinedInputSx = {
     "& .MuiOutlinedInput-root": {
@@ -116,6 +117,32 @@ const InterviewPage = () => {
     });
     oaAnswersSetterRef.current = setOaAnswers;
 
+    useEffect(() => {
+        if (!selectedRound?._id || !isConversational || convViewState.done) return;
+        const index = convViewState.index || 0;
+        setConvSpokenAnswer(storage.get(storageKeys.convVoice(interviewId, selectedRound._id, index)) || "");
+        setConvCodingEnabled(Boolean(storage.get(storageKeys.convCoding(interviewId, selectedRound._id, index))));
+    }, [interviewId, selectedRound?._id, isConversational, convViewState.index, convViewState.done]);
+
+    useEffect(() => {
+        if (!selectedRound?._id || !isConversational || convViewState.done) return;
+        const index = convViewState.index || 0;
+        storage.set(storageKeys.convVoice(interviewId, selectedRound._id, index), convSpokenAnswer);
+        storage.set(storageKeys.convCoding(interviewId, selectedRound._id, index), convCodingEnabled);
+    }, [interviewId, selectedRound?._id, isConversational, convViewState.index, convViewState.done, convSpokenAnswer, convCodingEnabled]);
+
+    useEffect(() => {
+        if (!selectedRound?._id || isConversational) return;
+        setOaSpokenAnswers(storage.get(storageKeys.oaVoice(interviewId, selectedRound._id)) || []);
+        setOaCodingEnabled(storage.get(storageKeys.oaCoding(interviewId, selectedRound._id)) || []);
+    }, [interviewId, selectedRound?._id, isConversational]);
+
+    useEffect(() => {
+        if (!selectedRound?._id || isConversational) return;
+        storage.set(storageKeys.oaVoice(interviewId, selectedRound._id), oaSpokenAnswers);
+        storage.set(storageKeys.oaCoding(interviewId, selectedRound._id), oaCodingEnabled);
+    }, [interviewId, selectedRound?._id, isConversational, oaSpokenAnswers, oaCodingEnabled]);
+
     const changeConversationalCodingMode = useCallback((enabled) => {
         setConvCodingEnabled(enabled);
         if (!enabled && convSpokenAnswer.trim()) {
@@ -136,10 +163,10 @@ const InterviewPage = () => {
         setConvSpokenAnswer("");
     }, [convAnswer, convSpokenAnswer, handleSubmitAnswer]);
 
-    const finishFollowUp = useCallback(() => {
-        handleFollowUpDone();
+    const finishFollowUp = useCallback(async ({ skip = false } = {}) => {
+        await handleFollowUpDone(skip ? "" : composeAnswerParts(convAnswer, convSpokenAnswer));
         setConvSpokenAnswer("");
-    }, [handleFollowUpDone]);
+    }, [convAnswer, convSpokenAnswer, handleFollowUpDone]);
 
     const submitOaAnswers = useCallback(async () => {
         const combined = Array.from(
@@ -300,6 +327,7 @@ const InterviewPage = () => {
                                             setSpokenAnswer={setConvSpokenAnswer}
                                             codingEnabled={convCodingEnabled}
                                             onCodingModeChange={changeConversationalCodingMode}
+                                            codeDraftKey={`${interviewId}:${selectedRound._id}:${convViewState.index}`}
                                             onSubmitAnswer={submitConversationalAnswer}
                                             onClarify={handleClarify}
                                             onCompleteRound={handleCompleteRound}
@@ -346,6 +374,7 @@ const InterviewPage = () => {
                                             spokenAnswers={oaSpokenAnswers}
                                             codingEnabled={oaCodingEnabled}
                                             onCodingModeChange={changeOaCodingMode}
+                                            codeDraftPrefix={`${interviewId}:${selectedRound._id}`}
                                             onSpokenChange={(index, value) => setOaSpokenAnswers((current) => { const next = [...current]; next[index] = value; return next; })}
                                             onChange={handleOAChange}
                                             onSubmit={submitOaAnswers}

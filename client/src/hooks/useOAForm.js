@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import api from "../api/axios";
 import { storage, storageKeys } from "../utils/interviewStorage";
 import { pollJobStatus } from "../utils/pollJobStatus";
+import { trackEvent } from "../utils/analytics";
 
 /**
  * Manages online-assessment mode: answer state, draft persistence, and submission.
@@ -73,6 +74,7 @@ export const useOAForm = ({
         }
         try {
             setOaSubmitting(true);
+            trackEvent("first_answer_submitted");
             setOaFeedbackProgress(0);
             const outgoing = Array.from(
                 { length: selectedRound.questions.length },
@@ -101,6 +103,7 @@ export const useOAForm = ({
             if (updated) selectRound(updated);
             clearDraftsForRound(selectedRound);
             showToast("success", "Round submitted successfully.");
+            trackEvent("round_completed");
         } catch (e) {
             console.error("OA submit error", e);
             showToast("error", e?.response?.data?.message || "Failed to submit round.");

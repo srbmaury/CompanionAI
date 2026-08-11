@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import api from "../api/axios";
 import { storage, storageKeys } from "../utils/interviewStorage";
 import { pollJobStatus } from "../utils/pollJobStatus";
+import { trackEvent } from "../utils/analytics";
 
 /**
  * Manages the conversational interview mode: state machine, draft persistence,
@@ -84,15 +85,24 @@ export const useConversational = ({
         return { ...convState, done: selectedRound.status === "completed" || convState.done };
     }, [convState, selectedRound]);
 
-    const handleFollowUpDone = useCallback(() => {
+    const handleFollowUpDone = useCallback(async (followUpAnswer = "") => {
         if (!pendingFollowUp) return;
-        const { qIndex, originalAnswer } = pendingFollowUp;
+        const { qIndex, originalAnswer, question } = pendingFollowUp;
+        const safeFollowUp = (followUpAnswer || "").toString().trim();
+        if (safeFollowUp) {
+            try {
+                await api.post(`/questions/${selectedRound._id}/follow-up-answer`, { index: qIndex, question, answer: safeFollowUp });
+            } catch (error) {
+                showToast("warning", error?.response?.data?.message || "Follow-up answer could not be saved.");
+                return;
+            }
+        }
         setPendingFollowUp(null);
         setSelectedRound((prev) => {
             if (!prev) return prev;
             const copy = { ...prev, questions: [...(prev.questions || [])] };
             if (copy.questions[qIndex]) {
-                copy.questions[qIndex] = { ...copy.questions[qIndex], answerGiven: originalAnswer };
+                copy.questions[qIndex] = { ...copy.questions[qIndex], answerGiven: originalAnswer, followUpQuestion: safeFollowUp ? question : undefined, followUpAnswer: safeFollowUp || undefined };
             }
             const lim = Math.min(Number(copy.questionLimit) || 8, copy.questions?.length || 0);
             copy.conversationalIndex = qIndex + 1;
@@ -110,11 +120,12 @@ export const useConversational = ({
             return copy;
         });
         setConvAnswer("");
-    }, [pendingFollowUp, setSelectedRound, setInterview, syncConvStateFromRound]);
+    }, [pendingFollowUp, selectedRound?._id, setSelectedRound, setInterview, showToast, syncConvStateFromRound]);
 
     const handleSubmitAnswer = useCallback(async (answer) => {
         if (!selectedRound || !isConversational || pendingFollowUp) return;
         const currentIndex = convState.index;
+        if (currentIndex === 0) trackEvent("first_answer_submitted");
         setConvSubmitting(true);
         const limit = Math.min(Number(selectedRound?.questionLimit) || 8, selectedRound?.questions?.length || 0);
         const isLast = currentIndex + 1 >= limit && limit > 0;
@@ -156,6 +167,7 @@ export const useConversational = ({
                 setInterview(data);
                 const updated = data.rounds.find((r) => r.round._id === selectedRound._id)?.round;
                 if (updated) selectRound(updated);
+                trackEvent("round_completed");
             } catch (e) {
                 console.error("final answer submit error", e);
                 showToast("warning", "Failed to save final answer or load feedback.");
@@ -251,7 +263,13 @@ export const useConversational = ({
             try {
                 setConvFeedbackProgress(0);
                 const answered = (roundForFeedback.questions || [])
-                    .map((q, i) => ({ index: i, questionId: q.question?._id, answer: (q.answerGiven || "").toString().trim() }))
+                    .map((q, i) => {
+                        const original = (q.answerGiven || "").toString().trim();
+                        const followUp = q.followUpQuestion && q.followUpAnswer
+                            ? `\n\nFollow-up question: ${q.followUpQuestion}\nFollow-up answer: ${q.followUpAnswer}`
+                            : "";
+                        return { index: i, questionId: q.question?._id, answer: `${original}${followUp}`.trim() };
+                    })
                     .filter((it) => it.questionId && it.answer.length > 0);
                 if (answered.length > 0) {
                     const { data: job } = await api.post(`/jobs/bulk-feedback`, { roundId: selectedRound._id, items: answered, attach: true });

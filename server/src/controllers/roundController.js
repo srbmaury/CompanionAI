@@ -4,14 +4,14 @@ import Round from "../models/Round.js";
 export const getSuggestedRounds = async (req, res, next) => {
     const { company, jobRole, jobDescription } = req.body;
 
-    if (!company || !jobRole || !jobDescription) {
+    if (!jobRole || !jobDescription) {
         return res
             .status(400)
-            .json({ message: "Company, Job Role, and JD are required" });
+            .json({ message: "Job Role and JD are required" });
     }
 
     try {
-        const result = await suggestRounds(company, jobRole, jobDescription);
+        const result = await suggestRounds(company || "", jobRole, jobDescription);
         res.status(200).json(result);
     } catch (error) {
         return next(error instanceof Error ? error : new Error(String(error)));

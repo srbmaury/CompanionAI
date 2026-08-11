@@ -7,11 +7,12 @@ import { getCompanyGrounding } from "../services/companyGrounding.js";
 export const createInterview = async (req, res, next) => {
     const { resumeId, company, jobRole, jobDescription, rounds } = req.body;
 
-    if (!resumeId || !company || !jobRole || !jobDescription || !Array.isArray(rounds) || rounds.length === 0) {
+    if (!resumeId || !jobRole || !jobDescription || !Array.isArray(rounds) || rounds.length === 0) {
         return res.status(400).json({ message: "All fields and at least one round are required" });
     }
 
-    const grounding = await getCompanyGrounding(company, jobRole);
+    const companyName = (company || "").toString().trim() || "Open role";
+    const grounding = await getCompanyGrounding(company ? companyName : "", jobRole);
     const session = await mongoose.startSession();
     session.startTransaction();
     const ops = [];
@@ -55,7 +56,7 @@ export const createInterview = async (req, res, next) => {
                 {
                     user: req.user._id,
                     resume: resumeId,
-                    company,
+                    company: companyName,
                     jobRole,
                     jobDescription,
                     grounding,
@@ -123,20 +124,28 @@ export const getProgressSummary = async (req, res, next) => {
     try {
         const interviews = await Interview.find({ user: req.user._id })
             .sort({ createdAt: 1 })
-            .populate({ path: "rounds.round", select: "status questions", populate: { path: "questions.feedback", select: "score" } })
+            .populate({ path: "rounds.round", select: "name status questions", populate: { path: "questions.feedback", select: "score" } })
             .lean();
         const scored = [];
+        const skillScores = new Map();
         let completed = 0;
         for (const interview of interviews) {
             const rounds = (interview.rounds || []).map((entry) => entry.round).filter(Boolean);
             if (rounds.length && rounds.every((round) => round.status === "completed")) completed += 1;
             const scores = rounds.flatMap((round) => (round.questions || []).map((item) => Number(item.feedback?.score)).filter(Number.isFinite));
+            for (const round of rounds) {
+                const values = (round.questions || []).map((item) => Number(item.feedback?.score)).filter(Number.isFinite);
+                if (!values.length) continue;
+                const name = (round.name || "General").toString();
+                skillScores.set(name, [...(skillScores.get(name) || []), ...values]);
+            }
             if (scores.length) scored.push({ date: interview.createdAt, score: Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 });
         }
         const averageScore = scored.length ? Math.round((scored.reduce((sum, item) => sum + item.score, 0) / scored.length) * 10) / 10 : 0;
         const recent = scored.slice(-5);
         const improvement = recent.length > 1 ? Math.round((recent.at(-1).score - recent[0].score) * 10) / 10 : 0;
-        return res.json({ total: interviews.length, completed, averageScore, improvement, recent });
+        const skills = [...skillScores.entries()].map(([name, values]) => ({ name, score: Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10, answers: values.length })).sort((a, b) => a.score - b.score);
+        return res.json({ total: interviews.length, completed, averageScore, improvement, recent, skills, focusArea: skills[0] || null });
     } catch (error) { return next(error instanceof Error ? error : new Error(String(error))); }
 };
 

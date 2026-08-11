@@ -33,9 +33,14 @@ export const useInterviewSession = (interviewId, showToast) => {
         if (!round) return;
         try {
             storage.remove(storageKeys.oa(interviewId, round._id));
+            storage.remove(storageKeys.oaVoice(interviewId, round._id));
+            storage.remove(storageKeys.oaCoding(interviewId, round._id));
             const limit = Number(round?.questionLimit) || (round?.questions?.length || 20);
             for (let i = 0; i < limit; i++) {
                 storage.remove(storageKeys.conv(interviewId, round._id, i));
+                storage.remove(storageKeys.convVoice(interviewId, round._id, i));
+                storage.remove(storageKeys.convCoding(interviewId, round._id, i));
+                storage.remove(storageKeys.codeEditor(`${interviewId}:${round._id}:${i}`));
             }
         } catch { void 0; }
     }, [interviewId]);

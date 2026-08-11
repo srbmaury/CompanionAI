@@ -5,6 +5,11 @@ import validate from "../middleware/validate.js";
 import { z } from "zod";
 import AuditLog from "../models/AuditLog.js";
 import ProductFeedback from "../models/ProductFeedback.js";
+import User from "../models/User.js";
+import Interview from "../models/Interview.js";
+import ProductEvent from "../models/ProductEvent.js";
+import ReminderDelivery from "../models/ReminderDelivery.js";
+import RefreshToken from "../models/RefreshToken.js";
 import audit from "../middleware/audit.js";
 import { ObjectIdString } from "../validation/commonSchemas.js";
 
@@ -16,6 +21,23 @@ const QuerySchema = z.object({
     user: z.string().optional(),
     action: z.string().optional(),
     entityType: z.string().optional(),
+});
+
+router.get("/overview", protect, requireRole("admin"), async (_req, res, next) => {
+    try {
+        const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const [users, verifiedUsers, activeSessions, interviews, completedInterviews, newFeedback, failedReminders, events] = await Promise.all([
+            User.countDocuments(),
+            User.countDocuments({ isVerified: true }),
+            RefreshToken.countDocuments({ expiresAt: { $gt: new Date() } }),
+            Interview.countDocuments(),
+            Interview.countDocuments({ overallScore: { $gt: 0 } }),
+            ProductFeedback.countDocuments({ status: "new" }),
+            ReminderDelivery.countDocuments({ status: "failed" }),
+            ProductEvent.aggregate([{ $match: { occurredAt: { $gte: since } } }, { $group: { _id: "$event", count: { $sum: 1 } } }]),
+        ]);
+        return res.json({ users, verifiedUsers, activeSessions, interviews, completedInterviews, newFeedback, failedReminders, events: Object.fromEntries(events.map((item) => [item._id, item.count])), period: "last_30_days" });
+    } catch (error) { return next(error); }
 });
 
 router.get(

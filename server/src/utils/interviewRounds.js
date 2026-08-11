@@ -115,11 +115,11 @@ export const suggestRounds = async (company, jobRole, jobDescription) => {
         const grounding = await getCompanyGrounding(safeCompany, safeRole);
         const webContext = grounding.sources.length
             ? grounding.sources.map((source, index) => `Source ${index + 1}: ${source.title}\nURL: ${source.url}\nExtract: ${source.snippet}`).join("\n\n")
-            : await webSearchInterviewProcess(safeCompany, safeRole);
+            : safeCompany ? await webSearchInterviewProcess(safeCompany, safeRole) : null;
 
         const prompt = `You are generating a realistic interview process tailored to the company and role.
 
-            Company: ${safeCompany}
+            Company: ${safeCompany || "Not specified — use role and industry-standard patterns"}
             Role: ${safeRole}
             Job Description: ${safeJD}
 

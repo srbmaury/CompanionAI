@@ -44,18 +44,22 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 // Local components
 import RoundSelector from "../components/RoundSelector";
 import { getDefaultQuestionLimit } from "../utils/roundDefaults";
+import { storage } from "../utils/interviewStorage";
+
+const CREATE_DRAFT_KEY = "ia:create-interview";
+const savedCreateDraft = storage.get(CREATE_DRAFT_KEY) || {};
 
 const INTERVIEW_PRESETS = [
-    { name: "Frontend", company: "Target company", jobRole: "Frontend Engineer", jobDescription: "Build accessible, performant web applications with React, JavaScript, testing, API integration, and modern frontend architecture." },
-    { name: "Backend", company: "Target company", jobRole: "Backend Engineer", jobDescription: "Design reliable APIs and distributed services with databases, caching, queues, observability, security, testing, and scalable system design." },
-    { name: "Full stack", company: "Target company", jobRole: "Full Stack Engineer", jobDescription: "Own product features end to end across React, APIs, data modeling, testing, deployment, performance, security, and cross-functional collaboration." },
+    { name: "Frontend", company: "", jobRole: "Frontend Engineer", jobDescription: "Build accessible, performant web applications with React, JavaScript, testing, API integration, and modern frontend architecture." },
+    { name: "Backend", company: "", jobRole: "Backend Engineer", jobDescription: "Design reliable APIs and distributed services with databases, caching, queues, observability, security, testing, and scalable system design." },
+    { name: "Full stack", company: "", jobRole: "Full Stack Engineer", jobDescription: "Own product features end to end across React, APIs, data modeling, testing, deployment, performance, security, and cross-functional collaboration." },
 ];
 
 const CreateInterviewPage = () => {
     const { getResumes, deleteResume, uploadResume } = useResumes();
     const navigate = useNavigate();
 
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState(savedCreateDraft.formData || {
         company: "",
         jobRole: "",
         jobDescription: "",
@@ -66,9 +70,9 @@ const CreateInterviewPage = () => {
     const [uploading, setUploading] = useState(false);
     const [uploadConsent, setUploadConsent] = useState(false);
 
-    const [suggestedRounds, setSuggestedRounds] = useState([]);
-    const [grounding, setGrounding] = useState(null);
-    const [selectedRounds, setSelectedRounds] = useState([]);
+    const [suggestedRounds, setSuggestedRounds] = useState(savedCreateDraft.suggestedRounds || []);
+    const [grounding, setGrounding] = useState(savedCreateDraft.grounding || null);
+    const [selectedRounds, setSelectedRounds] = useState(savedCreateDraft.selectedRounds || []);
     const [loadingRounds, setLoadingRounds] = useState(false);
     const [snack, setSnack] = useState({
         open: false,
@@ -79,7 +83,11 @@ const CreateInterviewPage = () => {
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState("");
     const [deleteConfirmId, setDeleteConfirmId] = useState(null);
-    const [activeStep, setActiveStep] = useState(0);
+    const [activeStep, setActiveStep] = useState(savedCreateDraft.activeStep || 0);
+
+    useEffect(() => {
+        storage.set(CREATE_DRAFT_KEY, { formData, suggestedRounds, grounding, selectedRounds, activeStep });
+    }, [formData, suggestedRounds, grounding, selectedRounds, activeStep]);
 
     // Fetch resumes on mount
     useEffect(() => {
@@ -102,6 +110,7 @@ const CreateInterviewPage = () => {
             setUploading(true);
             const newResume = await uploadResume(file);
             if (newResume) {
+                trackEvent("resume_uploaded");
                 setResumes((prev) => [...prev, newResume]);
                 setFormData((prev) => ({ ...prev, resumeId: newResume._id }));
                 setSnack({
@@ -217,6 +226,7 @@ const CreateInterviewPage = () => {
                 rounds: selectedRounds,
             });
             if (data && data._id) {
+                storage.remove(CREATE_DRAFT_KEY);
                 trackEvent("interview_created");
                 setSnack({
                     open: true,
@@ -242,7 +252,6 @@ const CreateInterviewPage = () => {
     };
 
     const isFormValid =
-        formData.company &&
         formData.jobRole &&
         formData.jobDescription &&
         formData.resumeId;
@@ -282,11 +291,11 @@ const CreateInterviewPage = () => {
                         </Stack>
                     </Box>
                     <TextField
-                        label="Company"
+                        label="Company (optional)"
                         name="company"
                         value={formData.company}
                         onChange={handleChange}
-                        required
+                        placeholder="Leave blank for general role practice"
                     />
                     <TextField
                         label="Job Role"
@@ -382,7 +391,7 @@ const CreateInterviewPage = () => {
                     <Divider sx={{ my: 2 }} />
 
                     {/* Suggest rounds */}
-                    <Tooltip title={!isFormValid ? "Fill in company, role, description, and select a resume first" : "AI will suggest interview rounds based on your details"}>
+                    <Tooltip title={!isFormValid ? "Fill in role, description, and select a resume first" : "AI will suggest interview rounds based on your details"}>
                         <span>
                             <Button
                                 variant="outlined"

@@ -10,6 +10,14 @@ import { getQueue } from "../queues/index.js";
 const findOwnedInterviewForRound = (userId, roundId) =>
     Interview.findOne({ user: userId, "rounds.round": roundId });
 
+const answerWithFollowUp = (item) => {
+    const original = (item?.answerGiven || "").toString().trim();
+    const followUpQuestion = (item?.followUpQuestion || "").toString().trim();
+    const followUpAnswer = (item?.followUpAnswer || "").toString().trim();
+    if (!followUpQuestion || !followUpAnswer) return original;
+    return `${original}\n\nFollow-up question: ${followUpQuestion}\nFollow-up answer: ${followUpAnswer}`.trim();
+};
+
 export const prepareQuestionsForRound = async (req, res, next) => {
     try {
         const { interviewId, roundId } = req.params;
@@ -194,7 +202,7 @@ export const submitConversationalAnswer = async (req, res, next) => {
                     .map((q, i) => ({
                         index: i,
                         questionId: q?.question?._id || q?.question,
-                        answer: (q?.answerGiven || "").toString().trim(),
+                        answer: answerWithFollowUp(q),
                         hasFeedback: Boolean(q?.feedback),
                     }))
                     .filter((it) => it.questionId && it.answer.length > 0 && !it.hasFeedback)
@@ -323,6 +331,26 @@ export const getFollowUp = async (req, res, next) => {
         return res.json({ followUp });
     } catch (error) {
         console.error("getFollowUp error:", error);
+        return next(error instanceof Error ? error : new Error(String(error)));
+    }
+};
+
+export const submitFollowUpAnswer = async (req, res, next) => {
+    try {
+        const { roundId } = req.params;
+        const { index, question, answer } = req.body || {};
+        const interview = await findOwnedInterviewForRound(req.user._id, roundId).lean();
+        if (!interview) return res.status(404).json({ message: "Round not found" });
+        const round = await Round.findById(roundId);
+        const idx = Number(index);
+        if (!round || !Number.isInteger(idx) || idx < 0 || idx >= round.questions.length) {
+            return res.status(400).json({ message: "Invalid follow-up" });
+        }
+        round.questions[idx].followUpQuestion = (question || "").toString().trim().slice(0, 1000);
+        round.questions[idx].followUpAnswer = (answer || "").toString().trim().slice(0, 5000);
+        await round.save();
+        return res.json({ success: true });
+    } catch (error) {
         return next(error instanceof Error ? error : new Error(String(error)));
     }
 };

@@ -5,7 +5,7 @@ import api from "../api/axios";
 import { AuthContext } from "../context/AuthContext";
 import { trackEvent } from "../utils/analytics";
 
-import { Add, ArrowForward, CheckCircleOutline, InsightsOutlined, PlayCircleOutline, TrackChanges } from "@mui/icons-material";
+import { Add, ArrowForward, CheckCircleOutline, InsightsOutlined, PlayCircleOutline, RadioButtonUnchecked, TrackChanges } from "@mui/icons-material";
 import { Alert, Box, Button, Card, CardActionArea, CardContent, Chip, Container, Grid, LinearProgress, Pagination, Skeleton, Stack, Typography, ToggleButton, ToggleButtonGroup } from "@mui/material";
 
 const DashboardPage = () => {
@@ -22,6 +22,7 @@ const DashboardPage = () => {
     const [progress, setProgress] = useState({ averageScore: 0, improvement: 0, completed: 0 });
     const [recommendations, setRecommendations] = useState([]);
     const [entitlements, setEntitlements] = useState(null);
+    const [resumeCount, setResumeCount] = useState(0);
 
     useEffect(() => {
         if (!user?._id) return;
@@ -29,6 +30,7 @@ const DashboardPage = () => {
         api.get("/interviews/analytics/progress").then(({ data }) => setProgress(data || {})).catch(() => {});
         api.get("/recommendations").then(({ data }) => setRecommendations(data?.actions || [])).catch(() => {});
         api.get("/billing/entitlements").then(({ data }) => setEntitlements(data || null)).catch(() => {});
+        api.get("/resumes", { params: { page: 1, limit: 1 } }).then(({ data }) => setResumeCount(Array.isArray(data) ? data.length : Number(data?.total) || 0)).catch(() => {});
     }, [user]);
 
     useEffect(() => {
@@ -80,6 +82,13 @@ const DashboardPage = () => {
                 Personalize your plan with a target role and weekly practice goal.
             </Alert>}
             {user?.targetRole && <Card variant="outlined" sx={{ mb: 3 }}><CardContent><Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1}><Box><Typography variant="overline" color="primary.main" fontWeight={800}>Your practice plan</Typography><Typography fontWeight={750}>{user.targetRole}</Typography></Box><Chip label={`${user.weeklyPracticeTarget || 3} sessions / week`} color="primary" variant="outlined" /></Stack></CardContent></Card>}
+
+            {!loading && Number(progress.completed || 0) === 0 && <Card variant="outlined" sx={{ mb: 4, borderColor: "primary.light" }}><CardContent sx={{ p: { xs: 2.5, md: 3.5 } }}><Typography variant="overline" color="primary.main" fontWeight={850}>Getting started</Typography><Typography variant="h5" fontWeight={800}>Complete your first practice loop</Typography><Typography color="text.secondary" mt={0.5} mb={2.5}>A focused setup gets you to useful feedback quickly.</Typography><Stack spacing={1.25}>{[
+                { done: Boolean(user?.targetRole), label: "Set your target role", action: "Set goal", href: "/profile" },
+                { done: resumeCount > 0, label: "Add the résumé you plan to use", action: "Add résumé", href: "/resumes" },
+                { done: totalInterviews > 0, label: "Create a tailored interview", action: "Create interview", href: "/create-interview" },
+                { done: Number(progress.completed || 0) > 0, label: "Complete one round and review feedback", action: "Continue", href: interviews[0]?._id ? `/interviews/${interviews[0]._id}` : "/create-interview" },
+            ].map((step) => <Stack key={step.label} direction="row" alignItems="center" spacing={1.5} sx={{ p: 1.25, borderRadius: 2, bgcolor: step.done ? "action.hover" : "transparent" }}>{step.done ? <CheckCircleOutline color="success" /> : <RadioButtonUnchecked color="disabled" />}<Typography flex={1} fontWeight={step.done ? 500 : 700} color={step.done ? "text.secondary" : "text.primary"}>{step.label}</Typography>{!step.done && <Button size="small" onClick={() => navigate(step.href)}>{step.action}</Button>}</Stack>)}</Stack></CardContent></Card>}
 
             {recommendations.length > 0 && <Box mb={4}><Typography variant="h5" fontWeight={750} mb={2}>Recommended next steps</Typography><Grid container spacing={2}>{recommendations.map((item) => <Grid size={{ xs: 12, md: 4 }} key={item.id}><Card variant="outlined" sx={{ height: "100%" }}><CardActionArea onClick={() => navigate(item.href)} sx={{ height: "100%" }}><CardContent><Typography fontWeight={750}>{item.title}</Typography><Typography variant="body2" color="text.secondary" mt={1}>Based on your saved goal and latest practice.</Typography><ArrowForward color="primary" sx={{ mt: 2 }} /></CardContent></CardActionArea></Card></Grid>)}</Grid></Box>}
 

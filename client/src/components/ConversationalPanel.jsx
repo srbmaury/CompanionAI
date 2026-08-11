@@ -27,6 +27,7 @@ const ConversationalPanel = ({
     setSpokenAnswer,
     codingEnabled,
     onCodingModeChange,
+    codeDraftKey,
     onSubmitAnswer,
     onCompleteRound,
     onClarify,
@@ -375,6 +376,8 @@ const ConversationalPanel = ({
                                 value={convAnswer}
                                 onChange={setConvAnswer}
                                 onModeChange={onCodingModeChange}
+                                draftKey={codeDraftKey}
+                                suggestCode={/\b(code|implement|algorithm|data structure|complexity|function|program)\b/i.test(questionText || "")}
                                 outlinedInputSx={outlinedInputSx}
                             />
                         </Suspense>
@@ -395,12 +398,12 @@ const ConversationalPanel = ({
                                 <Button
                                     variant="contained"
                                     startIcon={<SendIcon />}
-                                    onClick={onFollowUpDone}
+                                    onClick={() => onFollowUpDone()}
                                     sx={{ minWidth: 160 }}
                                 >
                                     Submit Follow-up
                                 </Button>
-                                <Button variant="outlined" onClick={onFollowUpDone}>
+                                <Button variant="outlined" onClick={() => onFollowUpDone({ skip: true })}>
                                     Skip follow-up
                                 </Button>
                             </Stack>

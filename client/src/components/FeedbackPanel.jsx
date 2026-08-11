@@ -1,6 +1,7 @@
 import { Alert, Box, Button, Card, CardContent, Chip, Divider, LinearProgress, Stack, TextField, Typography } from "@mui/material";
 
 import { memo, useEffect, useMemo, useState } from "react";
+import { trackEvent } from "../utils/analytics";
 
 const getScore = (item) => {
     const rawScore = item?.feedback?.score;
@@ -52,6 +53,14 @@ const FeedbackItem = memo(({ index, item }) => {
                             >
                                 {answer}
                             </Box>
+                        </Box>
+                    )}
+
+                    {item?.followUpQuestion && item?.followUpAnswer && (
+                        <Box>
+                            <Typography variant="caption" color="text.secondary">Follow-up</Typography>
+                            <Typography variant="body2" fontWeight={700}>{item.followUpQuestion}</Typography>
+                            <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: "pre-wrap" }}>{item.followUpAnswer}</Typography>
                         </Box>
                     )}
 
@@ -117,6 +126,7 @@ const FeedbackPanel = ({ round }) => {
     useEffect(() => {
         setRetryItem(null);
         setRetryAnswer("");
+        if (round?._id) trackEvent("feedback_viewed");
     }, [round?._id]);
 
     return (
@@ -166,7 +176,7 @@ const FeedbackPanel = ({ round }) => {
                             <Box>
                                 <Button
                                     variant="contained"
-                                    onClick={() => { setRetryItem(weakest); setRetryAnswer(""); }}
+                                    onClick={() => { trackEvent("retry_started"); setRetryItem(weakest); setRetryAnswer(""); }}
                                 >
                                     Retry weak question
                                 </Button>

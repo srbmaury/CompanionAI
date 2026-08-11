@@ -11,6 +11,7 @@ const OAForm = ({
     spokenAnswers,
     codingEnabled,
     onCodingModeChange,
+    codeDraftPrefix,
     onSpokenChange,
     onChange,
     onSubmit,
@@ -43,6 +44,8 @@ const OAForm = ({
                                     value={answers?.[idx] || ""}
                                     onChange={(val) => onChange(idx, val)}
                                     onModeChange={(enabled) => onCodingModeChange(idx, enabled)}
+                                    draftKey={`${codeDraftPrefix}:${idx}`}
+                                    suggestCode={/\b(code|implement|algorithm|data structure|complexity|function|program)\b/i.test(q.question?.text || "")}
                                     minRows={5}
                                     outlinedInputSx={outlinedInputSx}
                                 />

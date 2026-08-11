@@ -15,6 +15,7 @@ import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import api from "../api/axios";
+import { storage, storageKeys } from "../utils/interviewStorage";
 
 // Monaco is several megabytes. Keep it out of the network path until the user
 // explicitly switches a plain answer field into code-editor mode.
@@ -27,7 +28,7 @@ const languages = [
     { label: "Java", value: "java" },
 ];
 
-const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx, onModeChange }) => {
+const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx, onModeChange, draftKey, suggestCode = false }) => {
     const muiTheme = useTheme();
     const [useEditor, setUseEditor] = useState(false);
     const [language, setLanguage] = useState("cpp");
@@ -48,6 +49,21 @@ const CodeEditorField = ({ value, onChange, minRows = 6, outlinedInputSx, onMode
         } catch { /* no-op */ }
         return muiTheme.palette.mode === "dark" ? "vs-dark" : "vs-light";
     });
+
+    useEffect(() => {
+        if (!draftKey) return;
+        const saved = storage.get(storageKeys.codeEditor(draftKey));
+        const enabled = typeof saved?.enabled === "boolean" ? saved.enabled : Boolean(suggestCode);
+        setUseEditor(enabled);
+        if (saved?.language && languages.some((item) => item.value === saved.language)) setLanguage(saved.language);
+        setStdin(saved?.stdin || "");
+        onModeChange?.(enabled);
+    }, [draftKey, suggestCode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (!draftKey) return;
+        storage.set(storageKeys.codeEditor(draftKey), { enabled: useEditor, language, stdin });
+    }, [draftKey, useEditor, language, stdin]);
 
     useEffect(() => {
         try {

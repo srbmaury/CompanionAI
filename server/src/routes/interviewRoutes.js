@@ -78,7 +78,7 @@ const RoundInput = z.object({
 
 const CreateInterviewSchema = z.object({
     resumeId: z.string().min(1),
-    company: z.string().min(1).max(120),
+    company: z.string().max(120).optional().default(""),
     jobRole: z.string().min(1).max(120),
     jobDescription: z.string().min(1).max(4000),
     rounds: z.array(RoundInput).min(1).max(5),

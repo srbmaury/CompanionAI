@@ -37,6 +37,8 @@ const roundSchema = new mongoose.Schema({
                 ref: "Question",
             },
             answerGiven: { type: String },
+            followUpQuestion: { type: String, maxlength: 1000 },
+            followUpAnswer: { type: String, maxlength: 5000 },
             feedback: {
                 type: mongoose.Schema.Types.ObjectId,
                 ref: "Feedback",
