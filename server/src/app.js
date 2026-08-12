@@ -36,6 +36,7 @@ import recommendationRoutes from "./routes/recommendationRoutes.js";
 import billingWebhookRoutes from "./routes/billingWebhookRoutes.js";
 import productEventRoutes from "./routes/productEventRoutes.js";
 import assessmentRoutes from "./routes/assessmentRoutes.js";
+import emailWebhookRoutes from "./routes/emailWebhookRoutes.js";
 
 const app = express();
 
@@ -43,6 +44,7 @@ const app = express();
 app.set("trust proxy", 1); // required for secure cookies behind proxies
 app.use("/api/billing/webhook", express.raw({ type: "application/json", limit: "1mb" }), billingWebhookRoutes);
 app.use(express.json({ limit: "200kb" }));
+app.use("/api/email-webhooks", emailWebhookRoutes);
 app.use(cookieParser());
 const isLocalhostOrigin = (origin) => {
     try {

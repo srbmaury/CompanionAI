@@ -31,7 +31,7 @@ const VoiceControls = ({
     const micIndicatorIcon = micDenied ? <ReportGmailerrorredIcon color="error" /> : <MicExternalOnIcon color={micPermission === "granted" ? "primary" : "inherit"} />;
 
     return (
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems="center" style={{ ...(style || {}) }}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ xs: "stretch", sm: "center" }} sx={{ minWidth: 0 }} style={{ ...(style || {}) }}>
             {supportsTTS && (
                 <Tooltip title="Speak question">
                     <span>
@@ -44,7 +44,7 @@ const VoiceControls = ({
 
             {/* Device selector (optional) */}
             {Array.isArray(inputDevices) && inputDevices.length > 0 && (
-                <FormControl size="small" sx={{ minWidth: 160 }}>
+                <FormControl size="small" sx={{ width: { xs: "100%", sm: "auto" }, minWidth: { sm: 160 } }}>
                     <InputLabel id={`mic-device-${target}`}>Microphone</InputLabel>
                     <Select
                         labelId={`mic-device-${target}`}
@@ -97,7 +97,7 @@ const VoiceControls = ({
             )}
 
             {/* Live mic level meter when active */}
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 120, display: isActive ? "flex" : "none" }}>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ width: { xs: "100%", sm: "auto" }, minWidth: { sm: 120 }, display: isActive ? "flex" : "none" }}>
                 <Typography variant="caption" color="text.secondary">Level</Typography>
                 <LinearProgress variant="determinate" value={Math.max(0, Math.min(100, Math.round((micLevel || 0) * 100)))} sx={{ flex: 1, height: 8, borderRadius: 1 }} />
             </Stack>

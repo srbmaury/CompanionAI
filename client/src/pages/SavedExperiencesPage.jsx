@@ -16,6 +16,7 @@ import {
 } from "@mui/material";
 import { DeleteOutline, OpenInNew } from "@mui/icons-material";
 import api from "../api/axios";
+import { useNotify } from "../context/NotificationContext";
 
 const PAGE_SIZE = 6;
 
@@ -27,6 +28,7 @@ export default function SavedExperiencesPage() {
     const [error, setError] = useState("");
     const [removingId, setRemovingId] = useState(null);
     const [refresh, setRefresh] = useState(0);
+    const notify = useNotify();
 
     const loadExperiences = useCallback(async (signal) => {
         setLoading(true);
@@ -71,8 +73,9 @@ export default function SavedExperiencesPage() {
             } else {
                 setRefresh((value) => value + 1);
             }
+            notify(`Removed “${experience.title || "this experience"}”.`, "success");
         } catch {
-            setError(`We couldn’t remove “${experience.title || "this experience"}”. Please try again.`);
+            notify(`We couldn’t remove “${experience.title || "this experience"}”. Please try again.`, "error");
         } finally {
             setRemovingId(null);
         }

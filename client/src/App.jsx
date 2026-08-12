@@ -28,9 +28,11 @@ const ResumesPage = lazy(() => import("./pages/ResumesPage.jsx"));
 const PricingPage = lazy(() => import("./pages/PricingPage.jsx"));
 const BillingSuccessPage = lazy(() => import("./pages/BillingSuccessPage.jsx"));
 const AdminFeedbackPage = lazy(() => import("./pages/AdminFeedbackPage.jsx"));
+const AdminAuditPage = lazy(() => import("./pages/AdminAuditPage.jsx"));
 const AssessmentsPage = lazy(() => import("./pages/AssessmentsPage.jsx"));
 const AssessmentReportPage = lazy(() => import("./pages/AssessmentReportPage.jsx"));
 const CandidateAssessmentPage = lazy(() => import("./pages/CandidateAssessmentPage.jsx"));
+const AssessmentPreviewPage = lazy(() => import("./pages/AssessmentPreviewPage.jsx"));
 
 const PageLoader = () => (
     <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }} role="status" aria-label="Loading page">
@@ -118,8 +120,10 @@ function App() {
                 <Route path="/pricing" element={<ProtectedRoute><PricingPage /></ProtectedRoute>} />
                 <Route path="/billing/success" element={<ProtectedRoute><BillingSuccessPage /></ProtectedRoute>} />
                 <Route path="/admin/feedback" element={<ProtectedRoute><AdminRoute><AdminFeedbackPage /></AdminRoute></ProtectedRoute>} />
+                <Route path="/admin/audit" element={<ProtectedRoute><AdminRoute><AdminAuditPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/assessments" element={<ProtectedRoute><AssessmentsPage /></ProtectedRoute>} />
                 <Route path="/assessments/:assessmentId" element={<ProtectedRoute><AssessmentReportPage /></ProtectedRoute>} />
+                <Route path="/assessments/:assessmentId/preview" element={<ProtectedRoute><AssessmentPreviewPage /></ProtectedRoute>} />
                 <Route
                     path="/create-interview"
                     element={

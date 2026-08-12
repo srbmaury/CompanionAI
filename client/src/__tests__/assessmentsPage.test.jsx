@@ -3,8 +3,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import AssessmentsPage from "../pages/AssessmentsPage";
 
-const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
-vi.mock("../api/axios", () => ({ default: { get, post } }));
+const { get, post, patch } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn() }));
+vi.mock("../api/axios", () => ({ default: { get, post, patch } }));
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -53,8 +53,11 @@ describe("assessment workspace hierarchy", () => {
         fireEvent.change(screen.getByLabelText(/Question 3/), { target: { value: "Review this component API and identify its accessibility risks." } });
         fireEvent.click(screen.getByLabelText("Only allow explicitly invited email addresses to start"));
         fireEvent.change(screen.getByLabelText(/Candidate email addresses/), { target: { value: "one@example.com, two@example.com" } });
-        fireEvent.click(screen.getByRole("button", { name: "Create and publish assessment" }));
-        await vi.waitFor(() => expect(post).toHaveBeenCalledWith("/assessments", expect.objectContaining({ rounds: [expect.objectContaining({ deliveryMode: "online-assessment", questionCount: 3, questions: [
+        fireEvent.click(screen.getByLabelText("Enable integrity event tracking with candidate consent"));
+        fireEvent.click(screen.getByLabelText("Require camera readiness"));
+        expect(screen.getByLabelText("Monitor face presence during interview").checked).toBe(true);
+        fireEvent.click(screen.getByRole("button", { name: "Publish now" }));
+        await vi.waitFor(() => expect(post).toHaveBeenCalledWith("/assessments", expect.objectContaining({ status: "active", integrity: expect.objectContaining({ requireCamera: true, monitorFacePresence: true }), rounds: [expect.objectContaining({ deliveryMode: "online-assessment", questionCount: 3, questions: [
             expect.objectContaining({ text: "Describe a specific React performance issue you diagnosed and how you measured the result.", weight: 1 }),
             expect.objectContaining({ text: "How do you test keyboard accessibility?", weight: 1 }),
             expect.objectContaining({ text: "Review this component API and identify its accessibility risks.", weight: 1 }),

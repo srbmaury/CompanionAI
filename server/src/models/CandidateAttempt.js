@@ -41,7 +41,7 @@ const candidateAttemptSchema = new mongoose.Schema({
     reviewerRatings: [{ criterion: { type: String, maxlength: 80 }, score: { type: Number, min: 0, max: 10 }, note: { type: String, maxlength: 1000, default: "" } }],
     reviewedAt: Date,
     integrityConsentAt: Date,
-    integrityEvents: [{ type: { type: String, enum: ["tab_hidden", "window_blur", "fullscreen_exit", "copy", "paste", "offline", "online"] }, at: { type: Date, default: Date.now }, metadata: { type: mongoose.Schema.Types.Mixed } }],
+    integrityEvents: [{ type: { type: String, enum: ["tab_hidden", "window_blur", "fullscreen_exit", "copy", "paste", "offline", "online", "face_missing", "face_restored", "multiple_faces", "camera_interrupted", "face_detection_unavailable"] }, at: { type: Date, default: Date.now }, metadata: { type: mongoose.Schema.Types.Mixed } }],
 }, { timestamps: true });
 
 candidateAttemptSchema.index({ assessment: 1, candidateEmail: 1 }, { unique: true });

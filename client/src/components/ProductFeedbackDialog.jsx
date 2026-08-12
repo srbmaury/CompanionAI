@@ -1,29 +1,30 @@
 import { useState } from "react";
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, TextField } from "@mui/material";
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, TextField } from "@mui/material";
 import api from "../api/axios";
+import { useNotify } from "../context/NotificationContext";
 
 export default function ProductFeedbackDialog({ open, onClose }) {
     const [category, setCategory] = useState("idea");
     const [message, setMessage] = useState("");
     const [saving, setSaving] = useState(false);
-    const [status, setStatus] = useState(null);
+    const notify = useNotify();
 
-    const close = () => { if (!saving) { setStatus(null); onClose(); } };
+    const close = () => { if (!saving) onClose(); };
     const submit = async () => {
         try {
-            setSaving(true); setStatus(null);
+            setSaving(true);
             await api.post("/product-feedback", { category, message: message.trim(), page: window.location.pathname });
             setMessage(""); setCategory("idea");
-            setStatus({ severity: "success", text: "Thanks — your feedback was sent." });
+            notify("Thanks — your feedback was sent.", "success");
+            onClose();
         } catch (error) {
-            setStatus({ severity: "error", text: error?.response?.data?.message || "Feedback could not be sent." });
+            notify(error?.response?.data?.message || "Feedback could not be sent.", "error");
         } finally { setSaving(false); }
     };
 
     return <Dialog open={open} onClose={close} fullWidth maxWidth="sm" aria-labelledby="product-feedback-title">
         <DialogTitle id="product-feedback-title">Share product feedback</DialogTitle>
         <DialogContent><Stack spacing={2} mt={1}>
-            {status && <Alert severity={status.severity}>{status.text}</Alert>}
             <TextField select label="Feedback type" value={category} onChange={(e) => setCategory(e.target.value)}>
                 <MenuItem value="idea">Idea or request</MenuItem><MenuItem value="problem">Problem</MenuItem><MenuItem value="praise">What works well</MenuItem><MenuItem value="other">Other</MenuItem>
             </TextField>

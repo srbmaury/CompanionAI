@@ -48,6 +48,7 @@ import ProductEvent from "../models/ProductEvent.js";
 import Assessment from "../models/Assessment.js";
 import CandidateAttempt from "../models/CandidateAttempt.js";
 import requireFeature from "../middleware/featureFlags.js";
+import audit from "../middleware/audit.js";
 
 const loginCaptcha = (req, res, next) => {
     if ((process.env.CAPTCHA_LOGIN_ENABLED || "").toLowerCase() === "true") {
@@ -287,8 +288,8 @@ router.get("/profile", protect, (req, res) => {
     const { _id, name, email, role, provider, preferredProgrammingLanguage, practiceGoal, targetRole, weeklyPracticeTarget, reminderEnabled, reminderDay, reminderTime, reminderTimezone, plan, subscriptionStatus, isVerified } = req.user;
     res.json({ _id, name, email, role, provider, preferredProgrammingLanguage, practiceGoal, targetRole, weeklyPracticeTarget, reminderEnabled, reminderDay, reminderTime, reminderTimezone, plan, subscriptionStatus, isVerified });
 });
-router.put("/profile", protect, validate(UpdateProfileSchema), updateProfile);
-router.post("/reminders/test", protect, async (req, res, next) => {
+router.put("/profile", protect, validate(UpdateProfileSchema), audit("account.profile_update", { entityType: "User", getEntityId: (req) => req.user._id, pickBody: (body) => ({ nameChanged: body.name !== undefined, passwordChanged: Boolean(body.newPassword), goalChanged: body.practiceGoal !== undefined || body.targetRole !== undefined, reminderChanged: ["reminderEnabled", "reminderDay", "reminderTime", "reminderTimezone"].some((key) => body[key] !== undefined) }) }), updateProfile);
+router.post("/reminders/test", protect, audit("account.reminder_test", { entityType: "User", getEntityId: (req) => req.user._id }), async (req, res, next) => {
     try {
         await sendTestPracticeReminder(req.user);
         return res.json({ message: "Test reminder sent" });

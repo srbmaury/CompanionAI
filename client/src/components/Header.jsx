@@ -76,6 +76,7 @@ export default function Header() {
                                     <MenuItem component={RouterLink} to="/progress" onClick={() => setProfileAnchor(null)}>Progress</MenuItem>
                                     <MenuItem component={RouterLink} to="/pricing" onClick={() => setProfileAnchor(null)}>Plans & billing</MenuItem>
                                     <MenuItem component={RouterLink} to="/profile" onClick={() => setProfileAnchor(null)}>Profile & settings</MenuItem>
+                                    {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/audit" onClick={() => setProfileAnchor(null)}>Audit activity</MenuItem>}
                                     <MenuItem onClick={() => { setProfileAnchor(null); setFeedbackOpen(true); }}><RateReviewOutlined fontSize="small" sx={{ mr: 1.5 }} />Share feedback</MenuItem>
                                     <MenuItem onClick={toggle}>{mode === "dark" ? <LightMode fontSize="small" sx={{ mr: 1.5 }} /> : <DarkMode fontSize="small" sx={{ mr: 1.5 }} />}{mode === "dark" ? "Light theme" : "Dark theme"}</MenuItem>
                                     <MenuItem onClick={handleLogout}><LogoutRounded fontSize="small" sx={{ mr: 1.5 }} />Log out</MenuItem>
@@ -91,6 +92,7 @@ export default function Header() {
                                 <MenuItem component={RouterLink} to="/assessments" onClick={close}>Assess candidates</MenuItem>
                                 <MenuItem component={RouterLink} to="/pricing" onClick={close}>Plans & billing</MenuItem>
                                 {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/feedback" onClick={close}>Feedback inbox</MenuItem>}
+                                {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/audit" onClick={close}>Audit activity</MenuItem>}
                                 <MenuItem component={RouterLink} to="/profile" onClick={close}>Profile</MenuItem>
                                 <MenuItem onClick={() => { close(); setFeedbackOpen(true); }}>Share feedback</MenuItem>
                                 <MenuItem onClick={() => { toggle(); close(); }}>{mode === "dark" ? "Light theme" : "Dark theme"}</MenuItem>

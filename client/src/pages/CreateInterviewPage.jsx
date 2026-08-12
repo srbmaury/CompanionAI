@@ -25,7 +25,6 @@ import {
     Link,
     MenuItem,
     Paper,
-    Snackbar,
     Stack,
     Step,
     StepLabel,
@@ -45,6 +44,7 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import RoundSelector from "../components/RoundSelector";
 import { getDefaultQuestionLimit } from "../utils/roundDefaults";
 import { storage } from "../utils/interviewStorage";
+import { useNotify } from "../context/NotificationContext";
 
 const CREATE_DRAFT_KEY = "ia:create-interview";
 const savedCreateDraft = storage.get(CREATE_DRAFT_KEY) || {};
@@ -58,6 +58,7 @@ const INTERVIEW_PRESETS = [
 const CreateInterviewPage = () => {
     const { getResumes, deleteResume, uploadResume } = useResumes();
     const navigate = useNavigate();
+    const notify = useNotify();
 
     const [formData, setFormData] = useState(savedCreateDraft.formData || {
         company: "",
@@ -74,12 +75,6 @@ const CreateInterviewPage = () => {
     const [grounding, setGrounding] = useState(savedCreateDraft.grounding || null);
     const [selectedRounds, setSelectedRounds] = useState(savedCreateDraft.selectedRounds || []);
     const [loadingRounds, setLoadingRounds] = useState(false);
-    const [snack, setSnack] = useState({
-        open: false,
-        severity: "info",
-        message: "",
-    });
-
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState("");
     const [deleteConfirmId, setDeleteConfirmId] = useState(null);
@@ -113,19 +108,11 @@ const CreateInterviewPage = () => {
                 trackEvent("resume_uploaded");
                 setResumes((prev) => [...prev, newResume]);
                 setFormData((prev) => ({ ...prev, resumeId: newResume._id }));
-                setSnack({
-                    open: true,
-                    severity: "success",
-                    message: "Resume uploaded",
-                });
+                notify("Resume uploaded.", "success");
             }
         } catch (err) {
             console.error("Upload failed", err);
-            setSnack({
-                open: true,
-                severity: "error",
-                message: "Resume upload failed",
-            });
+            notify("Resume upload failed.", "error");
         } finally {
             setUploading(false);
         }
@@ -138,13 +125,16 @@ const CreateInterviewPage = () => {
             if (formData.resumeId === id) {
                 setFormData((prev) => ({ ...prev, resumeId: "" }));
             }
+            notify("Resume removed.", "success");
+        } else {
+            notify("Resume could not be removed.", "error");
         }
     };
 
     const handlePreviewResume = (r) => {
         if (!r) return;
         if (r.fileType !== "application/pdf") {
-            setSnack({ open: true, severity: "warning", message: "Preview available for PDFs only" });
+            notify("Preview is available for PDF files only.", "warning");
             return;
         }
         setPreviewUrl(`/api/resumes/${r._id}/preview`);
@@ -165,18 +155,10 @@ const CreateInterviewPage = () => {
             setGrounding(Array.isArray(data) ? null : data?.grounding || null);
             setSuggestedRounds(rounds);
             if (rounds.length > 0) setActiveStep(1);
-            setSnack({
-                open: true,
-                severity: "success",
-                message: "Rounds suggested",
-            });
+            notify("Interview rounds are ready to review.", "success");
         } catch (error) {
             console.error(error);
-            setSnack({
-                open: true,
-                severity: "error",
-                message: "Error suggesting rounds",
-            });
+            notify("Interview rounds could not be suggested.", "error");
         } finally {
             setLoadingRounds(false);
         }
@@ -214,7 +196,7 @@ const CreateInterviewPage = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (selectedRounds.length === 0) {
-            setSnack({ open: true, severity: "warning", message: "Please select at least one round" });
+            notify("Select at least one round.", "warning");
             return;
         }
 
@@ -227,26 +209,14 @@ const CreateInterviewPage = () => {
             if (data && data._id) {
                 storage.remove(CREATE_DRAFT_KEY);
                 trackEvent("interview_created");
-                setSnack({
-                    open: true,
-                    severity: "success",
-                    message: "Interview created",
-                });
+                notify("Interview created.", "success");
                 navigate(`/interviews/${data._id}`);
             } else {
-                setSnack({
-                    open: true,
-                    severity: "error",
-                    message: "Failed to create interview",
-                });
+                notify("Interview could not be created.", "error");
             }
         } catch (error) {
             console.log("error", error);
-            setSnack({
-                open: true,
-                severity: "error",
-                message: "Failed to create interview",
-            });
+            notify("Interview could not be created.", "error");
         }
     };
 
@@ -263,19 +233,6 @@ const CreateInterviewPage = () => {
                 <Step><StepLabel>Role and resume</StepLabel></Step>
                 <Step><StepLabel>Review interview plan</StepLabel></Step>
             </Stepper>
-
-            {/* Inline notifications */}
-            {snack.open && (
-                <Alert
-                    severity={snack.severity}
-                    aria-live={snack.severity === "error" ? undefined : "polite"}
-                    role={snack.severity === "error" ? "alert" : undefined}
-                    sx={{ mb: 2 }}
-                    onClose={() => setSnack((s) => ({ ...s, open: false }))}
-                >
-                    {snack.message}
-                </Alert>
-            )}
 
             <form onSubmit={handleSubmit}>
                 <Stack spacing={2}>

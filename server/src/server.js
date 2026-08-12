@@ -19,6 +19,7 @@ import CandidateAttempt from "./models/CandidateAttempt.js";
 import Assessment from "./models/Assessment.js";
 import { getQueue } from "./queues/index.js";
 import { createJobId } from "./queues/jobIds.js";
+import { processAssessmentLifecycle } from "./services/assessmentLifecycle.js";
 
 dotenv.config();
 
@@ -52,8 +53,8 @@ try {
             console.error("METRICS_TOKEN is required in production to protect /metrics endpoint.");
             process.exit(1);
         }
-        if (!process.env.BREVO_API_KEY || !process.env.BREVO_SENDER_EMAIL) {
-            console.error("BREVO_API_KEY and BREVO_SENDER_EMAIL are required in production for transactional email.");
+        if (!process.env.BREVO_API_KEY || !process.env.BREVO_SENDER_EMAIL || !process.env.BREVO_WEBHOOK_SECRET) {
+            console.error("BREVO_API_KEY, BREVO_SENDER_EMAIL, and BREVO_WEBHOOK_SECRET are required in production for transactional email and delivery tracking.");
             process.exit(1);
         }
         // Mandatory features: CAPTCHA in prod
@@ -198,6 +199,13 @@ const server = app.listen(PORT, async () => {
         });
         if (process.env.REMINDER_DELIVERY_ENABLED === "true") console.log("[REMINDERS] Delivery scheduler started");
     } catch (error) { console.warn("[REMINDERS] Scheduler failed", error?.message || error); }
+
+    try {
+        cron.schedule("* * * * *", async () => {
+            try { const result = await processAssessmentLifecycle(); if (result.opened || result.closed || result.sent || result.failed) console.log(`[ASSESSMENTS] opened=${result.opened} closed=${result.closed} sent=${result.sent} failed=${result.failed}`); }
+            catch (error) { console.warn("[ASSESSMENTS] Lifecycle processing failed", error?.message || error); }
+        });
+    } catch (error) { console.warn("[ASSESSMENTS] Lifecycle scheduler failed", error?.message || error); }
 
     try {
         cron.schedule("15 3 * * *", async () => {

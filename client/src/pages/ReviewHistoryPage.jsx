@@ -17,6 +17,7 @@ import {
 } from "@mui/material";
 import { CompareArrows, DeleteOutline } from "@mui/icons-material";
 import api from "../api/axios";
+import { useNotify } from "../context/NotificationContext";
 
 const PAGE_SIZE = 6;
 
@@ -47,6 +48,7 @@ export default function ReviewHistoryPage() {
     const [deletingId, setDeletingId] = useState("");
     const [error, setError] = useState("");
     const [refresh, setRefresh] = useState(0);
+    const notify = useNotify();
 
     const loadReviews = useCallback(async () => {
         setLoading(true);
@@ -81,8 +83,9 @@ export default function ReviewHistoryPage() {
             setSelected((current) => current.filter((item) => item._id !== review._id));
             if (reviews.length === 1 && page > 1) setPage((current) => current - 1);
             else setRefresh((current) => current + 1);
+            notify("Resume review removed.", "success");
         } catch {
-            setError("That review couldn’t be removed. Try again.");
+            notify("That review couldn’t be removed. Try again.", "error");
         } finally {
             setDeletingId("");
         }

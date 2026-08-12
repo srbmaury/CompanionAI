@@ -217,7 +217,7 @@ const InterviewPage = () => {
                     </Box>
                     <RoundList interview={interview} selectedRoundId={selectedRound?._id} onSelect={selectRound} />
                     <Drawer anchor="left" open={roundsOpen} onClose={() => setRoundsOpen(false)} sx={{ display: { md: "none" } }}>
-                        <Box sx={{ width: 300, p: 2 }} role="presentation">
+                        <Box sx={{ width: "min(300px, 100vw)", p: 2 }} role="presentation">
                             <Typography variant="h6" sx={{ mb: 1 }}>Rounds</Typography>
                             <Divider sx={{ mb: 2 }} />
                             <RoundList

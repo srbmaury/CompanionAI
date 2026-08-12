@@ -4,7 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "prepare:vision-assets": "node scripts/copy-vision-assets.mjs",
+    "predev": "npm run prepare:vision-assets",
     "dev": "vite",
+    "prebuild": "npm run prepare:vision-assets",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -15,6 +18,7 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@mediapipe/tasks-vision": "^1.0.1",
     "@mui/icons-material": "^7.3.1",
     "@mui/material": "^7.3.1",
     "axios": "^1.11.0",

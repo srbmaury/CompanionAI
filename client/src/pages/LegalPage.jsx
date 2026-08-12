@@ -7,7 +7,7 @@ const privacySections = [
     ["Service providers", "Depending on enabled features, content may be processed by configured AI providers such as OpenAI or Google Gemini, Cloudinary for resume storage, Tavily for web research, Judge0 for code execution, and monitoring or email providers."],
     ["Retention and control", "Data remains until you delete individual resumes or delete your account. Account deletion removes account records, interviews, answers, feedback, resumes, and active sessions. Provider backups and operational logs may take additional time to expire."],
     ["Your choices", "Do not upload information you do not want processed. You can delete resumes from your profile and permanently delete your account and associated personal data from the profile danger zone."],
-    ["Candidate assessments", "When you complete an assessment shared by an interviewer, your name, email, answers, AI-generated scores, and feedback are available to the assessment owner. Candidates receive submission confirmation but do not receive the private evaluation report."],
+    ["Candidate assessments", "When you complete an assessment shared by an interviewer, your name, email, answers, AI-generated scores, feedback, and any consented integrity events are available to the assessment owner. Optional face-presence checks run on your device; camera frames are not stored or uploaded. Candidates receive submission confirmation but do not receive the private evaluation report."],
     ["Security", "We use access controls, encrypted transport, short-lived sessions, rate limits, audit logging, and file validation. No online service can guarantee absolute security."],
 ];
 

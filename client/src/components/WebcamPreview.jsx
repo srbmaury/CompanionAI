@@ -1,12 +1,16 @@
-import { useEffect, useRef, useState, memo } from "react";
+import { useCallback, useEffect, useRef, useState, memo } from "react";
 import { Box, Tooltip, Typography } from "@mui/material";
 import PersonIcon from "@mui/icons-material/Person";
+import { useFacePresenceMonitor } from "../hooks/useFacePresenceMonitor";
 
-const WebcamPreview = ({ autoStart = false }) => {
+const WebcamPreview = ({ autoStart = false, required = false, monitorFaces = false, onIntegrityEvent, onFaceStatusChange }) => {
     const videoRef = useRef(null);
     const streamRef = useRef(null);
     const [on, setOn] = useState(false);
     const [denied, setDenied] = useState(false);
+    const [videoElement, setVideoElement] = useState(null);
+    const faceStatus = useFacePresenceMonitor({ enabled: monitorFaces && on, video: videoElement, stream: streamRef.current, onEvent: onIntegrityEvent });
+    const setVideoRef = useCallback((element) => { videoRef.current = element; setVideoElement(element); }, []);
 
     const start = async () => {
         try {
@@ -15,6 +19,10 @@ const WebcamPreview = ({ autoStart = false }) => {
                 audio: false,
             });
             streamRef.current = stream;
+            stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+                streamRef.current = null;
+                setOn(false);
+            }, { once: true });
             setOn(true);      // triggers re-render → <video> mounts
             setDenied(false);
         } catch {
@@ -39,9 +47,10 @@ const WebcamPreview = ({ autoStart = false }) => {
 
     useEffect(() => () => streamRef.current?.getTracks().forEach((t) => t.stop()), []);
     useEffect(() => { if (autoStart) start(); }, [autoStart]);
+    useEffect(() => { onFaceStatusChange?.(faceStatus); }, [faceStatus, onFaceStatusChange]);
 
     return (
-        <Tooltip title={on ? "Click ✕ to turn off camera" : denied ? "Camera access denied" : "Click to turn on camera"} placement="left">
+        <Tooltip title={on ? (required ? "Camera is required during this interview" : "Click ✕ to turn off camera") : denied ? "Camera access denied" : "Click to turn on camera"} placement="left">
             <Box
                 onClick={on ? undefined : start}
                 sx={{
@@ -66,7 +75,7 @@ const WebcamPreview = ({ autoStart = false }) => {
             >
                 {on ? (
                     <video
-                        ref={videoRef}
+                        ref={setVideoRef}
                         autoPlay
                         muted
                         playsInline
@@ -96,7 +105,7 @@ const WebcamPreview = ({ autoStart = false }) => {
                     alignItems: "center",
                 }}>
                     <Typography sx={{ color: "rgba(255,255,255,0.85)", fontSize: 9 }}>You</Typography>
-                    {on && (
+                    {on && !required && (
                         <Typography
                             onClick={stop}
                             sx={{ color: "rgba(255,255,255,0.5)", fontSize: 9, cursor: "pointer", "&:hover": { color: "white" } }}

@@ -419,7 +419,7 @@ const ConversationalPanel = ({
                                     {convSubmitting ? "Submitting…" : "Submit Answer"}
                                 </Button>
 
-                                <Stack direction="row" spacing={1} sx={{ flex: 1 }}>
+                                <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ flex: 1, minWidth: 0, width: "100%" }}>
                                     <TextField
                                         size="small"
                                         placeholder="Ask a clarification…"
@@ -428,7 +428,7 @@ const ConversationalPanel = ({
                                         onChange={(e) => setClarifyText(e.target.value)}
                                         onKeyDown={(e) => { if (e.key === "Enter") submitClarify(); }}
                                     />
-                                    <Button variant="outlined" size="small" onClick={submitClarify} sx={{ whiteSpace: "nowrap" }}>
+                                    <Button variant="outlined" size="small" onClick={submitClarify}>
                                         Clarify
                                     </Button>
                                 </Stack>

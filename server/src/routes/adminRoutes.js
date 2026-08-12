@@ -21,6 +21,10 @@ const QuerySchema = z.object({
     user: z.string().optional(),
     action: z.string().optional(),
     entityType: z.string().optional(),
+    outcome: z.enum(["success", "failure"]).optional(),
+    q: z.string().trim().max(200).optional(),
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
 });
 
 router.get("/overview", protect, requireRole("admin"), async (_req, res, next) => {
@@ -46,17 +50,21 @@ router.get(
     requireRole("admin"),
     validate(QuerySchema, "query"),
     async (req, res) => {
-        const { page = 1, limit = 50, user, action, entityType } = req.query;
+        const { page = 1, limit = 50, user, action, entityType, outcome, q, from, to } = req.query;
         const filter = {};
         if (user) filter.user = user;
         if (action) filter.action = action;
         if (entityType) filter.entityType = entityType;
-        const total = await AuditLog.countDocuments(filter);
-        const items = await AuditLog.find(filter)
-            .sort({ createdAt: -1 })
-            .skip((page - 1) * limit)
-            .limit(limit)
-            .lean();
+        if (outcome) filter.outcome = outcome;
+        if (from || to) filter.createdAt = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) };
+        if (q) {
+            const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            filter.$or = ["action", "entityType", "entityId", "requestId", "path"].map((field) => ({ [field]: { $regex: escaped, $options: "i" } }));
+        }
+        const [total, items] = await Promise.all([
+            AuditLog.countDocuments(filter),
+            AuditLog.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate("user", "name email role").lean(),
+        ]);
         return res.json({ items, total, page, limit, totalPages: Math.max(Math.ceil(total / limit), 1) });
     }
 );

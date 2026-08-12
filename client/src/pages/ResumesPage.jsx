@@ -33,6 +33,7 @@ import {
     PictureAsPdfOutlined as PreviewIcon,
 } from "@mui/icons-material";
 import { useResumes } from "../hooks/useResumes";
+import { useNotify } from "../context/NotificationContext";
 
 const PAGE_SIZE = 6;
 
@@ -51,7 +52,7 @@ const ResumesPage = () => {
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
     const [uploadConsent, setUploadConsent] = useState(false);
-    const [message, setMessage] = useState(null);
+    const notify = useNotify();
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [deleting, setDeleting] = useState(false);
     const [editTarget, setEditTarget] = useState(null);
@@ -80,14 +81,14 @@ const ResumesPage = () => {
             } catch (error) {
                 if (!active) return;
                 setResumes([]);
-                setMessage({ severity: "error", text: error?.response?.data?.message || "Could not load resumes." });
+                notify(error?.response?.data?.message || "Could not load resumes.", "error");
             } finally {
                 if (active) setLoading(false);
             }
         };
         load();
         return () => { active = false; };
-    }, [deferredQuery, deferredTag, getResumes, page, refresh, sort]);
+    }, [deferredQuery, deferredTag, getResumes, notify, page, refresh, sort]);
 
     useEffect(() => { setPage(1); }, [deferredQuery, deferredTag, sort]);
 
@@ -96,12 +97,12 @@ const ResumesPage = () => {
         if (!file) return;
         const maxBytes = Number(import.meta.env.VITE_MAX_RESUME_BYTES || 5 * 1024 * 1024);
         if (file.type !== "application/pdf") {
-            setMessage({ severity: "error", text: "Please choose a PDF file." });
+            notify("Please choose a PDF file.", "error");
             event.target.value = "";
             return;
         }
         if (file.size > maxBytes) {
-            setMessage({ severity: "error", text: `The file must be ${Math.floor(maxBytes / 1024 / 1024)} MB or smaller.` });
+            notify(`The file must be ${Math.floor(maxBytes / 1024 / 1024)} MB or smaller.`, "error");
             event.target.value = "";
             return;
         }
@@ -110,9 +111,9 @@ const ResumesPage = () => {
             await uploadResume(file);
             setPage(1);
             setRefresh((value) => value + 1);
-            setMessage({ severity: "success", text: "Resume uploaded." });
+            notify("Resume uploaded.", "success");
         } catch (error) {
-            setMessage({ severity: "error", text: error?.response?.data?.message || "Resume upload failed." });
+            notify(error?.response?.data?.message || "Resume upload failed.", "error");
         } finally {
             setUploading(false);
             event.target.value = "";
@@ -136,9 +137,9 @@ const ResumesPage = () => {
             });
             setResumes((items) => items.map((item) => item._id === updated._id ? updated : item));
             setEditTarget(null);
-            setMessage({ severity: "success", text: "Resume details updated." });
+            notify("Resume details updated.", "success");
         } catch (error) {
-            setMessage({ severity: "error", text: error?.response?.data?.message || "Could not update the resume." });
+            notify(error?.response?.data?.message || "Could not update the resume.", "error");
         } finally {
             setSaving(false);
         }
@@ -152,9 +153,9 @@ const ResumesPage = () => {
             setDeleteTarget(null);
             if (wasOnlyItem && page > 1) setPage((value) => value - 1);
             else setRefresh((value) => value + 1);
-            setMessage({ severity: "success", text: "Resume deleted." });
+            notify("Resume deleted.", "success");
         } catch (error) {
-            setMessage({ severity: "error", text: error?.response?.data?.message || "Could not delete the resume." });
+            notify(error?.response?.data?.message || "Could not delete the resume.", "error");
         } finally {
             setDeleting(false);
         }
@@ -180,7 +181,6 @@ const ResumesPage = () => {
                 </Stack>
             </Stack>
 
-            {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 3 }} aria-live="polite">{message.text}</Alert>}
 
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} mb={3}>
                 <TextField fullWidth size="small" label="Search resumes" value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -203,7 +203,7 @@ const ResumesPage = () => {
                         <Card key={resume._id} variant="outlined" sx={{ minWidth: 0 }}>
                             <CardContent sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
                                 <ResumeIcon color="primary" fontSize="large" />
-                                <Typography component="h2" variant="h6" fontWeight={700} mt={1} noWrap title={resume.fileName || "Untitled resume"}>{resume.fileName || "Untitled resume"}</Typography>
+                                <Typography component="h2" variant="h6" fontWeight={700} mt={1} title={resume.fileName || "Untitled resume"}>{resume.fileName || "Untitled resume"}</Typography>
                                 <Typography variant="body2" color="text.secondary">Uploaded {new Date(resume.createdAt).toLocaleDateString()}</Typography>
                                 {resume.tags?.length > 0 && <Stack direction="row" gap={0.75} useFlexGap flexWrap="wrap" mt={1.5}>{resume.tags.map((value) => <Chip key={value} label={value} size="small" />)}</Stack>}
                                 {resume.notes && <Typography variant="body2" color="text.secondary" mt={1.5} sx={{ overflowWrap: "anywhere" }}>{resume.notes}</Typography>}

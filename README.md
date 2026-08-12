@@ -10,7 +10,7 @@ See [TESTING.md](TESTING.md) for the short test-command reference.
 - Resume reviews: saved AI reviews with paginated history
 - Interview rounds: AI‑suggested rounds from JD; supports conversational and online‑assessment (OA) modes
 - Hiring workspace: hybrid AI/manual assessments, reusable starter templates and version duplication, bulk email invitations with invite-only access and lifecycle tracking, weighted competency scorecards, human review overrides, optional contextual follow-ups, and private interviewer-only reports
-- Assessment resilience and integrity: local draft recovery, idempotent submission, camera readiness, configurable fullscreen/focus/clipboard/connectivity signals with explicit consent, human-only interpretation, and automatic retention cleanup
+- Assessment resilience and integrity: local draft recovery, idempotent submission, camera readiness, optional on-device sustained face-presence/multiple-face detection, configurable fullscreen/focus/clipboard/connectivity signals with explicit consent, human-only interpretation, and automatic retention cleanup
 - Question generation: per‑round question sets with de‑duplication across rounds
 - Feedback: per‑question feedback with score and improvement suggestions
 - Voice: browser TTS, server-side Whisper transcription, and Web Speech fallback
@@ -169,8 +169,9 @@ The pricing UI reads amount, currency, and interval from Stripe rather than hard
 1. Create a Brevo account and add `companionai.email@gmail.com` under **Settings → Senders, Domains & Dedicated IPs → Senders**.
 2. Enter the verification code Brevo sends to that Gmail inbox.
 3. Create a Brevo API key under **Settings → SMTP & API → API Keys**.
-4. Add `BREVO_API_KEY`, `BREVO_SENDER_EMAIL=companionai.email@gmail.com`, and `BREVO_SENDER_NAME=CompanionAI` to the API service environment.
-5. Redeploy and confirm the startup log includes `Brevo API verified: transactional email ready`, then send a test reminder from Profile.
+4. Generate a long random `BREVO_WEBHOOK_SECRET`, then add it with `BREVO_API_KEY`, `BREVO_SENDER_EMAIL=companionai.email@gmail.com`, and `BREVO_SENDER_NAME=CompanionAI` to the API service environment.
+5. In Brevo transactional webhooks, add `https://YOUR_API_HOST/api/email-webhooks/brevo?secret=YOUR_BREVO_WEBHOOK_SECRET` and subscribe to delivered, hard bounce, soft bounce, blocked, invalid email, spam, and complaint events. Treat the URL as a secret because Brevo webhook configuration does not provide CompanionAI authentication headers.
+6. Redeploy and confirm the startup log includes `Brevo API verified: transactional email ready`, then send a test reminder from Profile.
 
 Brevo accepts a verified Gmail sender, but free-email domains cannot be authenticated with DKIM/DMARC and may be rewritten or have poorer deliverability. Move to an authenticated CompanionAI-owned domain before a public launch.
 

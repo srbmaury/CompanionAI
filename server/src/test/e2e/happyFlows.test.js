@@ -268,8 +268,8 @@ describe("Launch-critical full product journey E2E", () => {
         const assessmentCreate = await agent.post("/api/assessments").set(auth).set("origin", origin).set("referer", `${origin}/`).send({
             title: "Backend candidate screen", company: "Acme", jobRole: "Backend Engineer",
             jobDescription: "Build secure and reliable APIs using Node.js and MongoDB.",
-            followUpsEnabled: false, durationMinutes: 25, contactEmail: "hiring@example.com",
-            integrity: { enabled: true, requireFullscreen: true, trackFocus: true, trackClipboard: true, requireCamera: false, retentionDays: 14 },
+            status: "active", followUpsEnabled: false, durationMinutes: 25, contactEmail: "hiring@example.com",
+            integrity: { enabled: true, requireFullscreen: true, trackFocus: true, trackClipboard: true, requireCamera: true, monitorFacePresence: true, retentionDays: 14 },
             rounds: [{ name: "Technical", description: "Backend judgment", questionCount: 1, questions: [{ text: "How would you secure a production API?", weight: 2, competencies: ["Security"], knockout: true }] }],
         }).expect(201);
         const assessmentId = assessmentCreate.body._id;
@@ -277,13 +277,13 @@ describe("Launch-critical full product journey E2E", () => {
         expect(await Assessment.exists({ _id: assessmentId, owner: me._id })).toBeTruthy();
         expect(assessmentCreate.body.rounds[0].questions[0]).toMatchObject({ text: "How would you secure a production API?", weight: 2, competencies: ["Security"], knockout: true });
         const invitationResponse = await agent.post(`/api/assessments/${assessmentId}/invitations`).set(auth).set("origin", origin).set("referer", `${origin}/`).send({ candidates: [{ email: "candidate@example.com", name: "Candidate One" }] }).expect(200);
-        expect(invitationResponse.body.invitations[0]).toMatchObject({ email: "candidate@example.com", status: "invited" });
+        expect(invitationResponse.body.invitations[0]).toMatchObject({ email: "candidate@example.com", status: "sent" });
         await agent.get(`/api/assessments/public/${shareToken}?invite=${invitationResponse.body.invitations[0]._id}`).expect(200);
         expect((await Assessment.findById(assessmentId).lean()).invitations[0].status).toBe("opened");
 
         // Reviewed manual questions are preserved exactly; AI generation endpoints are authenticated.
         const hybridAssessment = await agent.post("/api/assessments").set(auth).set("origin", origin).set("referer", `${origin}/`).send({
-            title: "Hybrid backend screen", jobRole: "Backend Engineer",
+            title: "Hybrid backend screen", status: "draft", jobRole: "Backend Engineer", opensAt: null, expiresAt: null,
             jobDescription: "Design secure and observable Node.js services in production.",
             rounds: [{ name: "Architecture", description: "System design", deliveryMode: "online-assessment", questionCount: 2, aiPrompt: "Include observability", questions: [
                 { text: "Describe a service you made more observable and the outcome." },
@@ -295,6 +295,15 @@ describe("Launch-critical full product journey E2E", () => {
             "How would you protect an idempotent payment webhook?",
         ]);
         expect(hybridAssessment.body.rounds[0].deliveryMode).toBe("online-assessment");
+        await agent.get(`/api/assessments/public/${hybridAssessment.body.shareToken}`).expect(404);
+        const draftPreview = await agent.get(`/api/assessments/${hybridAssessment.body._id}/preview`).set(auth).expect(200);
+        expect(draftPreview.body.rounds[0].questions).toHaveLength(2);
+        await agent.patch(`/api/assessments/${hybridAssessment.body._id}`).set(auth).set("origin", origin).set("referer", `${origin}/`).send({
+            title: "Hybrid backend screen edited", jobRole: "Backend Engineer", jobDescription: "Design secure and observable Node.js services in production.",
+            rounds: [{ name: "Architecture", description: "System design", deliveryMode: "online-assessment", questionCount: 2, questions: hybridAssessment.body.rounds[0].questions.map(({ text }) => ({ text })) }],
+        }).expect(200).expect(({ body }) => expect(body.title).toBe("Hybrid backend screen edited"));
+        await agent.patch(`/api/assessments/${hybridAssessment.body._id}`).set(auth).set("origin", origin).set("referer", `${origin}/`).send({ status: "active" }).expect(200);
+        await agent.get(`/api/assessments/public/${hybridAssessment.body.shareToken}`).expect(200);
         await agent.post("/api/assessments/questions/generate").send({ jobRole: "Engineer", jobDescription: "A sufficiently detailed job description here.", roundName: "Technical", prompt: "Generate API questions", count: 2 }).expect(401);
         await agent.post("/api/assessments/questions/generate").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ jobRole: "Engineer", jobDescription: "A sufficiently detailed job description here.", roundName: "Technical", prompt: "Generate two API questions", count: 2 }).expect(503);
         const improvedQuestion = await agent.post("/api/assessments/questions/improve").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ question: "Tell me about APIs?", jobRole: "Backend Engineer", jobDescription: "A sufficiently detailed job description here.", roundName: "Technical" }).expect(200);
@@ -314,6 +323,8 @@ describe("Launch-critical full product journey E2E", () => {
         expect(startedAttempt.body.attempt.overallScore).toBeUndefined();
         expect(startedAttempt.body.attempt.rounds[0].deliveryMode).toBe("conversational");
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/integrity-events`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({ type: "tab_hidden", metadata: { question: 1 } }).expect(201);
+        await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/integrity-events`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({ type: "face_missing", metadata: { durationSeconds: 10 } }).expect(201);
+        await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/integrity-events`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({ type: "face_restored", metadata: { durationSeconds: 12 } }).expect(201);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/run-code`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", "wrong-token").send({ language: "javascript", code: "console.log('no')" }).expect(401);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/transcribe`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", "wrong-token").expect(401);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/run-code`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({}).expect(400);
@@ -331,6 +342,7 @@ describe("Launch-critical full product journey E2E", () => {
         expect(ownerReport.body.attempts[0]).toMatchObject({ candidateEmail: "candidate@example.com", overallScore: 8 });
         expect(ownerReport.body.attempts[0].rounds[0].questions[0].feedbackComment).toBe("Strong answer");
         expect(ownerReport.body.attempts[0].integrityEvents[0].type).toBe("tab_hidden");
+        expect(ownerReport.body.attempts[0].integrityEvents.map((event) => event.type)).toEqual(["tab_hidden", "face_missing", "face_restored"]);
         const humanReview = await agent.patch(`/api/assessments/${assessmentId}/attempts/${attemptId}/review`).set(auth).set("origin", origin).set("referer", `${origin}/`).send({ reviewerScore: 7.5, reviewerDecision: "advance", reviewerNotes: "Strong security evidence." }).expect(200);
         expect(humanReview.body.attempt).toMatchObject({ reviewerScore: 7.5, reviewerDecision: "advance", reviewerNotes: "Strong security evidence." });
         await agent.patch(`/api/assessments/${assessmentId}/attempts/${attemptId}/review`).set(otherAuth).set("origin", origin).set("referer", `${origin}/`).send({ reviewerScore: 1, reviewerDecision: "reject", reviewerNotes: "Unauthorized" }).expect(404);

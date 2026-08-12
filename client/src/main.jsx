@@ -7,15 +7,18 @@ import "./index.css";
 
 // MUI
 import { ThemeModeProvider } from "./context/ThemeContext.jsx";
+import { NotificationProvider } from "./context/NotificationContext.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <ThemeModeProvider>
-      <BrowserRouter>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
-      </BrowserRouter>
+      <NotificationProvider>
+        <BrowserRouter>
+          <AuthProvider>
+            <App />
+          </AuthProvider>
+        </BrowserRouter>
+      </NotificationProvider>
     </ThemeModeProvider>
   </React.StrictMode>
 );

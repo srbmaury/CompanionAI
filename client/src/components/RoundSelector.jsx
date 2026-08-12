@@ -62,7 +62,7 @@ const RoundsSelector = ({ suggestedRounds, selectedRounds, onToggleRound, onChan
 
                             {isSelected && (
                                 <Stack mt={2} spacing={2} direction={{ xs: "column", sm: "row" }} alignItems={{ sm: "center" }}>
-                                    <FormControl size="small" sx={{ minWidth: 220 }}>
+                                    <FormControl size="small" sx={{ width: { xs: "100%", sm: "auto" }, minWidth: { sm: 220 } }}>
                                         <InputLabel id={`mode-label-${idx}`}>Delivery Mode</InputLabel>
                                         <Select
                                             labelId={`mode-label-${idx}`}
@@ -85,7 +85,7 @@ const RoundsSelector = ({ suggestedRounds, selectedRounds, onToggleRound, onChan
                                                 onChangeCount?.(round.roundName, n);
                                             }}
                                             inputProps={{ min: 1, max: 20 }}
-                                            sx={{ width: 120 }}
+                                            sx={{ width: { xs: "100%", sm: 120 } }}
                                         />
                                     </Tooltip>
                                 </Stack>

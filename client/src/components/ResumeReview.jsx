@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useResumes } from "../hooks/useResumes";
 
 // UI Components
-import Alert from "@mui/material/Alert";
 import {
     Box,
     Button,
@@ -17,11 +16,11 @@ import {
     IconButton,
     MenuItem,
     Paper,
-    Snackbar,
     Stack,
     TextField,
     Typography,
 } from "@mui/material";
+import { useNotify } from "../context/NotificationContext";
 
 // Icons
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -40,12 +39,12 @@ import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
  */
 const ResumeReview = ({ value, onChange, title = "Resume Review" }) => {
     const { getResumes, deleteResume, uploadResume } = useResumes();
+    const notify = useNotify();
 
     const [resumes, setResumes] = useState([]);
     const [uploading, setUploading] = useState(false);
     const [selectedResumeId, setSelectedResumeId] = useState(value || "");
 
-    const [snack, setSnack] = useState({ open: false, severity: "info", message: "" });
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState("");
 
@@ -78,11 +77,11 @@ const ResumeReview = ({ value, onChange, title = "Resume Review" }) => {
             if (newResume) {
                 setResumes((prev) => [...prev, newResume]);
                 handleLocalChange(newResume._id);
-                setSnack({ open: true, severity: "success", message: "Resume uploaded" });
+                notify("Resume uploaded.", "success");
             }
         } catch (err) {
             console.error("Upload failed", err);
-            setSnack({ open: true, severity: "error", message: "Resume upload failed" });
+            notify("Resume upload failed.", "error");
         } finally {
             setUploading(false);
         }
@@ -95,13 +94,16 @@ const ResumeReview = ({ value, onChange, title = "Resume Review" }) => {
             if (selectedResumeId === id) {
                 handleLocalChange("");
             }
+            notify("Resume removed.", "success");
+        } else {
+            notify("Resume could not be removed.", "error");
         }
     };
 
     const handlePreviewResume = (r) => {
         if (!r) return;
         if (r.fileType !== "application/pdf") {
-            setSnack({ open: true, severity: "warning", message: "Preview available for PDFs only" });
+            notify("Preview is available for PDF files only.", "warning");
             return;
         }
         setPreviewUrl(`/api/resumes/${r._id}/preview`);
@@ -195,19 +197,6 @@ const ResumeReview = ({ value, onChange, title = "Resume Review" }) => {
                     </Box>
                 )}
             </Stack>
-
-            {/* Notifications */}
-            {snack.open && (
-                <Alert
-                    severity={snack.severity}
-                    aria-live={snack.severity === "error" ? undefined : "polite"}
-                    role={snack.severity === "error" ? "alert" : undefined}
-                    sx={{ mb: 2 }}
-                    onClose={() => setSnack((s) => ({ ...s, open: false }))}
-                >
-                    {snack.message}
-                </Alert>
-            )}
 
             {/* PDF preview dialog */}
             <Dialog

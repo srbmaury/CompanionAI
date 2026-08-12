@@ -8,6 +8,7 @@ dist/
 build/
 client/dist/
 client/build/
+client/public/vendor/mediapipe/
 server/dist/
 server/build/
 
