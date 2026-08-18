@@ -45,6 +45,7 @@ import RoundSelector from "../components/RoundSelector";
 import { getDefaultQuestionLimit } from "../utils/roundDefaults";
 import { storage } from "../utils/interviewStorage";
 import { useNotify } from "../context/NotificationContext";
+import JobPostImporter from "../components/JobPostImporter";
 
 const CREATE_DRAFT_KEY = "ia:create-interview";
 const savedCreateDraft = storage.get(CREATE_DRAFT_KEY) || {};
@@ -245,6 +246,7 @@ const CreateInterviewPage = () => {
                             {INTERVIEW_PRESETS.map((preset) => <Button key={preset.name} variant="outlined" startIcon={<AutoAwesomeIcon />} onClick={() => setFormData((current) => ({ ...current, company: preset.company, jobRole: preset.jobRole, jobDescription: preset.jobDescription }))}>{preset.name}</Button>)}
                         </Stack>
                     </Box>
+                    <JobPostImporter onImport={({ company, jobRole, jobDescription }) => setFormData((current) => ({ ...current, company: company || current.company, jobRole, jobDescription }))} />
                     <TextField
                         label="Company (optional)"
                         name="company"

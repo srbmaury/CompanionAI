@@ -8,6 +8,7 @@ See [TESTING.md](TESTING.md) for the short test-command reference.
 - Authentication: email verification, Google Sign-In, rotating access/refresh tokens, logout, password reset, and account deletion
 - Resumes: upload to Cloudinary, type/size validation, tags/notes, search/sort, PDF inline preview
 - Resume reviews: saved AI reviews with paginated history
+- Job-post import: paste a public job link to prefill editable role, company, and description fields in practice, resume review, and recruiter assessment flows
 - Interview rounds: AI‑suggested rounds from JD; supports conversational and online‑assessment (OA) modes
 - Hiring workspace: hybrid AI/manual assessments, reusable starter templates and version duplication, bulk email invitations with invite-only access and lifecycle tracking, weighted competency scorecards, human review overrides, optional contextual follow-ups, and private interviewer-only reports
 - Assessment resilience and integrity: local draft recovery, idempotent submission, camera readiness, optional on-device sustained face-presence/multiple-face detection, configurable fullscreen/focus/clipboard/connectivity signals with explicit consent, human-only interpretation, and automatic retention cleanup
@@ -117,6 +118,7 @@ Highlighted endpoints
 - STT: `POST /api/stt/transcribe` (multipart `audio`)
 - Run Code: `POST /api/run-code`
 - Experiences: `GET /api/experiences/search?company=&role=`
+- Job posts: `POST /api/job-posts/import` (authenticated, rate-limited public-page extraction)
 - Billing: `GET /api/billing/entitlements` · `POST /api/billing/checkout-session` · `POST /api/billing/portal-session` · `POST /api/billing/webhook`
 - Recommendations: `GET /api/recommendations`
 - Candidate assessments: create/list/overview/report, duplicate versions, invite/resend/revoke candidates, save human scorecards, and consented integrity events under `/api/assessments` and `/api/assessments/public/{shareToken}`

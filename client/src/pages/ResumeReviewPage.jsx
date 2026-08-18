@@ -3,7 +3,6 @@ import api from "../api/axios";
 import { useResumes } from "../hooks/useResumes";
 
 import {
-    Alert,
     Box,
     Button,
     Checkbox,
@@ -27,16 +26,18 @@ import {
 } from "@mui/material";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import DownloadIcon from "@mui/icons-material/Download";
+import JobPostImporter from "../components/JobPostImporter";
+import { useNotify } from "../context/NotificationContext";
 
 export default function ResumeReviewPage() {
     const { getResumes, uploadResume } = useResumes();
+    const notify = useNotify();
     const [resumes, setResumes] = useState([]);
     const [resumeId, setResumeId] = useState("");
     const [uploading, setUploading] = useState(false);
     const [loadingReview, setLoadingReview] = useState(false);
     const [role, setRole] = useState("");
     const [jobDescription, setJobDescription] = useState("");
-    const [snack, setSnack] = useState({ open: false, severity: "info", message: "" });
     const [review, setReview] = useState(null);
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState("");
@@ -61,10 +62,10 @@ export default function ResumeReviewPage() {
             if (newResume) {
                 setResumes((prev) => [...prev, newResume]);
                 setResumeId(newResume._id);
-                setSnack({ open: true, severity: "success", message: "Resume uploaded" });
+                notify("Resume uploaded.", "success");
             }
         } catch {
-            setSnack({ open: true, severity: "error", message: "Upload failed" });
+            notify("The resume could not be uploaded. Check the PDF and try again.", "error");
         } finally {
             setUploading(false);
         }
@@ -81,7 +82,8 @@ export default function ResumeReviewPage() {
             const { data } = await api.post(`/resumes/${resumeId}/review`, { role, jobDescription });
             setReview(data);
         } catch (error) {
-            setSnack({ open: true, severity: "error", message: error?.response?.data?.message || "Review failed" });
+            const limitReached = error?.response?.data?.code === "PLAN_LIMIT_REACHED";
+            notify(error?.response?.data?.message || "The resume review could not be generated. Try again.", limitReached ? "warning" : "error");
         } finally {
             setLoadingReview(false);
         }
@@ -90,7 +92,7 @@ export default function ResumeReviewPage() {
     const handlePreviewResume = (r) => {
         if (!r) return;
         if (r.fileType !== "application/pdf") {
-            setSnack({ open: true, severity: "warning", message: "Preview available for PDFs only" });
+            notify("Preview is available for PDF resumes only.", "warning");
             return;
         }
         setPreviewUrl(`/api/resumes/${r._id}/preview`);
@@ -102,18 +104,6 @@ export default function ResumeReviewPage() {
         <Paper variant="outlined" sx={{ p: { xs: 2.5, sm: 4 }, borderRadius: 3 }}>
             <Typography component="h1" variant="h4" fontWeight={800}>AI resume review</Typography>
             <Typography color="text.secondary" sx={{ mt: .75, mb: 3 }}>Compare your resume with a target role and get focused, actionable improvements.</Typography>
-            {snack.open && (
-                <Alert
-                    severity={snack.severity}
-                    aria-live={snack.severity === "error" ? undefined : "polite"}
-                    role={snack.severity === "error" ? "alert" : undefined}
-                    sx={{ mb: 2 }}
-                    onClose={() => setSnack((s) => ({ ...s, open: false }))}
-                >
-                    {snack.message}
-                </Alert>
-            )}
-
             <Stack spacing={2}>
                 {resumes.length > 0 && (
                     <TextField
@@ -169,6 +159,7 @@ export default function ResumeReviewPage() {
                     <input type="file" hidden accept="application/pdf" onChange={handleUpload} />
                 </Button>
 
+                <JobPostImporter onImport={({ jobRole, jobDescription: importedDescription }) => { setRole(jobRole); setJobDescription(importedDescription); }} />
                 <TextField fullWidth label="Target Role" value={role} onChange={(e) => setRole(e.target.value)} />
                 <TextField
                     fullWidth

@@ -2,10 +2,11 @@ import { useContext, useEffect, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import { useThemeMode } from "../context/ThemeContext";
-import { AddRounded, ArrowBackRounded, DarkMode, LightMode, LogoutRounded, Menu as MenuIcon, RateReviewOutlined } from "@mui/icons-material";
-import { AppBar, Avatar, Box, Button, Container, IconButton, Menu, MenuItem, Stack, Toolbar, Tooltip, Typography } from "@mui/material";
+import { AddRounded, ArrowBackRounded, DarkMode, LightMode, LogoutRounded, Menu as MenuIcon, NotificationsNoneRounded, RateReviewOutlined } from "@mui/icons-material";
+import { AppBar, Avatar, Badge, Box, Button, Container, Divider, IconButton, ListItemText, Menu, MenuItem, Stack, Toolbar, Tooltip, Typography } from "@mui/material";
 import ProductFeedbackDialog from "./ProductFeedbackDialog";
 import useSafeBack from "../hooks/useSafeBack";
+import { useNotifications } from "../context/NotificationContext";
 
 const Brand = ({ to }) => (
     <Typography component={RouterLink} to={to} variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1.15, textDecoration: "none", color: "inherit", fontWeight: 850, letterSpacing: "-.025em" }}>
@@ -22,6 +23,8 @@ export default function Header() {
     const [anchor, setAnchor] = useState(null);
     const [profileAnchor, setProfileAnchor] = useState(null);
     const [feedbackOpen, setFeedbackOpen] = useState(false);
+    const [notificationAnchor, setNotificationAnchor] = useState(null);
+    const { notifications, clearNotifications } = useNotifications();
     const [workspace, setWorkspace] = useState(() => localStorage.getItem("companionai:workspace") || "practice");
     useEffect(() => { const sync = (event) => setWorkspace(event.detail || localStorage.getItem("companionai:workspace") || "practice"); window.addEventListener("companionai:workspace", sync); return () => window.removeEventListener("companionai:workspace", sync); }, []);
     useEffect(() => {
@@ -68,6 +71,11 @@ export default function Header() {
                                 {workspace === "practice" ? <Button component={RouterLink} to="/resume-review" sx={navSx("/resume-review")}>Resume review</Button> : <Button component={RouterLink} to="/assessments" sx={navSx("/assessments")}>Assessments</Button>}
                                 {user?.role === "admin" && <Button component={RouterLink} to="/admin/feedback" sx={navSx("/admin/feedback")}>Feedback inbox</Button>}
                                 <Button component={workspace === "hiring" ? "button" : RouterLink} to={workspace === "hiring" ? undefined : "/create-interview"} onClick={workspace === "hiring" ? openNewAssessment : undefined} variant="contained" startIcon={<AddRounded />} sx={{ ml: 1, px: 2 }}>{workspace === "hiring" ? "New assessment" : "New practice"}</Button>
+                                <Tooltip title="Recent notifications"><IconButton onClick={(event) => setNotificationAnchor(event.currentTarget)} aria-label={`Recent notifications${notifications.length ? `, ${notifications.length} items` : ""}`}><Badge color="error" badgeContent={notifications.length} max={9}><NotificationsNoneRounded /></Badge></IconButton></Tooltip>
+                                <Menu anchorEl={notificationAnchor} open={Boolean(notificationAnchor)} onClose={() => setNotificationAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }} PaperProps={{ sx: { width: 360, maxWidth: "calc(100vw - 24px)", maxHeight: 440 } }}>
+                                    <Stack direction="row" alignItems="center" justifyContent="space-between" px={2} py={1}><Typography fontWeight={800}>Recent notifications</Typography>{notifications.length > 0 && <Button size="small" onClick={clearNotifications}>Clear</Button>}</Stack><Divider />
+                                    {notifications.length === 0 ? <MenuItem disabled>No notifications yet</MenuItem> : notifications.map((item) => <MenuItem key={item.id} sx={{ whiteSpace: "normal", alignItems: "flex-start" }}><ListItemText primary={item.message} secondary={new Date(item.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} primaryTypographyProps={{ variant: "body2", color: item.severity === "error" ? "error.main" : "text.primary" }} /></MenuItem>)}
+                                </Menu>
                                 <Tooltip title="Account and navigation"><IconButton onClick={(event) => setProfileAnchor(event.currentTarget)} aria-label="Open account menu"><Avatar sx={{ width: 36, height: 36, bgcolor: "primary.main", fontSize: 14, fontWeight: 800 }}>{user?.name?.charAt(0)?.toUpperCase() || "U"}</Avatar></IconButton></Tooltip>
                                 <Menu anchorEl={profileAnchor} open={Boolean(profileAnchor)} onClose={() => setProfileAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }}>
                                     <MenuItem selected={workspace === "practice"} onClick={() => switchWorkspace("practice")}>Practice workspace</MenuItem>
@@ -94,6 +102,8 @@ export default function Header() {
                                 {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/feedback" onClick={close}>Feedback inbox</MenuItem>}
                                 {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/audit" onClick={close}>Audit activity</MenuItem>}
                                 <MenuItem component={RouterLink} to="/profile" onClick={close}>Profile</MenuItem>
+                                {notifications.length > 0 && <Divider />}
+                                {notifications.slice(0, 3).map((item) => <MenuItem key={item.id} disabled sx={{ whiteSpace: "normal", maxWidth: 320 }}><ListItemText primary={item.message} secondary="Recent notification" primaryTypographyProps={{ variant: "body2" }} /></MenuItem>)}
                                 <MenuItem onClick={() => { close(); setFeedbackOpen(true); }}>Share feedback</MenuItem>
                                 <MenuItem onClick={() => { toggle(); close(); }}>{mode === "dark" ? "Light theme" : "Dark theme"}</MenuItem>
                                 <MenuItem onClick={() => { close(); handleLogout(); }}>Log out</MenuItem>

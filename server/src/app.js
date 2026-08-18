@@ -37,6 +37,7 @@ import billingWebhookRoutes from "./routes/billingWebhookRoutes.js";
 import productEventRoutes from "./routes/productEventRoutes.js";
 import assessmentRoutes from "./routes/assessmentRoutes.js";
 import emailWebhookRoutes from "./routes/emailWebhookRoutes.js";
+import jobPostRoutes from "./routes/jobPostRoutes.js";
 
 const app = express();
 
@@ -281,6 +282,7 @@ app.use("/api/stt", sttLimiter, sttRoutes);
 app.use("/api/experiences", experienceRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/jobs", jobsRoutes);
+app.use("/api/job-posts", jobPostRoutes);
 app.use("/api/product-feedback", productFeedbackRoutes);
 app.use("/api/billing", billingRoutes);
 app.use("/api/recommendations", recommendationRoutes);
