@@ -7,6 +7,8 @@ const attemptQuestionSchema = new mongoose.Schema({
     knockout: { type: Boolean, default: false },
     answer: { type: String, maxlength: 20000, default: "" },
     spokenExplanation: { type: String, maxlength: 5000, default: "" },
+    diagramData: { type: String, maxlength: 500000, default: "" },
+    diagramSummary: { type: String, maxlength: 10000, default: "" },
     followUpQuestion: { type: String, maxlength: 1000, default: "" },
     followUpAnswer: { type: String, maxlength: 5000, default: "" },
     feedbackComment: { type: String, maxlength: 2500, default: "" },
@@ -17,7 +19,7 @@ const attemptQuestionSchema = new mongoose.Schema({
 const attemptRoundSchema = new mongoose.Schema({
     name: { type: String, required: true },
     description: String,
-    deliveryMode: { type: String, enum: ["conversational", "online-assessment"], default: "conversational" },
+    deliveryMode: { type: String, enum: ["conversational", "online-assessment", "system-design"], default: "conversational" },
     questions: [attemptQuestionSchema],
     score: { type: Number, min: 0, max: 10 },
 }, { _id: true });

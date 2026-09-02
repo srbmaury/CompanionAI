@@ -8,9 +8,11 @@ See [TESTING.md](TESTING.md) for the short test-command reference.
 - Authentication: email verification, Google Sign-In, rotating access/refresh tokens, logout, password reset, and account deletion
 - Resumes: upload to Cloudinary, type/size validation, tags/notes, search/sort, PDF inline preview
 - Resume reviews: saved AI reviews with paginated history
+- Resume matching: rank every owned resume against a JD with explainable keyword coverage and evidence, without consuming AI-review credits
 - Job-post import: paste a public job link to prefill editable role, company, and description fields in practice, resume review, and recruiter assessment flows
-- Interview rounds: AI‑suggested rounds from JD; supports conversational and online‑assessment (OA) modes
-- Hiring workspace: hybrid AI/manual assessments, reusable starter templates and version duplication, bulk email invitations with invite-only access and lifecycle tracking, weighted competency scorecards, human review overrides, optional contextual follow-ups, and private interviewer-only reports
+- Interview rounds: AI‑suggested rounds from the JD; supports conversational, online‑assessment (OA), and system-design modes with a shared candidate experience
+- Hiring workspace: hybrid AI/manual assessments, embedded Excalidraw system-design rounds with autosaved diagrams, reusable starter templates and version duplication, bulk email invitations with invite-only access and lifecycle tracking, weighted competency scorecards, human review overrides, optional contextual follow-ups, and private interviewer-only reports
+- System-design intelligence: extracts labelled components, bound connections, element counts, and groups from the Excalidraw scene; combines that topology with written and spoken explanations; asks one bounded, design-specific AI interviewer probe; and retains the complete evidence for recruiter review
 - Assessment resilience and integrity: local draft recovery, idempotent submission, camera readiness, optional on-device sustained face-presence/multiple-face detection, configurable fullscreen/focus/clipboard/connectivity signals with explicit consent, human-only interpretation, and automatic retention cleanup
 - Question generation: per‑round question sets with de‑duplication across rounds
 - Feedback: per‑question feedback with score and improvement suggestions
@@ -36,7 +38,7 @@ server/                  # Express API
   src/
     routes/              # Auth, interviews, reviews, billing, admin, analytics, reminders, jobs, STT, and code execution
     controllers/         # Controllers per domain
-    models/              # Mongoose models (User, Resume, Interview, Round, Question, Feedback)
+    models/              # Mongoose models, including users, resumes, interviews, assessments, attempts, feedback, billing, and delivery records
     utils/               # AI, code runner, mailer, parsing, etc.
     config/swagger.js    # OpenAPI config served at /api-docs
 ```
@@ -92,7 +94,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The browser suite verifies dual-audience landing content, login restoration after a full reload, recruiter pipeline management, and the candidate assessment journey. API responses from external or stateful services are deterministic in this UI suite; the server API journeys provide the database and authorization coverage. CI retains Playwright traces, screenshots, videos, HTML output, and JUnit results when a run fails.
+The browser suite verifies dual-audience landing content, login restoration after a full reload, recruiter pipeline management, hybrid assessment creation, candidate privacy, and movement through conversational, coding, and system-design rounds on desktop and mobile. API responses from external or stateful services are deterministic in this UI suite; the server API journeys provide the database and authorization coverage. CI retains Playwright traces, screenshots, videos, HTML output, and JUnit results when a run fails.
 
 Run the launch-critical end-to-end product journey separately with:
 
@@ -115,13 +117,14 @@ Highlighted endpoints
 - Questions: `POST /api/questions/{interviewId}/rounds/{roundId}/prepare` · `POST /api/questions/{roundId}/answer` · `POST /api/questions/{roundId}/answers` · `POST /api/questions/{roundId}/complete` · `DELETE /api/questions/{interviewId}/rounds/{roundId}`
 - Feedback: `POST /api/feedback/{questionId}` · `GET /api/feedback/{questionId}` · `POST /api/feedback/bulk` · `POST /api/feedback/attach/{roundId}`
 - Resumes: `POST /api/resumes` · `GET /api/resumes` (sort/tag/q) · `PUT /api/resumes/{id}` · `DELETE /api/resumes/{id}` · `GET /api/resumes/{id}/preview` · `POST /api/resumes/{id}/review` · `GET /api/resumes/reviews`
+- Resume matching: `POST /api/resumes/match`
 - STT: `POST /api/stt/transcribe` (multipart `audio`)
 - Run Code: `POST /api/run-code`
 - Experiences: `GET /api/experiences/search?company=&role=`
 - Job posts: `POST /api/job-posts/import` (authenticated, rate-limited public-page extraction)
 - Billing: `GET /api/billing/entitlements` · `POST /api/billing/checkout-session` · `POST /api/billing/portal-session` · `POST /api/billing/webhook`
 - Recommendations: `GET /api/recommendations`
-- Candidate assessments: create/list/overview/report, duplicate versions, invite/resend/revoke candidates, save human scorecards, and consented integrity events under `/api/assessments` and `/api/assessments/public/{shareToken}`
+- Candidate assessments: create/list/overview/report, duplicate versions, invite/resend/revoke candidates, save answers and system-design scenes, generate contextual AI probes, save human scorecards, and record consented integrity events under `/api/assessments` and `/api/assessments/public/{shareToken}`
 - Product feedback: `POST /api/product-feedback`
 - Product events: `POST /api/events`
 - Admin: `GET /api/admin/feedback` · `PATCH /api/admin/feedback/{feedbackId}`
@@ -134,7 +137,7 @@ Highlighted endpoints
 - `/create-interview`, `/interviews/:interviewId`
 - `/assessments`, `/assessments/:assessmentId`, `/assessment/:shareToken`
 - `/experiences`, `/saved-experiences`
-- `/resume-review`, `/resume-reviews`, `/resumes`
+- `/resume-review`, `/resume-reviews`, `/resume-match`, `/resumes`
 - `/pricing`, `/billing/success`
 - `/profile`, `/admin/feedback`
 - `/privacy`, `/terms`
@@ -151,7 +154,20 @@ Highlighted endpoints
 - Stripe webhook signature validation and event idempotency
 - Unconditional Zod request validation plus database-level constraints
 - Unguessable assessment links plus hashed per-attempt credentials; public candidate responses never include scores or private feedback
+- System-design AI treats extracted topology as uncertain evidence, never as ground truth, and is instructed not to score visual polish or drawing quality
 - CI dependency audits and weekly Dependabot updates
+
+## System-design interview behavior
+
+System-design rounds use an Excalidraw canvas alongside written and voice-enabled explanation fields. Canvas changes are retained locally and synchronized to the API. When the candidate saves a response and contextual follow-ups are enabled, CompanionAI:
+
+1. Extracts readable labels, element counts, groups, and bound component-to-component connections from the scene JSON.
+2. Combines that machine-readable topology with the original question and the candidate's written and spoken explanation.
+3. Generates one neutral interviewer probe about a concrete decision, missing requirement, failure mode, capacity assumption, consistency choice, security boundary, or observability gap.
+4. Speaks and displays the probe, then stores the candidate's response with the final report.
+5. Evaluates the complete evidence against role context, round focus, and the recruiter scorecard after submission.
+
+The AI cannot modify the canvas, reveal a solution, coach the candidate, or show scores during a recruiter assessment. Diagram extraction can be incomplete when arrows are visually positioned but not bound to shapes, so the evaluator is required to state uncertainty and recruiters should verify claims against the original canvas. Continuous autonomous conversation is intentionally avoided to preserve candidate comparability, predictable duration, and cost control.
 
 ## Background processing
 
@@ -184,6 +200,7 @@ Brevo accepts a verified Gmail sender, but free-email domains cannot be authenti
 - See `RUNBOOK.md` for deployment, rollback, health checks, backups, workers, and incident response
 - Use `observability/README.md` for Grafana panels, PromQL queries, and production alert thresholds
 - Review `SECURITY.md` and publish production-specific privacy, AI-processing, refund, and data-retention policies
+- Calibrate system-design AI scores against independent human reviewers before using them in hiring decisions; keep AI output advisory rather than an automatic rejection signal
 
 ## Known dependency exception
 

@@ -16,7 +16,8 @@ describe("assessment workspace hierarchy", () => {
         expect(screen.queryByRole("heading", { name: "Create assessment" })).toBeNull();
         fireEvent.click(screen.getByRole("button", { name: "Create assessment" }));
         expect(screen.getByRole("heading", { name: "Create assessment" })).toBeTruthy();
-        expect(screen.getByRole("heading", { name: "Your assessments" }).compareDocumentPosition(screen.getByRole("heading", { name: "Create assessment" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        await vi.waitFor(() => expect(screen.queryByRole("heading", { name: "Your assessments" })).toBeNull());
+        expect(screen.queryByRole("heading", { name: "Candidate pipeline" })).toBeNull();
     });
 
     it("gives recruiters a cross-assessment candidate pipeline", async () => {
@@ -37,13 +38,13 @@ describe("assessment workspace hierarchy", () => {
             return Promise.resolve({ data: { _id: "created" } });
         });
         render(<MemoryRouter initialEntries={["/assessments?create=1"]}><AssessmentsPage /></MemoryRouter>);
-        await screen.findByText("No assessments yet.");
-        fireEvent.change(screen.getByLabelText(/Assessment title/), { target: { value: "Frontend screen" } });
+        await screen.findByRole("heading", { name: "Create assessment" });
+        fireEvent.change(screen.getByLabelText(/Candidate test name/), { target: { value: "Frontend screen" } });
         fireEvent.change(screen.getByLabelText(/Job role/), { target: { value: "Senior frontend engineer" } });
         fireEvent.change(screen.getByLabelText(/Job description and success criteria/), { target: { value: "Own React architecture, accessibility, testing, and web performance." } });
         fireEvent.mouseDown(screen.getByLabelText("Candidate experience"));
         fireEvent.click(await screen.findByRole("option", { name: "Coding / written assessment" }));
-        fireEvent.change(screen.getByLabelText("Tell AI what to generate"), { target: { value: "Generate 3 questions about React and accessibility" } });
+        fireEvent.change(screen.getByLabelText("AI question brief"), { target: { value: "Generate 3 questions about React and accessibility" } });
         fireEvent.click(screen.getByRole("button", { name: "Generate with AI" }));
         expect(await screen.findByDisplayValue("Explain how you diagnose a slow React render.")).toBeTruthy();
         expect(post).toHaveBeenCalledWith("/assessments/questions/generate", expect.objectContaining({ count: 3 }));
@@ -63,5 +64,16 @@ describe("assessment workspace hierarchy", () => {
             expect.objectContaining({ text: "Review this component API and identify its accessibility risks.", weight: 1 }),
         ] })] })));
         await vi.waitFor(() => expect(post).toHaveBeenCalledWith("/assessments/created/invitations", { candidates: [{ email: "one@example.com" }, { email: "two@example.com" }] }));
+    });
+
+    it("defaults system-design rounds to one clearly labelled target question", async () => {
+        get.mockResolvedValue({ data: { items: [], totalPages: 1 } });
+        render(<MemoryRouter initialEntries={["/assessments?create=1"]}><AssessmentsPage /></MemoryRouter>);
+        await screen.findByRole("heading", { name: "Create assessment" });
+        expect((await screen.findByLabelText(/Number of questions/)).value).toBe("3");
+        fireEvent.mouseDown(await screen.findByLabelText("Candidate experience"));
+        fireEvent.click(await screen.findByRole("option", { name: "System design canvas + discussion" }));
+        expect(screen.getByLabelText(/Number of questions/).value).toBe("1");
+        expect(screen.getByText(/Excalidraw architecture canvas/)).toBeTruthy();
     });
 });

@@ -23,7 +23,7 @@ const getOpenAIClient = () => {
 const getGeminiModel = () => {
     if (!_geminiModel) {
         _geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-        const modelName = process.env.GEMINI_MODEL_NAME || "gemini-1.5-flash";
+        const modelName = process.env.GEMINI_MODEL_NAME || "gemini-3.6-flash";
         _geminiModel = _geminiClient.getGenerativeModel({
             model: modelName,
             generationConfig: { responseMimeType: "application/json" },
@@ -104,7 +104,7 @@ export const generateJSON = async (prompt) => {
         metrics.aiRequestDurationSeconds.labels("openai", openAiModel, "failure").observe(Number(process.hrtime.bigint() - openAiStartedAt) / 1e9);
         metrics.aiFallbacksTotal.labels("openai", "gemini").inc();
         console.warn("[AI][OpenAI] request failed:", _e?.message || _e);
-        const geminiModel = process.env.GEMINI_MODEL_NAME || "gemini-1.5-flash";
+        const geminiModel = process.env.GEMINI_MODEL_NAME || "gemini-3.6-flash";
         const geminiStartedAt = process.hrtime.bigint();
         try {
             if (!process.env.GEMINI_API_KEY) {

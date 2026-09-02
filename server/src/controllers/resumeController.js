@@ -7,6 +7,7 @@ import https from "https";
 import { assertPdfMagic } from "../utils/magicBytes.js";
 import metrics from "../metrics/index.js";
 import { generateJSON } from "../utils/generateQuestions/aiClient.js";
+import { rankResumesForJob } from "../services/resumeMatcher.js";
 
 // Align with multer filter (PDF only) and use single source of truth for max bytes
 const ALLOWED_MIME = ["application/pdf"];
@@ -290,6 +291,21 @@ RESUME_TEXT: ${resumeText}`;
         console.error("Review resume error:", error);
         return next(error instanceof Error ? error : new Error(String(error)));
     }
+};
+
+export const matchResumesToJob = async (req, res, next) => {
+    try {
+        const resumes = await Resume.find({ user: req.user._id }).sort({ updatedAt: -1 }).limit(50).lean();
+        if (!resumes.length) return res.status(400).json({ message: "Upload at least one resume before finding a match." });
+        const matches = rankResumesForJob(resumes, req.body);
+        return res.json({
+            role: req.body.role || "",
+            resumeCount: matches.length,
+            bestResumeId: matches[0]?.resumeId || null,
+            matches,
+            methodology: "Scores represent weighted keyword coverage from the job description. Review the supporting evidence before deciding.",
+        });
+    } catch (error) { return next(error instanceof Error ? error : new Error(String(error))); }
 };
 
 export const getResumeReviews = async (req, res, next) => {

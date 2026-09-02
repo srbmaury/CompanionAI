@@ -82,7 +82,7 @@ const DashboardPage = () => {
 
             {!workspaceChosen && <Alert severity="info" sx={{ mb: 3 }}><Typography fontWeight={800}>What would you like to do first?</Typography><Typography variant="body2" sx={{ mt: .5, mb: 1.5 }}>You can switch workspaces anytime from your account menu.</Typography><Stack direction={{ xs: "column", sm: "row" }} gap={1}><Button variant="contained" onClick={() => chooseWorkspace("practice")}>Prepare for interviews</Button><Button variant="outlined" onClick={() => chooseWorkspace("hiring")}>Interview candidates</Button></Stack></Alert>}
 
-            {!user?.targetRole && <Alert severity="info" sx={{ mb: 3 }} action={<Button color="inherit" size="small" onClick={() => navigate("/profile")}>Set my goal</Button>}>
+            {!user?.targetRole && Number(progress.completed || 0) > 0 && <Alert severity="info" sx={{ mb: 3 }} action={<Button color="inherit" size="small" onClick={() => navigate("/profile")}>Set my goal</Button>}>
                 Personalize your plan with a target role and weekly practice goal.
             </Alert>}
             {user?.targetRole && <Card variant="outlined" sx={{ mb: 3 }}><CardContent><Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1}><Box><Typography variant="overline" color="primary.main" fontWeight={800}>Your practice plan</Typography><Typography fontWeight={750}>{user.targetRole}</Typography></Box><Chip label={`${user.weeklyPracticeTarget || 3} sessions / week`} color="primary" variant="outlined" /></Stack></CardContent></Card>}

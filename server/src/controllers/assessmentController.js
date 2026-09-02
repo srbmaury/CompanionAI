@@ -10,6 +10,7 @@ import { getQueue } from "../queues/index.js";
 import { createJobId } from "../queues/jobIds.js";
 import candidateAssessmentProcessor from "../queues/workers/candidateAssessment.js";
 import { sendMail } from "../utils/mailer.js";
+import { isValidSystemDesignDiagram, summarizeSystemDesignDiagram } from "../utils/systemDesignDiagram.js";
 
 const tokenHash = (value) => crypto.createHash("sha256").update(value).digest("hex");
 const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
@@ -48,6 +49,8 @@ const publicAttempt = (attempt) => ({
             text: question.text,
             answer: question.answer,
             spokenExplanation: question.spokenExplanation,
+            diagramData: question.diagramData,
+            diagramSummary: question.diagramSummary,
             followUpQuestion: question.followUpQuestion,
             followUpAnswer: question.followUpAnswer,
         })),
@@ -368,15 +371,21 @@ export const saveCandidateAnswer = async (req, res, next) => {
         if (!assessment) { observeCandidateAction("answer", "unavailable", null); return res.status(404).json({ message: "Assessment unavailable" }); }
         const attempt = await findAttempt(assessment._id, req.params.attemptId, req.get("x-attempt-token"));
         if (!attempt || attempt.status !== "started") { observeCandidateAction("answer", "unauthorized", assessment); return res.status(401).json({ message: "Attempt unavailable" }); }
-        const { roundIndex, questionIndex, answer, spokenExplanation, followUpAnswer } = req.body;
+        const { roundIndex, questionIndex, answer, spokenExplanation, followUpAnswer, diagramData } = req.body;
         const item = attempt.rounds?.[roundIndex]?.questions?.[questionIndex];
         if (!item) { observeCandidateAction("answer", "invalid_question", assessment); return res.status(400).json({ message: "Invalid question" }); }
         if (answer !== undefined) item.answer = answer.toString().trim().slice(0, 20000);
         if (spokenExplanation !== undefined) item.spokenExplanation = spokenExplanation.toString().trim().slice(0, 5000);
+        if (diagramData !== undefined) {
+            if (!isValidSystemDesignDiagram(diagramData)) return res.status(400).json({ message: "Invalid or overly complex system-design diagram" });
+            item.diagramData = diagramData.slice(0, 500000);
+            item.diagramSummary = summarizeSystemDesignDiagram(item.diagramData);
+        }
         if (followUpAnswer !== undefined) item.followUpAnswer = followUpAnswer.toString().trim().slice(0, 5000);
         if (assessment.followUpsEnabled && item.answer && !item.followUpQuestion) {
             try {
-                item.followUpQuestion = await generateFollowUp({ questionText: item.text, userAnswer: item.answer, jobRole: assessment.jobRole, roundName: attempt.rounds[roundIndex].name }) || "";
+                const diagramContext = item.diagramSummary || summarizeSystemDesignDiagram(item.diagramData);
+                item.followUpQuestion = await generateFollowUp({ questionText: item.text, userAnswer: [item.answer, item.spokenExplanation && `Spoken explanation:\n${item.spokenExplanation}`, diagramContext].filter(Boolean).join("\n\n"), jobRole: assessment.jobRole, roundName: attempt.rounds[roundIndex].name, systemDesign: attempt.rounds[roundIndex].deliveryMode === "system-design" }) || "";
             } catch { /* The original answer remains valid when the AI provider is unavailable. */ }
         }
         await attempt.save();

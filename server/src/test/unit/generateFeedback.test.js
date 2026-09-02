@@ -34,17 +34,16 @@ describe("generateFeedbackForAnswer", () => {
         expect(result.score).toBe(10);
     });
 
-    it("returns fallback when AI returns empty", async () => {
+    it("fails evaluation when every AI provider returns empty", async () => {
         generateJSON.mockResolvedValue("");
-        const result = await generateFeedbackForAnswer({ questionText: "Q", userAnswer: "A" });
-        expect(result.comment).toBe("Feedback unavailable.");
-        expect(result.score).toBe(0);
+        await expect(generateFeedbackForAnswer({ questionText: "Q", userAnswer: "A" }))
+            .rejects.toThrow("AI providers returned no evaluation");
     });
 
-    it("returns fallback when AI throws", async () => {
+    it("propagates provider failures so the evaluation job can retry", async () => {
         generateJSON.mockRejectedValue(new Error("timeout"));
-        const result = await generateFeedbackForAnswer({ questionText: "Q", userAnswer: "A" });
-        expect(result.comment).toBe("Feedback unavailable.");
+        await expect(generateFeedbackForAnswer({ questionText: "Q", userAnswer: "A" }))
+            .rejects.toThrow("timeout");
     });
 
     it("returns early error when questionText is empty", async () => {
@@ -61,5 +60,16 @@ describe("generateFeedbackForAnswer", () => {
         }));
         const result = await generateFeedbackForAnswer({ questionText: "Q", userAnswer: "A" });
         expect(result.suggestions).toEqual(["valid suggestion"]);
+    });
+
+    it("uses a system-design rubric without judging drawing polish", async () => {
+        generateJSON.mockResolvedValue(JSON.stringify({ comment: "Coherent design", score: 7, suggestions: [] }));
+        await generateFeedbackForAnswer({
+            questionText: "Design a notification service",
+            userAnswer: "API Gateway -> Queue -> Worker",
+            evaluationContext: { mode: "system-design", jobRole: "Staff Engineer", jobDescription: "Design reliable distributed systems", roundDescription: "Architecture trade-offs", rubric: [{ name: "Reliability", description: "Failure handling" }] },
+        });
+        expect(generateJSON).toHaveBeenCalledWith(expect.stringContaining("Do not reward visual polish or penalize drawing quality"));
+        expect(generateJSON).toHaveBeenCalledWith(expect.stringContaining("Reliability: Failure handling"));
     });
 });

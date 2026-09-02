@@ -19,6 +19,7 @@ const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage.jsx"));
 const VerifyEmailPage = lazy(() => import("./pages/VerifyEmailPage.jsx"));
 const ExperiencesPage = lazy(() => import("./pages/ExperiencesPage.jsx"));
 const ResumeReviewPage = lazy(() => import("./pages/ResumeReviewPage.jsx"));
+const ResumeMatcherPage = lazy(() => import("./pages/ResumeMatcherPage.jsx"));
 const LandingPage = lazy(() => import("./pages/LandingPage.jsx"));
 const LegalPage = lazy(() => import("./pages/LegalPage.jsx"));
 const ProgressPage = lazy(() => import("./pages/ProgressPage.jsx"));
@@ -115,6 +116,7 @@ function App() {
                 />
                 <Route path="/progress" element={<ProtectedRoute><ProgressPage /></ProtectedRoute>} />
                 <Route path="/resume-reviews" element={<ProtectedRoute><ReviewHistoryPage /></ProtectedRoute>} />
+                <Route path="/resume-match" element={<ProtectedRoute><ResumeMatcherPage /></ProtectedRoute>} />
                 <Route path="/saved-experiences" element={<ProtectedRoute><SavedExperiencesPage /></ProtectedRoute>} />
                 <Route path="/resumes" element={<ProtectedRoute><ResumesPage /></ProtectedRoute>} />
                 <Route path="/pricing" element={<ProtectedRoute><PricingPage /></ProtectedRoute>} />

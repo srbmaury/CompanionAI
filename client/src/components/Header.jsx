@@ -3,7 +3,7 @@ import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import { useThemeMode } from "../context/ThemeContext";
 import { AddRounded, ArrowBackRounded, DarkMode, LightMode, LogoutRounded, Menu as MenuIcon, NotificationsNoneRounded, RateReviewOutlined } from "@mui/icons-material";
-import { AppBar, Avatar, Badge, Box, Button, Container, Divider, IconButton, ListItemText, Menu, MenuItem, Stack, Toolbar, Tooltip, Typography } from "@mui/material";
+import { AppBar, Avatar, Badge, Box, Button, Container, Divider, IconButton, ListItemText, Menu, MenuItem, Skeleton, Stack, Toolbar, Tooltip, Typography } from "@mui/material";
 import ProductFeedbackDialog from "./ProductFeedbackDialog";
 import useSafeBack from "../hooks/useSafeBack";
 import { useNotifications } from "../context/NotificationContext";
@@ -16,7 +16,7 @@ const Brand = ({ to }) => (
 );
 
 export default function Header() {
-    const { user, logout } = useContext(AuthContext);
+    const { user, loading, logout } = useContext(AuthContext);
     const { mode, toggle } = useThemeMode();
     const navigate = useNavigate();
     const location = useLocation();
@@ -64,6 +64,11 @@ export default function Header() {
                                 <IconButton onClick={toggle} aria-label="Toggle theme">{mode === "dark" ? <LightMode /> : <DarkMode />}</IconButton>
                             </Tooltip>
                         </Stack>
+                    ) : loading ? (
+                        <Stack direction="row" spacing={1} alignItems="center" aria-label="Restoring your session">
+                            <Skeleton variant="rounded" width={88} height={36} />
+                            <Skeleton variant="circular" width={36} height={36} />
+                        </Stack>
                     ) : user ? (
                         <>
                             <Stack direction="row" spacing={.5} alignItems="center" sx={{ display: { xs: "none", md: "flex" } }}>
@@ -82,6 +87,7 @@ export default function Header() {
                                     <MenuItem selected={workspace === "hiring"} onClick={() => switchWorkspace("hiring")}>Hiring workspace</MenuItem>
                                     <MenuItem component={RouterLink} to="/experiences" onClick={() => setProfileAnchor(null)}>Interview research</MenuItem>
                                     <MenuItem component={RouterLink} to="/progress" onClick={() => setProfileAnchor(null)}>Progress</MenuItem>
+                                    <MenuItem component={RouterLink} to="/resume-match" onClick={() => setProfileAnchor(null)}>Find best resume</MenuItem>
                                     <MenuItem component={RouterLink} to="/pricing" onClick={() => setProfileAnchor(null)}>Plans & billing</MenuItem>
                                     <MenuItem component={RouterLink} to="/profile" onClick={() => setProfileAnchor(null)}>Profile & settings</MenuItem>
                                     {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/audit" onClick={() => setProfileAnchor(null)}>Audit activity</MenuItem>}
@@ -93,15 +99,16 @@ export default function Header() {
                             <IconButton sx={{ display: { md: "none" } }} onClick={(event) => setAnchor(event.currentTarget)} aria-label="Open navigation"><MenuIcon /></IconButton>
                             <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={close} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }}>
                                 <MenuItem component={RouterLink} to="/dashboard" onClick={close}>Dashboard</MenuItem>
-                                <MenuItem onClick={() => { close(); switchWorkspace(workspace === "practice" ? "hiring" : "practice"); }}>Switch to {workspace === "practice" ? "hiring" : "practice"} workspace</MenuItem>
                                 {workspace === "hiring" ? <MenuItem onClick={() => { close(); openNewAssessment(); }}>New assessment</MenuItem> : <MenuItem component={RouterLink} to="/create-interview" onClick={close}>New practice</MenuItem>}
-                                <MenuItem component={RouterLink} to="/experiences" onClick={close}>Experiences</MenuItem>
-                                <MenuItem component={RouterLink} to="/resume-review" onClick={close}>Resume review</MenuItem>
-                                <MenuItem component={RouterLink} to="/assessments" onClick={close}>Assess candidates</MenuItem>
+                                {workspace === "practice" && <MenuItem component={RouterLink} to="/resume-review" onClick={close}>Resume review</MenuItem>}
+                                {workspace === "practice" && <MenuItem component={RouterLink} to="/resume-match" onClick={close}>Find best resume</MenuItem>}
+                                {workspace === "hiring" && <MenuItem component={RouterLink} to="/assessments" onClick={close}>Candidate assessments</MenuItem>}
+                                <MenuItem onClick={() => { close(); switchWorkspace(workspace === "practice" ? "hiring" : "practice"); }}>Switch to {workspace === "practice" ? "hiring" : "practice"} workspace</MenuItem>
+                                <Divider />
+                                <MenuItem component={RouterLink} to="/profile" onClick={close}>Profile & settings</MenuItem>
                                 <MenuItem component={RouterLink} to="/pricing" onClick={close}>Plans & billing</MenuItem>
                                 {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/feedback" onClick={close}>Feedback inbox</MenuItem>}
                                 {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/audit" onClick={close}>Audit activity</MenuItem>}
-                                <MenuItem component={RouterLink} to="/profile" onClick={close}>Profile</MenuItem>
                                 {notifications.length > 0 && <Divider />}
                                 {notifications.slice(0, 3).map((item) => <MenuItem key={item.id} disabled sx={{ whiteSpace: "normal", maxWidth: 320 }}><ListItemText primary={item.message} secondary="Recent notification" primaryTypographyProps={{ variant: "body2" }} /></MenuItem>)}
                                 <MenuItem onClick={() => { close(); setFeedbackOpen(true); }}>Share feedback</MenuItem>

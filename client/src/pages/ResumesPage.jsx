@@ -162,10 +162,10 @@ const ResumesPage = () => {
     };
 
     return (
-        <Box component="main" sx={{ maxWidth: 1200, mx: "auto", px: { xs: 2, sm: 3 }, py: { xs: 3, md: 5 } }}>
+        <Box component="section" aria-labelledby="resumes-heading" sx={{ maxWidth: 1200, mx: "auto", px: { xs: 2, sm: 3 }, py: { xs: 3, md: 5 } }}>
             <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={2} mb={3}>
                 <Box>
-                    <Typography component="h1" variant="h4" fontWeight={800}>Resumes</Typography>
+                    <Typography id="resumes-heading" component="h1" variant="h4" fontWeight={800}>Resumes</Typography>
                     <Typography color="text.secondary" mt={0.75}>Keep your resume versions organized and ready for tailored practice.</Typography>
                 </Box>
                 <Stack alignItems={{ xs: "stretch", md: "flex-end" }} spacing={1}>
@@ -178,6 +178,7 @@ const ResumesPage = () => {
                     <Button variant="contained" startIcon={uploading ? <CircularProgress size={18} color="inherit" /> : <AddIcon />} disabled={!uploadConsent || uploading} onClick={() => fileInputRef.current?.click()}>
                         {uploading ? "Uploading…" : "Upload PDF"}
                     </Button>
+                    <Button component={RouterLink} to="/resume-match" variant="outlined">Find best resume for a job</Button>
                 </Stack>
             </Stack>
 

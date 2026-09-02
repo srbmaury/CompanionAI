@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link as RouterLink, useLocation } from "react-router-dom";
 import api from "../api/axios";
 import { useResumes } from "../hooks/useResumes";
 
@@ -30,14 +31,15 @@ import JobPostImporter from "../components/JobPostImporter";
 import { useNotify } from "../context/NotificationContext";
 
 export default function ResumeReviewPage() {
+    const location = useLocation();
     const { getResumes, uploadResume } = useResumes();
     const notify = useNotify();
     const [resumes, setResumes] = useState([]);
-    const [resumeId, setResumeId] = useState("");
+    const [resumeId, setResumeId] = useState(location.state?.resumeId || "");
     const [uploading, setUploading] = useState(false);
     const [loadingReview, setLoadingReview] = useState(false);
-    const [role, setRole] = useState("");
-    const [jobDescription, setJobDescription] = useState("");
+    const [role, setRole] = useState(location.state?.role || "");
+    const [jobDescription, setJobDescription] = useState(location.state?.jobDescription || "");
     const [review, setReview] = useState(null);
     const [previewOpen, setPreviewOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState("");
@@ -103,7 +105,7 @@ export default function ResumeReviewPage() {
         <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 5 } }}>
         <Paper variant="outlined" sx={{ p: { xs: 2.5, sm: 4 }, borderRadius: 3 }}>
             <Typography component="h1" variant="h4" fontWeight={800}>AI resume review</Typography>
-            <Typography color="text.secondary" sx={{ mt: .75, mb: 3 }}>Compare your resume with a target role and get focused, actionable improvements.</Typography>
+            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} gap={1} sx={{ mt: .75, mb: 3 }}><Typography color="text.secondary">Compare your resume with a target role and get focused, actionable improvements.</Typography><Button component={RouterLink} to="/resume-match" variant="outlined" size="small">Find my best resume</Button></Stack>
             <Stack spacing={2}>
                 {resumes.length > 0 && (
                     <TextField

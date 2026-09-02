@@ -114,6 +114,10 @@ const LoginPage = () => {
                 },
                 auto_select: false,
                 ux_mode: "popup",
+                // Prefer the browser-owned FedCM dialog where supported. This avoids
+                // fragile OAuth popup rendering in Chromium-based embedded browsers.
+                use_fedcm_for_button: true,
+                itp_support: true,
             });
             window.google.accounts.id.renderButton(googleDivRef.current, {
                 theme: "filled_blue",
@@ -245,6 +249,9 @@ const LoginPage = () => {
 
                     <Stack spacing={2} alignItems="center">
                         <div ref={googleDivRef} />
+                        <Typography variant="caption" color="text.secondary" align="center">
+                            Google sign-in may not display in embedded browsers. If the Google window is blank, open CompanionAI in Chrome or Safari, or use email and password.
+                        </Typography>
                     </Stack>
 
                     <Typography align="center" color="text.secondary">

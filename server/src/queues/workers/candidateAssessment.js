@@ -2,19 +2,23 @@ import CandidateAttempt from "../../models/CandidateAttempt.js";
 import { generateFeedbackForAnswer } from "../../utils/generateFeedback.js";
 import metrics from "../../metrics/index.js";
 import Assessment from "../../models/Assessment.js";
+import { summarizeSystemDesignDiagram } from "../../utils/systemDesignDiagram.js";
 
 export default async function candidateAssessmentProcessor(job) {
     const attempt = await CandidateAttempt.findOne({ _id: job.data?.attemptId, status: "evaluating" });
     if (!attempt) return { skipped: true };
     try {
+        const assessment = await Assessment.findById(attempt.assessment).lean();
         const items = attempt.rounds.flatMap((round) => round.questions);
         let completed = 0;
         const allScores = []; let weightedTotal = 0; let totalWeight = 0;
         for (const round of attempt.rounds) {
             const roundScores = [];
             for (const item of round.questions) {
-                const combined = [item.answer, item.spokenExplanation ? `Spoken explanation:\n${item.spokenExplanation}` : "", item.followUpQuestion ? `Follow-up question: ${item.followUpQuestion}\nFollow-up answer: ${item.followUpAnswer}` : ""].filter(Boolean).join("\n\n");
-                const feedback = await generateFeedbackForAnswer({ questionText: item.text, userAnswer: combined });
+                const diagramContext = item.diagramSummary || (item.diagramData ? summarizeSystemDesignDiagram(item.diagramData) : "");
+                if (diagramContext) item.diagramSummary = diagramContext;
+                const combined = [item.answer, diagramContext, item.spokenExplanation ? `Spoken explanation:\n${item.spokenExplanation}` : "", item.followUpQuestion ? `AI interviewer probe: ${item.followUpQuestion}\nCandidate response: ${item.followUpAnswer}` : ""].filter(Boolean).join("\n\n");
+                const feedback = await generateFeedbackForAnswer({ questionText: item.text, userAnswer: combined, evaluationContext: round.deliveryMode === "system-design" ? { mode: "system-design", jobRole: assessment?.jobRole, jobDescription: assessment?.jobDescription, roundDescription: round.description, rubric: assessment?.rubric } : undefined });
                 item.feedbackComment = feedback.comment; item.suggestions = feedback.suggestions; item.score = feedback.score;
                 roundScores.push(feedback.score); allScores.push(feedback.score);
                 const weight = Number(item.weight) || 1; weightedTotal += feedback.score * weight; totalWeight += weight;

@@ -8,6 +8,7 @@ import {
     reviewResume,
     getResumeReviews,
     deleteResumeReview,
+    matchResumesToJob,
 } from "../controllers/resumeController.js";
 import { uploadResumeMulter } from "../middleware/multerMemory.js";
 import { uploadLimiter } from "../middleware/rateLimiters.js";
@@ -17,6 +18,7 @@ import validate from "../middleware/validate.js";
 import { z } from "zod";
 import { ObjectIdString } from "../validation/commonSchemas.js";
 import usageLimit from "../middleware/usageLimit.js";
+import quotas from "../middleware/quotas.js";
 
 const router = express.Router();
 
@@ -149,6 +151,14 @@ router.get(
     getUserResumes
 );
 router.get("/reviews", protect, validate(z.object({ page: z.coerce.number().int().min(1).optional(), limit: z.coerce.number().int().min(1).max(50).optional() }), "query"), getResumeReviews);
+router.post(
+    "/match",
+    protect,
+    quotas({ key: (req) => `user:${req.user._id}:resume-match`, metricKey: "resume_match", windowSeconds: 3600, maxPerWindow: 30 }),
+    validate(z.object({ role: z.string().trim().max(200).optional().default(""), jobDescription: z.string().trim().min(40).max(12000) })),
+    audit("resume.match", { entityType: "Resume", pickBody: () => ({}) }),
+    matchResumesToJob
+);
 router.delete(
     "/reviews/:reviewId",
     protect,
