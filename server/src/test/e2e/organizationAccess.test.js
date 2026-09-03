@@ -74,7 +74,7 @@ describe("Hiring organization access", () => {
         )
             .send({ email: reviewer.email, role: "reviewer" })
             .expect(201);
-        const reviewerMembershipId = memberResponse.body.member._id;
+        const reviewerMembershipId = memberResponse.body.membership._id;
 
         const created = await writeHeaders(agent.post("/api/assessments"), ownerAuth)
             .send(assessmentInput)
