@@ -23,13 +23,16 @@ const api = axios.create({
 });
 
 let accessToken = null;
+let organizationId = null;
 export const setAccessToken = (token) => { accessToken = token || null; };
 export const clearAccessToken = () => { accessToken = null; };
+export const setOrganizationId = (id) => { organizationId = id || null; };
 
-// Attach Authorization bearer token on every request
+// Attach authentication and the active hiring organization when present.
 api.interceptors.request.use((config) => {
     try {
         if (accessToken) config.headers["Authorization"] = `Bearer ${accessToken}`;
+        if (organizationId) config.headers["X-Organization-Id"] = organizationId;
     } catch { /* ignore */ }
     return config;
 });
