@@ -7,7 +7,7 @@ const defaultOrganizationContext = {
     organizations: [],
     activeOrganization: null,
     activeOrganizationId: null,
-    currentRole: "owner",
+    currentRole: null,
     loading: false,
     error: "",
     selectOrganization: () => {},
@@ -81,7 +81,7 @@ export const OrganizationProvider = ({ children }) => {
         const { data } = await api.post("/organizations", { name });
         const organization = data?.organization;
         if (!organization) throw new Error("Organization was not created");
-        setOrganizations((current) => [...current, organization]);
+        setOrganizations((current) => [...current.filter((item) => item._id !== organization._id), organization]);
         selectOrganization(organization._id);
         return organization;
     }, [selectOrganization]);
