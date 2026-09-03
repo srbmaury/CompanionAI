@@ -38,7 +38,7 @@ export default function Header() {
     }, [location.pathname]);
     const switchWorkspace = (next) => { localStorage.setItem("companionai:workspace", next); setWorkspace(next); window.dispatchEvent(new CustomEvent("companionai:workspace", { detail: next })); setWorkspaceAnchor(null); setProfileAnchor(null); navigate(next === "hiring" ? "/assessments" : "/dashboard"); };
     const isActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`);
-    const isRootScreen = location.pathname === "/" || location.pathname === "/dashboard";
+    const isRootScreen = location.pathname === "/" || location.pathname === "/dashboard" || (location.pathname === "/assessments" && !location.search && !location.hash);
     const isCandidateAssessment = location.pathname.startsWith("/assessment/");
     const navSx = (path) => ({ px: 1.5, color: isActive(path) ? "primary.main" : "text.secondary", bgcolor: isActive(path) ? "action.selected" : "transparent", "&:hover": { bgcolor: "action.hover", color: "text.primary" } });
     const handleLogout = async () => { await logout(); navigate("/login", { replace: true }); };
