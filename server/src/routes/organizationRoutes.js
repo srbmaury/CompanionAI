@@ -9,7 +9,7 @@ import {
     listMembers,
     listOrganizations,
     removeMember,
-    updateMemberRole,
+    updateMember as updateMemberRole,
     updateOrganization,
     transferOwnership,
 } from "../controllers/organizationController.js";
