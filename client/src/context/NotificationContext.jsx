@@ -1,24 +1,33 @@
 import { Alert, Snackbar } from "@mui/material";
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { AuthContext } from "./AuthContext";
 
-const STORAGE_KEY = "companionai:notifications";
+const STORAGE_PREFIX = "companionai:notifications";
 const VALID_SEVERITIES = new Set(["info", "success", "warning", "error"]);
 const normalizeHistory = (value) => Array.isArray(value) ? value.filter((item) => item?.message).map((item) => ({ ...item, read: Boolean(item.read) })).slice(0, 30) : [];
-const readHistory = () => { try { return normalizeHistory(JSON.parse(window.sessionStorage?.getItem(STORAGE_KEY) || "[]")); } catch { return []; } };
-const writeHistory = (items) => { try { window.sessionStorage?.setItem(STORAGE_KEY, JSON.stringify(items)); } catch { /* Continue without history persistence. */ } };
+const storageKeyFor = (userId) => `${STORAGE_PREFIX}:${userId || "guest"}`;
+const readHistory = (key) => { try { return normalizeHistory(JSON.parse(window.sessionStorage?.getItem(key) || "[]")); } catch { return []; } };
+const writeHistory = (key, items) => { try { window.sessionStorage?.setItem(key, JSON.stringify(items)); } catch { /* Continue without history persistence. */ } };
 const NotificationContext = createContext({ notify: () => {}, notifications: [], unreadCount: 0, markNotificationRead: () => {}, markAllRead: () => {}, dismissNotification: () => {}, clearNotifications: () => {} });
 
 export function NotificationProvider({ children }) {
+    const { user } = useContext(AuthContext);
+    const storageKey = useMemo(() => storageKeyFor(user?._id), [user?._id]);
     const [notification, setNotification] = useState(null);
-    const [notifications, setNotifications] = useState(readHistory);
+    const [notifications, setNotifications] = useState(() => readHistory(storageKey));
+
+    useEffect(() => {
+        setNotification(null);
+        setNotifications(readHistory(storageKey));
+    }, [storageKey]);
 
     const updateHistory = useCallback((updater) => {
         setNotifications((current) => {
             const next = normalizeHistory(typeof updater === "function" ? updater(current) : updater);
-            writeHistory(next);
+            writeHistory(storageKey, next);
             return next;
         });
-    }, []);
+    }, [storageKey]);
 
     const notify = useCallback((message, severity = "info") => {
         const cleanMessage = String(message || "").trim();
@@ -36,7 +45,10 @@ export function NotificationProvider({ children }) {
     const markNotificationRead = useCallback((id) => updateHistory((current) => current.map((item) => item.id === id ? { ...item, read: true } : item)), [updateHistory]);
     const markAllRead = useCallback(() => updateHistory((current) => current.map((item) => item.read ? item : { ...item, read: true })), [updateHistory]);
     const dismissNotification = useCallback((id) => updateHistory((current) => current.filter((item) => item.id !== id)), [updateHistory]);
-    const clearNotifications = useCallback(() => { setNotifications([]); try { window.sessionStorage?.removeItem(STORAGE_KEY); } catch { /* no-op */ } }, []);
+    const clearNotifications = useCallback(() => {
+        setNotifications([]);
+        try { window.sessionStorage?.removeItem(storageKey); } catch { /* no-op */ }
+    }, [storageKey]);
     const unreadCount = useMemo(() => notifications.reduce((count, item) => count + (item.read ? 0 : 1), 0), [notifications]);
     const close = useCallback((_, reason) => { if (reason !== "clickaway") setNotification(null); }, []);
     const autoHideDuration = notification?.severity === "error" ? 7000 : notification?.severity === "warning" ? 5500 : notification?.severity === "success" ? 3500 : 4500;
