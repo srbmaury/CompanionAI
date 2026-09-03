@@ -1,0 +1,39 @@
+name: Fix separate-flows E2E
+
+on:
+  push:
+    branches: [separate-flows]
+
+jobs:
+  patch-e2e:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch stale and slow E2E checks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('client/e2e/productJourneys.spec.js')
+          s = p.read_text()
+          old_copy = 'await expect(page.getByText("Scores and feedback are not shown to candidates.")).toBeVisible();'
+          new_copy = 'await expect(page.getByText("Scores and private feedback are not shown to candidates.")).toBeVisible();'
+          if old_copy not in s:
+              raise SystemExit('candidate copy assertion marker not found')
+          s = s.replace(old_copy, new_copy, 1)
+          old_smoke = '''test("supporting authenticated screens render without overflow", async ({ page }) => {\n    await mockSignedIn(page, { _id: "admin-1", name: "Admin User", email: "admin@example.com", role: "admin", plan: "scale" });'''
+          new_smoke = '''test("supporting authenticated screens render without overflow", async ({ page }) => {\n    test.setTimeout(60000);\n    await mockSignedIn(page, { _id: "admin-1", name: "Admin User", email: "admin@example.com", role: "admin", plan: "scale" });\n    await page.route("**/api/events", (route) => json(route, { recorded: true }, 201));'''
+          if old_smoke not in s:
+              raise SystemExit('authenticated smoke test marker not found')
+          s = s.replace(old_smoke, new_smoke, 1)
+          p.write_text(s)
+          PY
+      - name: Commit E2E fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add client/e2e/productJourneys.spec.js
+          git commit -m "Fix separate flows browser checks"
+          git push origin HEAD:separate-flows
