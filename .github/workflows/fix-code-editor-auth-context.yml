@@ -2,14 +2,15 @@ name: Fix public code editor auth context
 
 on:
   push:
-    branches: [hiring-organizations]
+    branches:
+      - hiring-organizations
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,14 +20,14 @@ jobs:
           from pathlib import Path
           path = Path("client/src/components/CodeEditorField.jsx")
           text = path.read_text()
-          old = '''    const muiTheme = useTheme();
+          old = """    const muiTheme = useTheme();
     const { user } = useContext(AuthContext);
     const preferredProgrammingLanguage = user?.preferredProgrammingLanguage;
-'''
-          new = '''    const muiTheme = useTheme();
+"""
+          new = """    const muiTheme = useTheme();
     const authContext = useContext(AuthContext);
     const preferredProgrammingLanguage = authContext?.user?.preferredProgrammingLanguage;
-'''
+"""
           if old not in text:
               raise SystemExit("CodeEditorField auth context block not found")
           path.write_text(text.replace(old, new, 1))
