@@ -60,3 +60,30 @@ jobs:
       - name: Server API journeys
         run: npm run test:e2e
       - run: npm audit --omit=dev --audit-level=high
+
+  regenerate-server-lockfile:
+    if: github.ref == 'refs/heads/separate-flows' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Delete and regenerate server package-lock.json
+        run: |
+          cd server
+          rm package-lock.json
+          npm install
+      - name: Commit regenerated lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/package-lock.json
+          if git diff --cached --quiet; then
+            echo "Lockfile already up to date"
+            exit 0
+          fi
+          git commit -m "Regenerate server package lock"
+          git push origin HEAD:separate-flows
