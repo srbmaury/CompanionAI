@@ -1,0 +1,111 @@
+name: Apply role-specific Hiring UI
+
+on:
+  push:
+    branches: [hiring-organizations]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply role-specific Hiring visibility
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=None):
+              p = Path(path)
+              s = p.read_text()
+              occurrences = s.count(old)
+              if occurrences == 0:
+                  raise SystemExit(f'missing expected text in {path}: {old[:120]!r}')
+              if count is not None and occurrences != count:
+                  raise SystemExit(f'unexpected occurrence count in {path}: {occurrences} for {old[:120]!r}')
+              s = s.replace(old, new)
+              p.write_text(s)
+
+          # Header: derive all visible Hiring surfaces from the same role matrix.
+          path = 'client/src/components/Header.jsx'
+          replace(path,
+              'import { getWorkspacePreference, setWorkspacePreference, WORKSPACE_EVENT } from "../utils/workspacePreference";\n',
+              'import { getWorkspacePreference, setWorkspacePreference, WORKSPACE_EVENT } from "../utils/workspacePreference";\nimport { hiringHomeForRole, hiringPermissionsFor } from "../utils/hiringPermissions";\n', 1)
+          replace(path,
+              '    const currentOrganizationRole = organizationContext?.currentRole || null;\n    const canManageAssessments = ["owner", "admin", "recruiter"].includes(currentOrganizationRole);\n',
+              '    const currentOrganizationRole = organizationContext?.currentRole || null;\n    const {\n        canViewOverview: canViewHiringOverview,\n        canViewCandidatePipeline,\n        canViewAssessments,\n        canManageAssessments,\n        canManageOrganization,\n    } = hiringPermissionsFor(currentOrganizationRole);\n', 1)
+          replace(path,
+              '    const switchWorkspace = (next) => { if (user?._id) setWorkspacePreference(next, user._id); setWorkspace(next); setWorkspaceAnchor(null); setProfileAnchor(null); navigate(next === "hiring" ? "/assessments" : "/dashboard"); };\n',
+              '    const switchWorkspace = (next) => { if (user?._id) setWorkspacePreference(next, user._id); setWorkspace(next); setWorkspaceAnchor(null); setProfileAnchor(null); navigate(next === "hiring" ? hiringHomeForRole(currentOrganizationRole) : "/dashboard"); };\n', 1)
+          replace(path,
+              '    const workspaceHome = workspace === "hiring" ? "/assessments" : "/dashboard";\n',
+              '    const workspaceHome = workspace === "hiring" ? hiringHomeForRole(currentOrganizationRole) : "/dashboard";\n', 1)
+          replace(path,
+              '                                    <Button onClick={openHiringOverview} sx={{ px: 1.5, color: !location.hash ? "primary.main" : "text.secondary", bgcolor: !location.hash ? "action.selected" : "transparent", "&:hover": { bgcolor: "action.hover", color: "text.primary" } }}>Overview</Button>\n                                    <Button onClick={() => openHiringSection("candidate-pipeline")} sx={{ px: 1.5, color: location.hash === "#candidate-pipeline" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#candidate-pipeline" ? "action.selected" : "transparent" }}>Candidate pipeline</Button>\n                                    <Button onClick={() => openHiringSection("assessment-list")} sx={{ px: 1.5, color: location.hash === "#assessment-list" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#assessment-list" ? "action.selected" : "transparent" }}>Assessments</Button>\n                                    <Button component={RouterLink} to="/hiring/team" sx={navSx("/hiring/team")}>Team</Button>\n',
+              '                                    {canViewHiringOverview && <Button onClick={openHiringOverview} sx={{ px: 1.5, color: !location.hash ? "primary.main" : "text.secondary", bgcolor: !location.hash ? "action.selected" : "transparent", "&:hover": { bgcolor: "action.hover", color: "text.primary" } }}>Overview</Button>}\n                                    {canViewCandidatePipeline && <Button onClick={() => openHiringSection("candidate-pipeline")} sx={{ px: 1.5, color: location.hash === "#candidate-pipeline" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#candidate-pipeline" ? "action.selected" : "transparent" }}>Candidate pipeline</Button>}\n                                    {canViewAssessments && <Button onClick={() => openHiringSection("assessment-list")} sx={{ px: 1.5, color: location.hash === "#assessment-list" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#assessment-list" ? "action.selected" : "transparent" }}>Assessments</Button>}\n                                    {canManageOrganization && <Button component={RouterLink} to="/hiring/team" sx={navSx("/hiring/team")}>Team & billing</Button>}\n', 1)
+          replace(path,
+              '                                    <MenuItem component={RouterLink} to="/pricing" onClick={() => setProfileAnchor(null)}>Plans & billing</MenuItem>\n',
+              '                                    {workspace === "practice" && <MenuItem component={RouterLink} to="/pricing" onClick={() => setProfileAnchor(null)}>Practice plans & billing</MenuItem>}\n                                    {workspace === "hiring" && canManageOrganization && <MenuItem component={RouterLink} to="/hiring/team" onClick={() => setProfileAnchor(null)}>Team & Hiring billing</MenuItem>}\n', 1)
+          replace(path,
+              '                                {workspace === "hiring" && <MenuItem onClick={() => { close(); openHiringSection("candidate-pipeline"); }}>Candidate pipeline</MenuItem>}\n                                {workspace === "hiring" && <MenuItem onClick={() => { close(); openHiringSection("assessment-list"); }}>Assessments</MenuItem>}\n                                {workspace === "hiring" && <MenuItem component={RouterLink} to="/hiring/team" onClick={close}>Team & organization</MenuItem>}\n',
+              '                                {workspace === "hiring" && canViewCandidatePipeline && <MenuItem onClick={() => { close(); openHiringSection("candidate-pipeline"); }}>Candidate pipeline</MenuItem>}\n                                {workspace === "hiring" && canViewAssessments && <MenuItem onClick={() => { close(); openHiringSection("assessment-list"); }}>Assessments</MenuItem>}\n                                {workspace === "hiring" && canManageOrganization && <MenuItem component={RouterLink} to="/hiring/team" onClick={close}>Team & Hiring billing</MenuItem>}\n', 1)
+          replace(path,
+              '                                <MenuItem component={RouterLink} to="/pricing" onClick={close}>Plans & billing</MenuItem>\n',
+              '                                {workspace === "practice" && <MenuItem component={RouterLink} to="/pricing" onClick={close}>Practice plans & billing</MenuItem>}\n                                {workspace === "hiring" && canManageOrganization && <MenuItem component={RouterLink} to="/hiring/team" onClick={close}>Team & Hiring billing</MenuItem>}\n', 1)
+
+          # Assessments workspace: reviewer is pipeline-only; managers cannot see mutating controls.
+          path = 'client/src/pages/AssessmentsPage.jsx'
+          replace(path,
+              'import { assessQuestionSet } from "../utils/assessmentQuality";\n',
+              'import { assessQuestionSet } from "../utils/assessmentQuality";\nimport { hiringPermissionsFor } from "../utils/hiringPermissions";\n', 1)
+          replace(path,
+              '    const { currentRole } = useContext(OrganizationContext);\n    const canManageAssessments = ["owner", "admin", "recruiter"].includes(currentRole);\n',
+              '    const { currentRole } = useContext(OrganizationContext);\n    const {\n        canViewOverview: canViewHiringOverview,\n        canViewCandidatePipeline,\n        canViewAssessments,\n        canManageAssessments,\n    } = hiringPermissionsFor(currentRole);\n', 1)
+          replace(path,
+              '    const hiringView = location.hash === "#candidate-pipeline" ? "candidates" : location.hash === "#assessment-list" ? "assessments" : "overview";\n',
+              '    const requestedHiringView = location.hash === "#candidate-pipeline" ? "candidates" : location.hash === "#assessment-list" ? "assessments" : "overview";\n    const hiringView = requestedHiringView === "overview" && !canViewHiringOverview\n        ? "candidates"\n        : requestedHiringView === "assessments" && !canViewAssessments\n            ? "candidates"\n            : requestedHiringView;\n', 1)
+          replace(path, '{hiringView === "overview" && <>', '{canViewHiringOverview && hiringView === "overview" && <>', 1)
+          replace(path, '{hiringView !== "assessments" && <Paper id="candidate-pipeline"', '{canViewCandidatePipeline && hiringView !== "assessments" && <Paper id="candidate-pipeline"', 1)
+          replace(path, '{hiringView !== "candidates" && <><Typography id="assessment-list"', '{canViewAssessments && hiringView !== "candidates" && <><Typography id="assessment-list"', 1)
+          replace(path,
+              '{item.status === "active" && <Tooltip title="Copy candidate link"><IconButton onClick={() => copyLink(item.shareToken)}><ContentCopyRounded /></IconButton></Tooltip>}<Button component={RouterLink} to={`/assessments/${item._id}`} variant="outlined">{item.status === "draft" ? "Review draft" : "Manage assessment"}</Button>',
+              '{canManageAssessments && item.status === "active" && <Tooltip title="Copy candidate link"><IconButton onClick={() => copyLink(item.shareToken)}><ContentCopyRounded /></IconButton></Tooltip>}<Button component={RouterLink} to={`/assessments/${item._id}`} variant="outlined">{canManageAssessments ? (item.status === "draft" ? "Review draft" : "Manage assessment") : "View assessment"}</Button>', 1)
+
+          # Report page uses the same capability source as navigation and backend roles.
+          path = 'client/src/pages/AssessmentReportPage.jsx'
+          replace(path,
+              'import { OrganizationContext } from "../context/OrganizationContext";\n',
+              'import { OrganizationContext } from "../context/OrganizationContext";\nimport { hiringPermissionsFor } from "../utils/hiringPermissions";\n', 1)
+          replace(path,
+              '    const { assessmentId } = useParams(); const location = useLocation(); const navigate = useNavigate(); const notify = useNotify(); const { currentRole } = useContext(OrganizationContext); const canManageAssessments = ["owner", "admin", "recruiter"].includes(currentRole); const [data, setData] = useState(null); const [error, setError] = useState(""); const [loading, setLoading] = useState(true);\n',
+              '    const { assessmentId } = useParams(); const location = useLocation(); const navigate = useNavigate(); const notify = useNotify(); const { currentRole } = useContext(OrganizationContext); const canManageAssessments = hiringPermissionsFor(currentRole).canManageAssessments; const [data, setData] = useState(null); const [error, setError] = useState(""); const [loading, setLoading] = useState(true);\n', 1)
+
+          # Team/billing settings are owner/admin-only. Other roles are routed to their useful Hiring home.
+          path = 'client/src/pages/HiringTeamPage.jsx'
+          replace(path,
+              'import { useContext, useEffect, useMemo, useState } from "react";\n',
+              'import { useContext, useEffect, useMemo, useState } from "react";\nimport { Navigate } from "react-router-dom";\n', 1)
+          replace(path,
+              'import { OrganizationContext } from "../context/OrganizationContext";\n',
+              'import { OrganizationContext } from "../context/OrganizationContext";\nimport { hiringHomeForRole, hiringPermissionsFor } from "../utils/hiringPermissions";\n', 1)
+          replace(path,
+              '    const { activeOrganization, currentRole, organizations, selectOrganization, createOrganization, refreshOrganizations } = useContext(OrganizationContext);\n',
+              '    const { activeOrganization, currentRole, organizations, loading: organizationLoading, selectOrganization, createOrganization, refreshOrganizations } = useContext(OrganizationContext);\n', 1)
+          replace(path,
+              '    const canManage = ["owner", "admin"].includes(currentRole);\n',
+              '    const { canManageOrganization } = hiringPermissionsFor(currentRole);\n    const canManage = canManageOrganization;\n', 1)
+          marker = '    return (\n        <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 } }}>\n'
+          guard = '    if (organizationLoading) return <Container maxWidth="lg" sx={{ py: 6 }}><LinearProgress /></Container>;\n    if (activeOrganization && !canManageOrganization) return <Navigate to={hiringHomeForRole(currentRole)} replace />;\n\n'
+          replace(path, marker, guard + marker, 1)
+          PY
+      - name: Commit role-specific UI
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add client/src/components/Header.jsx client/src/pages/AssessmentsPage.jsx client/src/pages/AssessmentReportPage.jsx client/src/pages/HiringTeamPage.jsx
+          git diff --cached --quiet && exit 0
+          git commit -m "Restrict Hiring UI by organization role"
+          git push origin HEAD:hiring-organizations
