@@ -1,0 +1,22 @@
+name: Finalize organization ownership
+
+on:
+  push:
+    branches: [hiring-organizations]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python .github/scripts/finalize_organization_ownership.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server
+          git commit -m "Finalize organization ownership semantics"
+          git push origin HEAD:hiring-organizations
