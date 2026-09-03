@@ -335,7 +335,7 @@ describe("Launch-critical full product journey E2E", () => {
         expect(publicAssessment.body.shareToken).toBeUndefined();
         expect(publicAssessment.body.rounds[0].questions).toBeUndefined();
 
-        const startedAttempt = await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "Candidate One", email: "candidate@example.com", integrityConsent: true }).expect(201);
+        const startedAttempt = await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "Candidate One", email: "candidate@example.com", privacyConsent: true, integrityConsent: true }).expect(201);
         const attemptId = startedAttempt.body.attempt._id;
         const attemptToken = startedAttempt.body.attemptToken;
         expect(attemptToken).toBeTruthy();

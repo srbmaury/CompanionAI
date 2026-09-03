@@ -156,7 +156,7 @@ test("recruiter can review and filter the cross-interview candidate pipeline", a
         candidates: [{ _id: "attempt-1", candidateName: "Asha Candidate", candidateEmail: "asha@example.com", status: "submitted", overallScore: 8.5, startedAt: "2026-08-01T10:00:00Z", submittedAt: "2026-08-01T10:30:00Z", assessment: { _id: "assessment-1", title: "Backend screen", jobRole: "Backend Engineer", company: "Acme" } }],
         totalPages: 1,
     }));
-    await page.route("**/api/assessments?**", (route) => json(route, { items: [{ _id: "assessment-1", title: "Backend screen", status: "active", jobRole: "Backend Engineer", company: "Acme", shareToken: "share-1", attemptCount: 2, submittedCount: 1 }], totalPages: 1 }));
+    await page.route("**/api/assessments?**", (route) => json(route, { items: [{ _id: "assessment-1", title: "Backend screen", status: "active", jobRole: "Backend Engineer", organizationName: "Acme", shareToken: "share-1", attemptCount: 2, submittedCount: 1 }], totalPages: 1 }));
 
     await page.goto("/assessments");
     await expect(page.getByRole("heading", { name: "Hiring overview" })).toBeVisible();
@@ -181,7 +181,6 @@ test("recruiter can publish a hybrid assessment with all candidate experiences",
 
     await page.goto("/assessments?create=1");
     await page.getByLabel("Assessment name").fill("Hybrid engineering assessment");
-    await page.getByLabel("Company (optional)").fill("CompanionAI");
     await page.getByRole("textbox", { name: "Job role" }).fill("Senior Software Engineer");
     await page.getByLabel("Job description and success criteria").fill("Evaluate communication, production coding, system design, scalability, reliability, testing, and security judgment.");
 
@@ -374,8 +373,8 @@ test("supporting authenticated screens render without overflow", async ({ page }
         ["/resume-match", "Find your best resume for a job"],
         ["/experiences", "Company interview insights"],
         ["/saved-experiences", "Saved company insights"],
-        ["/pricing", "Choose the capacity you need"],
-        ["/assessments", "Candidate assessments"],
+        ["/pricing", "Choose your Practice plan"],
+        ["/assessments", "Hiring overview"],
         ["/admin/feedback", "Product feedback"],
         ["/admin/audit", "Audit activity"],
     ];

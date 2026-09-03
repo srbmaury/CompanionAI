@@ -19,7 +19,6 @@ const writeHeaders = (request, auth) => request
 
 const assessmentInput = {
     title: "Backend engineering assessment",
-    company: "Acme",
     jobRole: "Backend Engineer",
     jobDescription: "Build reliable distributed backend services and explain production tradeoffs clearly.",
     status: "draft",
@@ -87,9 +86,10 @@ describe("Hiring organization access", () => {
         await agent.get(`/api/organizations/${organizationId}/members`).set(reviewerAuth).expect(403);
         const ownerMembers = await agent.get(`/api/organizations/${organizationId}/members`).set(ownerAuth).expect(200);
         expect(ownerMembers.body.members).toHaveLength(2);
-        const reviewerList = await agent.get("/api/assessments").set(reviewerAuth).expect(200);
-        expect(reviewerList.body.items).toHaveLength(1);
-        expect(reviewerList.body.items[0]._id).toBe(assessmentId);
+        await agent.get("/api/assessments").set(reviewerAuth).expect(403);
+        const reviewerOverview = await agent.get("/api/assessments/overview").set(reviewerAuth).expect(200);
+        expect(reviewerOverview.body.summary.assessments).toBe(1);
+        await agent.get(`/api/assessments/${assessmentId}/preview`).set(reviewerAuth).expect(403);
 
         await writeHeaders(agent.post("/api/assessments"), reviewerAuth)
             .send(assessmentInput)

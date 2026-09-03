@@ -23,7 +23,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("assessment workspace hierarchy", () => {
     it("shows existing assessments before keeping creation controls on demand", async () => {
-        get.mockResolvedValue({ data: { items: [{ _id: "a1", title: "Backend screen", jobRole: "Engineer", company: "Acme", status: "active", attemptCount: 2, submittedCount: 1, shareToken: "share-token" }], totalPages: 1 } });
+        get.mockResolvedValue({ data: { items: [{ _id: "a1", title: "Backend screen", jobRole: "Engineer", status: "active", attemptCount: 2, submittedCount: 1, shareToken: "share-token" }], totalPages: 1 } });
         renderAssessments("/assessments");
         expect(await screen.findByRole("heading", { name: "Backend screen" })).toBeTruthy();
         expect(screen.queryByRole("heading", { name: "Create assessment" })).toBeNull();
@@ -34,7 +34,7 @@ describe("assessment workspace hierarchy", () => {
     });
 
     it("gives recruiters a cross-assessment candidate pipeline", async () => {
-        get.mockImplementation((url) => url === "/assessments/overview" ? Promise.resolve({ data: { summary: { assessments: 3, activeAssessments: 2, totalCandidates: 5, submitted: 3, inProgress: 2, averageScore: 7.8 }, candidates: [{ _id: "c1", candidateName: "Priya Singh", candidateEmail: "priya@example.com", status: "submitted", overallScore: 8.4, startedAt: "2026-08-10T10:00:00Z", submittedAt: "2026-08-10T11:00:00Z", assessment: { _id: "a1", title: "Senior backend screen", jobRole: "Backend Engineer", company: "Acme" } }], totalPages: 1 } }) : Promise.resolve({ data: { items: [], totalPages: 1 } }));
+        get.mockImplementation((url) => url === "/assessments/overview" ? Promise.resolve({ data: { summary: { assessments: 3, activeAssessments: 2, totalCandidates: 5, submitted: 3, inProgress: 2, averageScore: 7.8 }, candidates: [{ _id: "c1", candidateName: "Priya Singh", candidateEmail: "priya@example.com", status: "submitted", overallScore: 8.4, startedAt: "2026-08-10T10:00:00Z", submittedAt: "2026-08-10T11:00:00Z", assessment: { _id: "a1", title: "Senior backend screen", jobRole: "Backend Engineer" } }], totalPages: 1 } }) : Promise.resolve({ data: { items: [], totalPages: 1 } }));
         renderAssessments("/assessments");
         expect(await screen.findByRole("heading", { name: "Hiring overview" })).toBeTruthy();
         expect(await screen.findByText("Priya Singh")).toBeTruthy();
@@ -60,7 +60,7 @@ describe("assessment workspace hierarchy", () => {
         fireEvent.change(screen.getByLabelText("AI question brief"), { target: { value: "Generate 3 questions about React and accessibility" } });
         fireEvent.click(screen.getByRole("button", { name: "Generate with AI" }));
         expect(await screen.findByDisplayValue("Explain how you diagnose a slow React render.")).toBeTruthy();
-        expect(post).toHaveBeenCalledWith("/assessments/questions/generate", expect.objectContaining({ count: 3 }));
+        expect(post).toHaveBeenCalledWith("/assessments/questions/generate", expect.objectContaining({ count: 3, deliveryMode: "online-assessment" }));
         fireEvent.click(screen.getByRole("button", { name: "Improve question 1 with AI" }));
         expect(await screen.findByDisplayValue("Describe a specific React performance issue you diagnosed and how you measured the result.")).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: "Add manual question" }));

@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import Assessment from "../models/Assessment.js";
 import CandidateAttempt from "../models/CandidateAttempt.js";
+import Organization from "../models/Organization.js";
 import { reserveCandidateInterview, releaseOrganizationUsage } from "../services/organizationUsage.js";
 import { generateQuestionsForRound, improveAssessmentQuestion } from "../utils/generateQuestions.js";
 import { generateFollowUp } from "../utils/generateQuestions/followUp.js";
@@ -17,9 +18,9 @@ const tokenHash = (value) => crypto.createHash("sha256").update(value).digest("h
 const escapeHtml = (value) => String(value || "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 const followupLabel = (assessment) => assessment == null ? "unknown" : assessment.followUpsEnabled ? "enabled" : "disabled";
 const observeCandidateAction = (action, outcome, assessment) => { try { metrics.candidateAssessmentActionsTotal.labels(action, outcome, followupLabel(assessment)).inc(); } catch {} };
-const publicAssessment = (assessment) => ({
+const publicAssessment = (assessment, organizationName = "") => ({
     title: assessment.title,
-    company: assessment.company,
+    organizationName,
     jobRole: assessment.jobRole,
     candidateInstructions: assessment.candidateInstructions,
     contactEmail: assessment.contactEmail,
@@ -96,7 +97,7 @@ export const transcribeCandidateAudio = async (req, res, next) => {
 
 export const createAssessment = async (req, res, next) => {
     try {
-        const { title, company = "", jobRole, jobDescription, followUpsEnabled = true, inviteOnly = false, candidateInstructions = "", contactEmail = "", durationMinutes = 30, opensAt, expiresAt, timezone = "UTC", rounds, integrity, rubric = [], templateName = "", status = "draft" } = req.body;
+        const { title, jobRole, jobDescription, followUpsEnabled = true, inviteOnly = false, candidateInstructions = "", contactEmail = "", durationMinutes = 30, opensAt, expiresAt, timezone = "UTC", rounds, integrity, rubric = [], templateName = "", status = "draft" } = req.body;
         if (status === "scheduled" && (!opensAt || new Date(opensAt) <= new Date())) return res.status(400).json({ message: "Choose a future opening time before scheduling." });
         if (expiresAt && opensAt && new Date(expiresAt) <= new Date(opensAt)) return res.status(400).json({ message: "The submission deadline must be after the opening time." });
         const generatedRounds = [];
@@ -107,7 +108,7 @@ export const createAssessment = async (req, res, next) => {
             let generated = [];
             if (manualTexts.length < count) try {
                 generated = await generateQuestionsForRound({
-                    company, jobRole, jobDescription, resumeText: "", roundName: input.name,
+                    company: req.organization?.name || "", jobRole, jobDescription, resumeText: "", roundName: input.name,
                     roundDescription: [input.description, input.aiPrompt ? `Interviewer generation request: ${input.aiPrompt}` : ""].filter(Boolean).join("\n"),
                     deliveryMode: input.deliveryMode || "conversational", count: count - manualTexts.length, excludeTexts: [...excludeTexts, ...manualTexts],
                 });
@@ -118,7 +119,7 @@ export const createAssessment = async (req, res, next) => {
             generatedRounds.push({ name: input.name, description: input.description || "", deliveryMode: input.deliveryMode || "conversational", questions: texts.map((text, index) => ({ text, weight: input.questions?.[index]?.weight || 1, competencies: input.questions?.[index]?.competencies || [], knockout: Boolean(input.questions?.[index]?.knockout) })) });
         }
         const assessment = await Assessment.create({
-            organization: req.organizationId, createdBy: req.user._id, title, company, jobRole, jobDescription, followUpsEnabled, inviteOnly,
+            organization: req.organizationId, createdBy: req.user._id, title, jobRole, jobDescription, followUpsEnabled, inviteOnly,
             candidateInstructions, contactEmail, durationMinutes, opensAt: opensAt || undefined, expiresAt: expiresAt || undefined, timezone, rounds: generatedRounds, integrity, rubric, templateName,
             status, publishedAt: status === "active" ? new Date() : undefined, shareToken: crypto.randomBytes(24).toString("base64url"),
         });
@@ -129,11 +130,11 @@ export const createAssessment = async (req, res, next) => {
 
 export const generateAssessmentQuestions = async (req, res, next) => {
     try {
-        const { company = "", jobRole, jobDescription, roundName, roundDescription = "", prompt = "", count = 5, existingQuestions = [] } = req.body;
+        const { jobRole, jobDescription, roundName, roundDescription = "", deliveryMode = "conversational", prompt = "", count = 5, existingQuestions = [] } = req.body;
         const questions = await generateQuestionsForRound({
-            company, jobRole, jobDescription, resumeText: "", roundName,
+            company: req.organization?.name || "", jobRole, jobDescription, resumeText: "", roundName,
             roundDescription: [roundDescription, prompt ? `Interviewer generation request: ${prompt}` : ""].filter(Boolean).join("\n"),
-            deliveryMode: "online-assessment", count, excludeTexts: existingQuestions,
+            deliveryMode, count, excludeTexts: existingQuestions,
         });
         const texts = (questions || []).map((item) => typeof item === "string" ? item : item?.text).map((text) => (text || "").trim()).filter(Boolean).slice(0, count);
         if (!texts.length) return res.status(503).json({ message: "AI question generation is temporarily unavailable. You can still add questions manually." });
@@ -171,7 +172,7 @@ export const getHiringOverview = async (req, res, next) => {
         const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50);
         const search = (req.query.search || "").toString().trim().slice(0, 100);
         const status = ["started", "evaluating", "submitted", "evaluation_failed"].includes(req.query.status) ? req.query.status : "";
-        const assessments = await Assessment.find({ organization: req.organizationId }).select("title company jobRole status opensAt expiresAt createdAt invitations.status").sort({ createdAt: -1 }).lean();
+        const assessments = await Assessment.find({ organization: req.organizationId }).select("title jobRole status opensAt expiresAt createdAt invitations.status").sort({ createdAt: -1 }).lean();
         const assessmentIds = assessments.map((item) => item._id);
         const assessmentById = new Map(assessments.map((item) => [String(item._id), item]));
         const requestedAssessmentId = req.query.assessmentId;
@@ -243,7 +244,7 @@ export const updateAssessment = async (req, res, next) => {
             if (req.body.status === "archived") assessment.archivedAt = new Date();
         } else {
             if (assessment.status !== "draft" || attempts > 0) return res.status(409).json({ message: "Only unused draft assessments can be edited. Create a new version instead." });
-            const editable = ["title", "company", "jobRole", "jobDescription", "followUpsEnabled", "inviteOnly", "candidateInstructions", "contactEmail", "durationMinutes", "opensAt", "expiresAt", "timezone", "integrity", "rubric", "templateName", "rounds"];
+            const editable = ["title", "jobRole", "jobDescription", "followUpsEnabled", "inviteOnly", "candidateInstructions", "contactEmail", "durationMinutes", "opensAt", "expiresAt", "timezone", "integrity", "rubric", "templateName", "rounds"];
             for (const key of editable) if (req.body[key] !== undefined) assessment[key] = req.body[key] || (key === "expiresAt" ? undefined : req.body[key]);
         }
         await assessment.save();
@@ -257,9 +258,13 @@ export const getPublicAssessment = async (req, res, next) => {
         const assessment = await findPublicAssessment(req.params.shareToken);
         if (!assessment) { observeCandidateAction("view", "unavailable", null); return res.status(404).json({ message: "Assessment unavailable" }); }
         const invitation = req.query.invite ? assessment.invitations?.id(req.query.invite) : null;
+        if (assessment.inviteOnly && (!invitation || invitation.status === "revoked")) {
+            return res.status(403).json({ message: "This assessment is invitation-only. Open the invitation link sent to your email." });
+        }
         if (invitation && ["invited", "sent", "delivered"].includes(invitation.status)) { invitation.status = "opened"; invitation.openedAt = new Date(); await assessment.save(); }
+        const organization = await Organization.findById(assessment.organization).select("name").lean();
         observeCandidateAction("view", "success", assessment);
-        return res.json(publicAssessment(assessment));
+        return res.json(publicAssessment(assessment, organization?.name || ""));
     } catch (error) { return next(error); }
 };
 
@@ -267,7 +272,7 @@ export const previewAssessment = async (req, res, next) => {
     try {
         const assessment = await Assessment.findOne({ _id: req.params.assessmentId, organization: req.organizationId });
         if (!assessment) return res.status(404).json({ message: "Assessment not found" });
-        return res.json({ ...publicAssessment(assessment), status: assessment.status, rounds: assessment.rounds.map((round) => ({ name: round.name, description: round.description, deliveryMode: round.deliveryMode || "conversational", questionCount: round.questions.length, questions: round.questions.map((question) => ({ text: question.text })) })) });
+        return res.json({ ...publicAssessment(assessment, req.organization?.name || ""), status: assessment.status, rounds: assessment.rounds.map((round) => ({ name: round.name, description: round.description, deliveryMode: round.deliveryMode || "conversational", questionCount: round.questions.length, questions: round.questions.map((question) => ({ text: question.text })) })) });
     } catch (error) { return next(error); }
 };
 
@@ -278,8 +283,10 @@ export const startCandidateAttempt = async (req, res, next) => {
         const assessment = await findPublicAssessment(req.params.shareToken);
         if (!assessment) { observeCandidateAction("start", "unavailable", null); return res.status(404).json({ message: "Assessment unavailable" }); }
         const candidateEmail = req.body.email.toLowerCase().trim();
-        const activeInvitation = assessment.invitations?.find((item) => item.email === candidateEmail && item.status !== "revoked");
-        if (assessment.inviteOnly && !activeInvitation) return res.status(403).json({ message: "This assessment is invitation-only. Use the email address that was invited." });
+        if (assessment.integrity?.enabled && req.body.integrityConsent !== true) return res.status(400).json({ message: "Consent to the configured integrity signals is required before starting this assessment." });
+        const activeInvitation = req.body.invitationId ? assessment.invitations?.id(req.body.invitationId) : null;
+        const validInvitation = activeInvitation && activeInvitation.status !== "revoked" && activeInvitation.email === candidateEmail ? activeInvitation : null;
+        if (assessment.inviteOnly && !validInvitation) return res.status(403).json({ message: "This assessment is invitation-only. Open the invitation link sent to your email and use that invited email address." });
         const existing = await CandidateAttempt.findOne({ assessment: assessment._id, candidateEmail });
         if (existing) { observeCandidateAction("start", "duplicate", assessment); return res.status(409).json({ message: existing.status === "submitted" ? "This email has already submitted an attempt" : "An attempt for this email is already in progress. Continue from the browser where it was started or contact the recruiting team." }); }
 
@@ -296,9 +303,9 @@ export const startCandidateAttempt = async (req, res, next) => {
         const rawToken = crypto.randomBytes(32).toString("base64url");
         const rounds = assessment.rounds.map((round) => ({ name: round.name, description: round.description, deliveryMode: round.deliveryMode || "conversational", questions: round.questions.map((question) => ({ text: question.text, weight: question.weight, competencies: question.competencies, knockout: question.knockout })) }));
         const attempt = new CandidateAttempt({ assessment: assessment._id, candidateEmail });
-        attempt.candidateName = req.body.name.trim(); attempt.accessTokenHash = tokenHash(rawToken); attempt.rounds = rounds; attempt.status = "started"; attempt.startedAt = new Date();
+        attempt.candidateName = req.body.name.trim(); attempt.accessTokenHash = tokenHash(rawToken); attempt.rounds = rounds; attempt.status = "started"; attempt.startedAt = new Date(); attempt.privacyConsentAt = new Date();
         if (assessment.integrity?.enabled && req.body.integrityConsent) attempt.integrityConsentAt = new Date();
-        const invitation = activeInvitation;
+        const invitation = validInvitation;
         if (invitation) invitation.status = "started";
         await attempt.save();
         attemptSaved = true;

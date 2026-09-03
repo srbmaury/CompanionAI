@@ -3,17 +3,7 @@ import { Navigate } from "react-router-dom";
 import { Alert, Box, Button, Chip, Container, Divider, FormControl, InputLabel, LinearProgress, MenuItem, Paper, Select, Stack, TextField, Typography } from "@mui/material";
 import api from "../api/axios";
 import { OrganizationContext } from "../context/OrganizationContext";
-import { hiringHomeForRole, hiringPermissionsFor } from "../utils/hiringPermissions";
-
-const ROLE_LABELS = {
-    owner: "Owner",
-    admin: "Admin",
-    recruiter: "Recruiter",
-    hiring_manager: "Hiring manager",
-    reviewer: "Reviewer",
-};
-
-const ASSIGNABLE_ROLES = ["admin", "recruiter", "hiring_manager", "reviewer"];
+import { assignableHiringRolesFor, canManageHiringMember, HIRING_ROLE_LABELS, hiringHomeForRole, hiringPermissionsFor } from "../utils/hiringPermissions";
 
 export default function HiringTeamPage() {
     const { activeOrganization, currentRole, organizations, loading: organizationLoading, selectOrganization, createOrganization, refreshOrganizations } = useContext(OrganizationContext);
@@ -28,7 +18,7 @@ export default function HiringTeamPage() {
     const [billingLoading, setBillingLoading] = useState(false);
     const [billingActionLoading, setBillingActionLoading] = useState(false);
     const { canManageOrganization } = hiringPermissionsFor(currentRole);
-    const canManage = canManageOrganization;
+    const assignableRoles = assignableHiringRolesFor(currentRole);
 
     const loadMembers = async () => {
         if (!activeOrganization?._id || !canManageOrganization) return;
@@ -174,7 +164,7 @@ export default function HiringTeamPage() {
                         <Box>
                             <Typography variant="h5" fontWeight={800}>{activeOrganization?.name}</Typography>
                             <Stack direction="row" spacing={1} mt={1} alignItems="center">
-                                <Chip size="small" label={ROLE_LABELS[currentRole] || currentRole} color="primary" variant="outlined" />
+                                <Chip size="small" label={HIRING_ROLE_LABELS[currentRole] || currentRole} color="primary" variant="outlined" />
                                 <Typography variant="body2" color="text.secondary">{memberCountLabel}</Typography>
                             </Stack>
                         </Box>
@@ -195,6 +185,7 @@ export default function HiringTeamPage() {
                     <Stack divider={<Divider flexItem />} mt={2}>
                         {members.map((membership) => {
                             const isOwner = membership.role === "owner";
+                            const canManageThisMember = canManageHiringMember(currentRole, membership.role);
                             return (
                                 <Stack key={membership._id} direction={{ xs: "column", sm: "row" }} spacing={2} py={2} justifyContent="space-between" alignItems={{ sm: "center" }}>
                                     <Box minWidth={0}>
@@ -202,15 +193,15 @@ export default function HiringTeamPage() {
                                         <Typography variant="body2" color="text.secondary">{membership.user?.email}</Typography>
                                     </Box>
                                     <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                                        {canManage && !isOwner ? (
+                                        {canManageThisMember ? (
                                             <FormControl size="small" sx={{ minWidth: 160 }}>
                                                 <Select value={membership.role} onChange={(event) => changeRole(membership._id, event.target.value)} aria-label={`Role for ${membership.user?.email}`}>
-                                                    {ASSIGNABLE_ROLES.map((item) => <MenuItem key={item} value={item}>{ROLE_LABELS[item]}</MenuItem>)}
+                                                    {assignableRoles.map((item) => <MenuItem key={item} value={item}>{HIRING_ROLE_LABELS[item]}</MenuItem>)}
                                                 </Select>
                                             </FormControl>
-                                        ) : <Chip size="small" label={ROLE_LABELS[membership.role] || membership.role} />}
+                                        ) : <Chip size="small" label={HIRING_ROLE_LABELS[membership.role] || membership.role} />}
                                         {currentRole === "owner" && !isOwner && <Button size="small" onClick={() => transferOwnership(membership._id)}>Make owner</Button>}
-                                        {canManage && !isOwner && <Button color="error" size="small" onClick={() => removeMember(membership._id)}>Remove</Button>}
+                                        {canManageThisMember && <Button color="error" size="small" onClick={() => removeMember(membership._id)}>Remove</Button>}
                                     </Stack>
                                 </Stack>
                             );
@@ -219,7 +210,7 @@ export default function HiringTeamPage() {
                     </Stack>
                 </Paper>
 
-                {canManage && (
+                {canManageOrganization && (
                     <Paper component="form" variant="outlined" sx={{ p: 3, borderRadius: 4 }} onSubmit={addMember}>
                         <Typography variant="h5" fontWeight={800}>Add existing CompanionAI user</Typography>
                         <Typography color="text.secondary" mt={.5}>For now, the person must already have a CompanionAI account. Email invitations can be added later.</Typography>
@@ -228,7 +219,7 @@ export default function HiringTeamPage() {
                             <FormControl sx={{ minWidth: 190 }}>
                                 <InputLabel id="new-member-role-label">Role</InputLabel>
                                 <Select labelId="new-member-role-label" label="Role" value={role} onChange={(event) => setRole(event.target.value)}>
-                                    {ASSIGNABLE_ROLES.map((item) => <MenuItem key={item} value={item}>{ROLE_LABELS[item]}</MenuItem>)}
+                                    {assignableRoles.map((item) => <MenuItem key={item} value={item}>{HIRING_ROLE_LABELS[item]}</MenuItem>)}
                                 </Select>
                             </FormControl>
                             <Button type="submit" variant="contained" disabled={adding}>{adding ? "Adding…" : "Add member"}</Button>
