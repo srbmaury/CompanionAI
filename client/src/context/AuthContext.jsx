@@ -2,7 +2,7 @@
 import { createContext, useCallback, useEffect, useState } from "react";
 
 import api, { clearAccessToken, setAccessToken, silentRefresh } from "../api/axios";
-import { adoptGuestWorkspacePreference } from "../utils/workspacePreference";
+import { adoptGuestWorkspacePreference, clearWorkspacePreference } from "../utils/workspacePreference";
 
 export const AuthContext = createContext();
 
@@ -89,6 +89,7 @@ export const AuthProvider = ({ children }) => {
 
     const deleteAccount = async ({ confirmation, password }) => {
         const { data } = await api.delete(`/auth/profile`, { data: { confirmation, password } });
+        clearWorkspacePreference(user?._id);
         clearAccessToken();
         setUser(null);
         return data;
