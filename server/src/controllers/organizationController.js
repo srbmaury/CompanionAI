@@ -154,7 +154,7 @@ export const addMember = async (req, res, next) => {
             { upsert: true, new: true, runValidators: true },
         ).populate("user", "_id name email");
         return res.status(201).json({
-            membership: {
+            member: {
                 _id: membership._id,
                 user: membership.user,
                 role: membership.role,

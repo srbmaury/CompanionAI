@@ -344,10 +344,11 @@ describe("Launch-critical full product journey E2E", () => {
         expect(startedAttempt.body.attempt.rounds[0].deliveryMode).toBe("conversational");
         const orgUsage = await OrganizationUsageCounter.findOne({ organization: hiringOrganization.body.organization._id, metric: "candidateInterviews", period: "lifetime" }).lean();
         expect(orgUsage).toMatchObject({ used: 1 });
-        await OrganizationMembership.create({ organization: hiringOrganization.body.organization._id, user: otherUser._id, role: "reviewer", status: "active" });
+        const sharedMembership = await OrganizationMembership.create({ organization: hiringOrganization.body.organization._id, user: otherUser._id, role: "reviewer", status: "active" });
         const otherAcmeAuth = { ...otherAuth, "X-Organization-Id": hiringOrganization.body.organization._id };
         const sharedHiringEntitlements = await agent.get("/api/billing/hiring/entitlements").set(otherAcmeAuth).expect(200);
         expect(sharedHiringEntitlements.body).toMatchObject({ plan: "trial", used: { candidateInterviews: 1 } });
+        await OrganizationMembership.updateOne({ _id: sharedMembership._id }, { $set: { status: "disabled" } });
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/integrity-events`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({ type: "tab_hidden", metadata: { question: 1 } }).expect(201);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/integrity-events`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({ type: "face_missing", metadata: { durationSeconds: 10 } }).expect(201);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/integrity-events`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({ type: "face_restored", metadata: { durationSeconds: 12 } }).expect(201);
