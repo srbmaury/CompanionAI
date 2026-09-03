@@ -1,0 +1,126 @@
+name: Apply navigation profile and notification quality pass
+
+on:
+  push:
+    branches: [hiring-organizations]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply UI quality fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected text not found in {path}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # Header: central route hierarchy, precise active states, better notification center.
+          path = Path("client/src/components/Header.jsx")
+          text = path.read_text()
+          old = 'import { hiringHomeForRole, hiringPermissionsFor } from "../utils/hiringPermissions";\n'
+          new = old + 'import { shouldShowGlobalBack } from "../utils/navigationHierarchy";\n'
+          if old not in text: raise SystemExit("Header import anchor missing")
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              '    const { notifications, clearNotifications } = useNotifications();',
+              '    const { notifications, unreadCount, markNotificationRead, markAllRead, dismissNotification, clearNotifications } = useNotifications();',
+              1,
+          )
+          old_block = '''    const isActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`);\n    const isHiringHome = location.pathname === "/assessments" && !location.search && (!location.hash || (currentOrganizationRole === "reviewer" && location.hash === "#candidate-pipeline"));\n    const isRootScreen = location.pathname === "/" || location.pathname === "/dashboard" || isHiringHome || (location.pathname === "/hiring/team" && !hasHiringOrganization);\n    const isCandidateAssessment = location.pathname.startsWith("/assessment/");'''
+          new_block = '''    const isActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`);\n    const hiringOverviewActive = location.pathname === "/assessments" && !location.search && !location.hash;\n    const hiringCandidatePipelineActive = location.pathname === "/assessments" && !location.search && location.hash === "#candidate-pipeline";\n    const hiringAssessmentsActive = location.pathname === "/assessments" && !location.search && location.hash === "#assessment-list";\n    const isCandidateAssessment = location.pathname.startsWith("/assessment/");\n    const showBackButton = shouldShowGlobalBack(location);'''
+          if old_block not in text: raise SystemExit("Header root block missing")
+          text = text.replace(old_block, new_block, 1)
+          text = text.replace('{!isRootScreen && !isCandidateAssessment && (', '{showBackButton && !isCandidateAssessment && (', 1)
+          text = text.replace('color: !location.hash ? "primary.main" : "text.secondary", bgcolor: !location.hash ? "action.selected" : "transparent"', 'color: hiringOverviewActive ? "primary.main" : "text.secondary", bgcolor: hiringOverviewActive ? "action.selected" : "transparent"', 1)
+          text = text.replace('color: location.hash === "#candidate-pipeline" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#candidate-pipeline" ? "action.selected" : "transparent"', 'color: hiringCandidatePipelineActive ? "primary.main" : "text.secondary", bgcolor: hiringCandidatePipelineActive ? "action.selected" : "transparent"', 1)
+          text = text.replace('color: location.hash === "#assessment-list" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#assessment-list" ? "action.selected" : "transparent"', 'color: hiringAssessmentsActive ? "primary.main" : "text.secondary", bgcolor: hiringAssessmentsActive ? "action.selected" : "transparent"', 1)
+          brand_end = '''const Brand = ({ to }) => (\n    <Typography component={RouterLink} to={to} variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1.15, textDecoration: "none", color: "inherit", fontWeight: 850, letterSpacing: "-.025em" }}>\n        <Box component="span" sx={{ width: 34, height: 34, borderRadius: 2.5, display: "grid", placeItems: "center", color: "white", background: "linear-gradient(135deg,#5b50d6,#8f85ff)", boxShadow: "0 8px 20px rgba(91,80,214,.28)", fontSize: 16 }}>C</Box>\n        <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>CompanionAI</Box>\n    </Typography>\n);\n'''
+          time_helper = brand_end + '''\nconst notificationTime = (value) => {\n    const timestamp = new Date(value).getTime();\n    if (!Number.isFinite(timestamp)) return "Just now";\n    const ageMs = Math.max(0, Date.now() - timestamp);\n    const minutes = Math.floor(ageMs / 60000);\n    if (minutes < 1) return "Just now";\n    if (minutes < 60) return `${minutes}m ago`;\n    const hours = Math.floor(minutes / 60);\n    if (hours < 24) return `${hours}h ago`;\n    return new Date(timestamp).toLocaleDateString();\n};\n'''
+          if brand_end not in text: raise SystemExit("Header brand anchor missing")
+          text = text.replace(brand_end, time_helper, 1)
+
+          notification_pattern = re.compile(r'\s*<Tooltip title="Recent notifications">.*?</Menu>\n\s*<Tooltip title="Account">', re.S)
+          notification_replacement = '''\n                                <Tooltip title="Notifications"><IconButton onClick={(event) => setNotificationAnchor(event.currentTarget)} aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}><Badge color="error" badgeContent={unreadCount} max={9}><NotificationsNoneRounded /></Badge></IconButton></Tooltip>\n                                <Menu anchorEl={notificationAnchor} open={Boolean(notificationAnchor)} onClose={() => setNotificationAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }} PaperProps={{ sx: { width: 390, maxWidth: "calc(100vw - 24px)", maxHeight: 480 } }}>\n                                    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1} px={2} py={1.25}>\n                                        <Box><Typography fontWeight={800}>Notifications</Typography><Typography variant="caption" color="text.secondary">{unreadCount ? `${unreadCount} unread` : "You’re all caught up"}</Typography></Box>\n                                        <Stack direction="row" spacing={.25}>{unreadCount > 0 && <Button size="small" onClick={markAllRead}>Mark read</Button>}{notifications.length > 0 && <Button size="small" color="inherit" onClick={clearNotifications}>Clear</Button>}</Stack>\n                                    </Stack><Divider />\n                                    {notifications.length === 0 ? <Box px={2} py={3}><Typography variant="body2" color="text.secondary">No notifications yet. Saved changes, completed actions, and errors will appear here.</Typography></Box> : notifications.slice(0, 10).map((item) => <MenuItem key={item.id} selected={!item.read} onClick={() => markNotificationRead(item.id)} sx={{ whiteSpace: "normal", alignItems: "flex-start", gap: 1, py: 1.25 }}><Box aria-hidden="true" sx={{ width: 8, height: 8, borderRadius: "50%", mt: .75, flexShrink: 0, bgcolor: item.severity === "error" ? "error.main" : item.severity === "warning" ? "warning.main" : item.severity === "success" ? "success.main" : "primary.main", opacity: item.read ? .3 : 1 }} /><ListItemText primary={item.message} secondary={notificationTime(item.at)} primaryTypographyProps={{ variant: "body2", fontWeight: item.read ? 500 : 750, color: item.severity === "error" ? "error.main" : "text.primary" }} secondaryTypographyProps={{ variant: "caption" }} /><IconButton size="small" aria-label="Dismiss notification" onClick={(event) => { event.stopPropagation(); dismissNotification(item.id); }}><Typography component="span" aria-hidden="true" fontSize={18} lineHeight={1}>×</Typography></IconButton></MenuItem>)}\n                                </Menu>\n                                <Tooltip title="Account">'''
+          text, count = notification_pattern.subn(notification_replacement, text, count=1)
+          if count != 1: raise SystemExit(f"Header notification block replacement count={count}")
+          old_mobile = '{notifications.slice(0, 3).map((item) => <MenuItem key={item.id} disabled sx={{ whiteSpace: "normal", maxWidth: 320 }}><ListItemText primary={item.message} secondary="Recent notification" primaryTypographyProps={{ variant: "body2" }} /></MenuItem>)}'
+          new_mobile = '{notifications.slice(0, 3).map((item) => <MenuItem key={item.id} onClick={() => { markNotificationRead(item.id); close(); }} sx={{ whiteSpace: "normal", maxWidth: 320 }}><ListItemText primary={item.message} secondary={notificationTime(item.at)} primaryTypographyProps={{ variant: "body2", fontWeight: item.read ? 500 : 750 }} /></MenuItem>)}'
+          if old_mobile not in text: raise SystemExit("Header mobile notification anchor missing")
+          text = text.replace(old_mobile, new_mobile, 1)
+          path.write_text(text)
+
+          # Notification provider: unread/read state, dedupe, individual dismiss, persistence.
+          Path("client/src/context/NotificationContext.jsx").write_text('''import { Alert, Snackbar } from "@mui/material";\nimport { createContext, useCallback, useContext, useMemo, useState } from "react";\n\nconst STORAGE_KEY = "companionai:notifications";\nconst VALID_SEVERITIES = new Set(["info", "success", "warning", "error"]);\nconst normalizeHistory = (value) => Array.isArray(value) ? value.filter((item) => item?.message).map((item) => ({ ...item, read: Boolean(item.read) })).slice(0, 30) : [];\nconst readHistory = () => { try { return normalizeHistory(JSON.parse(window.sessionStorage?.getItem(STORAGE_KEY) || "[]")); } catch { return []; } };\nconst writeHistory = (items) => { try { window.sessionStorage?.setItem(STORAGE_KEY, JSON.stringify(items)); } catch { /* Continue without history persistence. */ } };\nconst NotificationContext = createContext({ notify: () => {}, notifications: [], unreadCount: 0, markNotificationRead: () => {}, markAllRead: () => {}, dismissNotification: () => {}, clearNotifications: () => {} });\n\nexport function NotificationProvider({ children }) {\n    const [notification, setNotification] = useState(null);\n    const [notifications, setNotifications] = useState(readHistory);\n\n    const updateHistory = useCallback((updater) => {\n        setNotifications((current) => {\n            const next = normalizeHistory(typeof updater === "function" ? updater(current) : updater);\n            writeHistory(next);\n            return next;\n        });\n    }, []);\n\n    const notify = useCallback((message, severity = "info") => {\n        const cleanMessage = String(message || "").trim();\n        if (!cleanMessage) return;\n        const safeSeverity = VALID_SEVERITIES.has(severity) ? severity : "info";\n        const item = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, message: cleanMessage, severity: safeSeverity, at: new Date().toISOString(), read: false };\n        setNotification(item);\n        updateHistory((current) => {\n            const previous = current[0];\n            const duplicate = previous && previous.message === cleanMessage && previous.severity === safeSeverity && Date.now() - new Date(previous.at).getTime() < 2000;\n            return duplicate ? [{ ...previous, at: item.at, read: false }, ...current.slice(1)] : [item, ...current];\n        });\n    }, [updateHistory]);\n\n    const markNotificationRead = useCallback((id) => updateHistory((current) => current.map((item) => item.id === id ? { ...item, read: true } : item)), [updateHistory]);\n    const markAllRead = useCallback(() => updateHistory((current) => current.map((item) => item.read ? item : { ...item, read: true })), [updateHistory]);\n    const dismissNotification = useCallback((id) => updateHistory((current) => current.filter((item) => item.id !== id)), [updateHistory]);\n    const clearNotifications = useCallback(() => { setNotifications([]); try { window.sessionStorage?.removeItem(STORAGE_KEY); } catch { /* no-op */ } }, []);\n    const unreadCount = useMemo(() => notifications.reduce((count, item) => count + (item.read ? 0 : 1), 0), [notifications]);\n    const close = useCallback((_, reason) => { if (reason !== "clickaway") setNotification(null); }, []);\n    const autoHideDuration = notification?.severity === "error" ? 7000 : notification?.severity === "warning" ? 5500 : notification?.severity === "success" ? 3500 : 4500;\n    const value = useMemo(() => ({ notify, notifications, unreadCount, markNotificationRead, markAllRead, dismissNotification, clearNotifications }), [notify, notifications, unreadCount, markNotificationRead, markAllRead, dismissNotification, clearNotifications]);\n\n    return <NotificationContext.Provider value={value}>{children}<Snackbar key={notification?.id} open={Boolean(notification)} autoHideDuration={autoHideDuration} onClose={close} anchorOrigin={{ vertical: "bottom", horizontal: "center" }} sx={{ bottom: { xs: 16, sm: 24 }, maxWidth: "calc(100vw - 24px)" }}><Alert onClose={close} severity={notification?.severity || "info"} variant="filled" elevation={8} role={notification?.severity === "error" ? "alert" : "status"} sx={{ width: "100%", maxWidth: 560 }}>{notification?.message}</Alert></Snackbar></NotificationContext.Provider>;\n}\n\n// eslint-disable-next-line react-refresh/only-export-components\nexport function useNotify() {\n    return useContext(NotificationContext).notify;\n}\n\n// eslint-disable-next-line react-refresh/only-export-components\nexport function useNotifications() {\n    return useContext(NotificationContext);\n}\n''')
+
+          # Notification tests cover unread/read/dismiss behavior as well as snackbar feedback.
+          Path("client/src/__tests__/notificationContext.test.jsx").write_text('''import { beforeEach, fireEvent, render, screen } from "@testing-library/react";\nimport { describe, expect, it } from "vitest";\nimport { NotificationProvider, useNotifications, useNotify } from "../context/NotificationContext";\n\nfunction NotificationHarness() {\n    const notify = useNotify();\n    const { notifications, unreadCount, markNotificationRead, markAllRead, dismissNotification } = useNotifications();\n    return <>\n        <button onClick={() => notify("Changes saved.", "success")}>Save</button>\n        <button onClick={() => notify("Changes saved.", "success")}>Save duplicate</button>\n        <button onClick={() => markAllRead()}>Mark all</button>\n        <button onClick={() => notifications[0] && markNotificationRead(notifications[0].id)}>Mark first</button>\n        <button onClick={() => notifications[0] && dismissNotification(notifications[0].id)}>Dismiss first</button>\n        <span data-testid="unread">{unreadCount}</span>\n        <span data-testid="count">{notifications.length}</span>\n    </>;\n}\n\nbeforeEach(() => window.sessionStorage.clear());\n\ndescribe("NotificationProvider", () => {\n    it("shows action feedback and tracks unread state", async () => {\n        render(<NotificationProvider><NotificationHarness /></NotificationProvider>);\n        fireEvent.click(screen.getByRole("button", { name: "Save" }));\n        expect((await screen.findByRole("status")).textContent).toContain("Changes saved.");\n        expect(screen.getByTestId("unread").textContent).toBe("1");\n        fireEvent.click(screen.getByRole("button", { name: "Mark first" }));\n        expect(screen.getByTestId("unread").textContent).toBe("0");\n    });\n\n    it("deduplicates rapid repeats and supports dismissing history", () => {\n        render(<NotificationProvider><NotificationHarness /></NotificationProvider>);\n        fireEvent.click(screen.getByRole("button", { name: "Save" }));\n        fireEvent.click(screen.getByRole("button", { name: "Save duplicate" }));\n        expect(screen.getByTestId("count").textContent).toBe("1");\n        fireEvent.click(screen.getByRole("button", { name: "Dismiss first" }));\n        expect(screen.getByTestId("count").textContent).toBe("0");\n    });\n});\n''')
+
+          # Code editor uses the authenticated Profile preference unless a question draft already chose a language.
+          path = Path("client/src/components/CodeEditorField.jsx")
+          text = path.read_text()
+          text = text.replace('import { lazy, memo, Suspense, useCallback, useEffect, useRef, useState } from "react";', 'import { lazy, memo, Suspense, useCallback, useContext, useEffect, useRef, useState } from "react";', 1)
+          anchor = 'import api from "../api/axios";\n'
+          if anchor not in text: raise SystemExit("CodeEditor api import missing")
+          text = text.replace(anchor, anchor + 'import { AuthContext } from "../context/AuthContext";\n', 1)
+          anchor = '    const muiTheme = useTheme();\n'
+          if anchor not in text: raise SystemExit("CodeEditor theme anchor missing")
+          text = text.replace(anchor, anchor + '    const { user } = useContext(AuthContext);\n    const preferredProgrammingLanguage = user?.preferredProgrammingLanguage;\n', 1)
+          old_effect = '''    useEffect(() => {\n        try {\n            const preferred = localStorage.getItem("preferredProgrammingLanguage");\n            if (preferred && ["javascript", "python", "cpp", "java"].includes(preferred)) {\n                setLanguage(preferred);\n            }\n        } catch { /* ignore */ }\n    }, []);'''
+          new_effect = '''    useEffect(() => {\n        if (draftKey) {\n            const saved = storage.get(storageKeys.codeEditor(draftKey));\n            if (saved?.language && languages.some((item) => item.value === saved.language)) return;\n        }\n        if (preferredProgrammingLanguage && languages.some((item) => item.value === preferredProgrammingLanguage)) {\n            setLanguage(preferredProgrammingLanguage);\n        }\n    }, [draftKey, preferredProgrammingLanguage]);'''
+          if old_effect not in text: raise SystemExit("CodeEditor legacy preference effect missing")
+          text = text.replace(old_effect, new_effect, 1)
+          path.write_text(text)
+
+          # Target role pre-fills new practice sessions when there is no saved draft/job role.
+          path = Path("client/src/pages/CreateInterviewPage.jsx")
+          text = path.read_text()
+          text = text.replace('import { useEffect, useState } from "react";', 'import { useContext, useEffect, useState } from "react";', 1)
+          anchor = 'import api from "../api/axios";\n'
+          if anchor not in text: raise SystemExit("CreateInterview api import missing")
+          text = text.replace(anchor, anchor + 'import { AuthContext } from "../context/AuthContext";\n', 1)
+          anchor = '    const { getResumes, deleteResume, uploadResume } = useResumes();\n'
+          if anchor not in text: raise SystemExit("CreateInterview hook anchor missing")
+          text = text.replace(anchor, anchor + '    const { user } = useContext(AuthContext);\n', 1)
+          draft_anchor = '''    const [formData, setFormData] = useState(savedCreateDraft.formData || {\n        company: "",\n        jobRole: "",\n        jobDescription: "",\n        resumeId: "",\n    });\n'''
+          prefill = draft_anchor + '''\n    useEffect(() => {\n        if (!user?.targetRole) return;\n        setFormData((current) => current.jobRole ? current : { ...current, jobRole: user.targetRole });\n    }, [user?.targetRole]);\n'''
+          if draft_anchor not in text: raise SystemExit("CreateInterview form anchor missing")
+          text = text.replace(draft_anchor, prefill, 1)
+          path.write_text(text)
+
+          # Profile copy reflects what settings really do; Google accounts do not offer an unusable password action.
+          path = Path("client/src/pages/ProfilePage.jsx")
+          text = path.read_text()
+          text = text.replace('helperText="Used for coding practice and generated examples."', 'helperText="Used as the default language when you open the code editor."', 1)
+          old_security = '<Paper variant="outlined" sx={{ p: 2.5 }}><Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }} spacing={2}><Box><Typography fontWeight={750}>Password</Typography><Typography variant="body2" color="text.secondary">Use a unique password you do not use elsewhere.</Typography></Box><Button startIcon={<LockOutlined />} variant="outlined" onClick={() => setPasswordOpen(true)}>Change password</Button></Stack></Paper>'
+          new_security = '<Paper variant="outlined" sx={{ p: 2.5 }}>{user?.provider === "local" ? <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }} spacing={2}><Box><Typography fontWeight={750}>Password</Typography><Typography variant="body2" color="text.secondary">Use a unique password you do not use elsewhere.</Typography></Box><Button startIcon={<LockOutlined />} variant="outlined" onClick={() => setPasswordOpen(true)}>Change password</Button></Stack> : <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }} spacing={2}><Box><Typography fontWeight={750}>Google sign-in</Typography><Typography variant="body2" color="text.secondary">Your password and sign-in security are managed by your Google account.</Typography></Box><Button variant="outlined" disabled>Managed by Google</Button></Stack>}</Paper>'
+          if old_security not in text: raise SystemExit("Profile security anchor missing")
+          text = text.replace(old_security, new_security, 1)
+          path.write_text(text)
+
+          # Remove a stale, nonexistent profile field from the controller.
+          path = Path("server/src/controllers/authController.js")
+          text = path.read_text()
+          stale = '''        if (typeof preferredLanguage === "string" && preferredLanguage.trim()) {\n            user.preferredLanguage = preferredLanguage.trim();\n        }\n'''
+          if stale not in text: raise SystemExit("authController stale preferredLanguage block missing")
+          path.write_text(text.replace(stale, '', 1))
+          PY
+      - name: Commit quality fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add client/src/components/Header.jsx client/src/context/NotificationContext.jsx client/src/__tests__/notificationContext.test.jsx client/src/components/CodeEditorField.jsx client/src/pages/CreateInterviewPage.jsx client/src/pages/ProfilePage.jsx server/src/controllers/authController.js
+          git diff --cached --check
+          git commit -m "Fix navigation profile settings and notifications"
+          git push
