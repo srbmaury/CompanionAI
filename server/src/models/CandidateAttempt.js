@@ -31,7 +31,7 @@ const candidateAttemptSchema = new mongoose.Schema({
     accessTokenHash: { type: String, required: true, select: false },
     status: { type: String, enum: ["started", "evaluating", "submitted", "evaluation_failed"], default: "started", index: true },
     startedAt: { type: Date, default: Date.now },
-    privacyConsentAt: { type: Date, required: true, default: Date.now },
+    privacyConsentAt: { type: Date, required: true },
     submittedAt: Date,
     evaluationStartedAt: Date,
     evaluationError: { type: String, maxlength: 500, default: "" },
