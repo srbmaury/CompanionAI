@@ -433,6 +433,10 @@ describe("Launch-critical full product journey E2E", () => {
         const round = refetched.body.rounds[0].round;
         expect((round.questions || []).length).toBeGreaterThan(0);
 
+        // The shared-quota check above temporarily added another organization member.
+        // Remove that test membership before exercising sole-owner account deletion.
+        await OrganizationMembership.deleteOne({ organization: hiringOrganization.body.organization._id, user: otherUser._id });
+
         // Self-service deletion requires confirmation and removes account-owned data.
         await agent
             .delete("/api/auth/profile")
@@ -450,7 +454,7 @@ describe("Launch-critical full product journey E2E", () => {
             .expect(200);
         expect(await User.exists({ _id: me._id })).toBeNull();
         expect(await Resume.exists({ user: me._id })).toBeNull();
-        expect(await Assessment.exists({ owner: me._id })).toBeNull();
+        expect(await Assessment.exists({ organization: hiringOrganization.body.organization._id })).toBeNull();
         expect(await CandidateAttempt.exists({ assessment: assessmentId })).toBeNull();
     }, 120000);
 });
