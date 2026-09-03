@@ -12,16 +12,16 @@ const priceIdOf = (subscription) => subscription.items?.data?.[0]?.price?.id || 
 const practicePlanFromSubscription = (subscription) => {
     const priceId = priceIdOf(subscription);
     if (priceId && priceId === getConfiguredPriceId("practice", "pro")) return "pro";
-    return subscription.metadata?.plan === "pro" ? "pro" : "pro";
+    if (subscription.metadata?.plan === "pro") return "pro";
+    throw new Error("Unknown Practice subscription plan");
 };
 
 const hiringPlanFromSubscription = (subscription) => {
     const priceId = priceIdOf(subscription);
     if (priceId && priceId === getConfiguredPriceId("hiring", "starter")) return "starter";
     if (priceId && priceId === getConfiguredPriceId("hiring", "growth")) return "growth";
-    return ["starter", "growth", "enterprise"].includes(subscription.metadata?.plan)
-        ? subscription.metadata.plan
-        : "starter";
+    if (["starter", "growth", "enterprise"].includes(subscription.metadata?.plan)) return subscription.metadata.plan;
+    throw new Error("Unknown Hiring subscription plan");
 };
 
 const currentPeriodEnd = (subscription) => subscription.current_period_end
@@ -129,15 +129,9 @@ export const stripeWebhook = async (req, res) => {
         } else if (["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) {
             await syncSubscription(event.data.object);
         } else if (["invoice.payment_failed", "invoice.payment_succeeded"].includes(event.type)) {
+            // Stripe subscription status is the source of truth. Re-fetch it instead of
+            // inferring subscription state from an individual invoice or charge event.
             await syncInvoiceSubscription(event.data.object);
-        } else if (["charge.dispute.created", "charge.refunded"].includes(event.type)) {
-            const charge = event.data.object;
-            if (charge.customer) {
-                await Promise.all([
-                    User.updateOne({ practiceBillingCustomerId: charge.customer }, { $set: { practiceSubscriptionStatus: "past_due" } }),
-                    Organization.updateOne({ hiringBillingCustomerId: charge.customer }, { $set: { hiringSubscriptionStatus: "past_due", hiringTrialEligible: false } }),
-                ]);
-            }
         }
         metrics.billingWebhooksTotal.labels(event.type, "success").inc();
         metrics.billingWebhookDurationSeconds.labels(event.type, "success").observe(Number(process.hrtime.bigint() - startedAt) / 1e9);
