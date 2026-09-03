@@ -42,8 +42,12 @@ export const setWorkspacePreference = (workspace, userId) => {
     return normalized;
 };
 
+export const clearWorkspacePreference = (userId) => {
+    getStorage()?.removeItem(workspaceKeyForUser(userId));
+};
+
 export const clearGuestWorkspacePreference = () => {
-    getStorage()?.removeItem(GUEST_WORKSPACE_KEY);
+    clearWorkspacePreference();
 };
 
 export const adoptGuestWorkspacePreference = (userId) => {
