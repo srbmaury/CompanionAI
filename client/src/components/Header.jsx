@@ -38,13 +38,17 @@ export default function Header() {
     const location = useLocation();
     const [anchor, setAnchor] = useState(null);
     const [workspaceAnchor, setWorkspaceAnchor] = useState(null);
+    const [organizationAnchor, setOrganizationAnchor] = useState(null);
     const [profileAnchor, setProfileAnchor] = useState(null);
     const [feedbackOpen, setFeedbackOpen] = useState(false);
     const [notificationAnchor, setNotificationAnchor] = useState(null);
     const { notifications, unreadCount, markNotificationRead, markAllRead, dismissNotification, clearNotifications } = useNotifications();
     const organizationContext = useContext(OrganizationContext);
+    const organizations = organizationContext?.organizations || [];
+    const activeOrganization = organizationContext?.activeOrganization || null;
+    const selectOrganization = organizationContext?.selectOrganization || (() => {});
     const currentOrganizationRole = organizationContext?.currentRole || null;
-    const hasHiringOrganization = Boolean(organizationContext?.activeOrganizationId);
+    const hasHiringOrganization = Boolean(activeOrganization?._id);
     const {
         canViewOverview: canViewHiringOverview,
         canViewCandidatePipeline,
@@ -59,6 +63,7 @@ export default function Header() {
     useEffect(() => {
         setAnchor(null);
         setWorkspaceAnchor(null);
+        setOrganizationAnchor(null);
         setProfileAnchor(null);
         setNotificationAnchor(null);
         setFeedbackOpen(false);
@@ -80,7 +85,14 @@ export default function Header() {
         setWorkspacePreference(next, user._id);
         setWorkspace(next);
     }, [location.pathname, user?._id]);
-    const switchWorkspace = (next) => { if (user?._id) setWorkspacePreference(next, user._id); setWorkspace(next); setWorkspaceAnchor(null); setProfileAnchor(null); navigate(next === "hiring" ? (hasHiringOrganization ? hiringHomeForRole(currentOrganizationRole) : "/hiring/team") : "/dashboard"); };
+    const switchWorkspace = (next) => { if (user?._id) setWorkspacePreference(next, user._id); setWorkspace(next); setWorkspaceAnchor(null); setOrganizationAnchor(null); setProfileAnchor(null); navigate(next === "hiring" ? (hasHiringOrganization ? hiringHomeForRole(currentOrganizationRole) : "/hiring/team") : "/dashboard"); };
+    const switchOrganization = (organization) => {
+        if (!organization?._id) return;
+        selectOrganization(organization._id);
+        setOrganizationAnchor(null);
+        close();
+        navigate(hiringHomeForRole(organization.role));
+    };
     const isActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`);
     const hiringOverviewActive = location.pathname === "/assessments" && !location.search && !location.hash;
     const hiringCandidatePipelineActive = location.pathname === "/assessments" && !location.search && location.hash === "#candidate-pipeline";
@@ -118,6 +130,12 @@ export default function Header() {
                                 <MenuItem selected={workspace === "practice"} onClick={() => switchWorkspace("practice")}><SchoolOutlined sx={{ mr: 1.5 }} /><ListItemText primary="Practice" secondary="Interviews, resumes, and personal progress" /></MenuItem>
                                 <MenuItem selected={workspace === "hiring"} onClick={() => switchWorkspace("hiring")}><WorkOutlineRounded sx={{ mr: 1.5 }} /><ListItemText primary="Hiring" secondary="Assessments, candidates, and reports" /></MenuItem>
                             </Menu>
+                            {workspace === "hiring" && hasHiringOrganization && organizations.length > 0 && <>
+                                <Button onClick={(event) => organizations.length > 1 && setOrganizationAnchor(event.currentTarget)} color="inherit" size="small" endIcon={organizations.length > 1 ? <ExpandMoreRounded /> : undefined} sx={{ display: { xs: "none", md: "inline-flex" }, maxWidth: 220, textTransform: "none" }} aria-label="Switch hiring organization"><Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeOrganization?.name}</Box></Button>
+                                <Menu anchorEl={organizationAnchor} open={Boolean(organizationAnchor?.isConnected)} onClose={() => setOrganizationAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "left" }} transformOrigin={{ vertical: "top", horizontal: "left" }}>
+                                    {organizations.map((organization) => <MenuItem key={organization._id} selected={organization._id === activeOrganization?._id} onClick={() => switchOrganization(organization)}><ListItemText primary={organization.name} secondary={organization.role?.replaceAll("_", " ")} /></MenuItem>)}
+                                </Menu>
+                            </>}
                         </>}
                     </Stack>
                     {isCandidateAssessment ? (
@@ -171,6 +189,8 @@ export default function Header() {
                             <IconButton sx={{ display: { md: "none" } }} onClick={(event) => setAnchor(event.currentTarget)} aria-label="Open navigation"><MenuIcon /></IconButton>
                             <Menu anchorEl={anchor} open={Boolean(anchor?.isConnected)} onClose={close} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }}>
                                 <MenuItem disabled sx={{ opacity: "1 !important" }}><ListItemText primary={`${workspaceLabel} workspace`} primaryTypographyProps={{ variant: "overline", fontWeight: 800, color: "primary.main" }} /></MenuItem>
+                                {workspace === "hiring" && activeOrganization && <MenuItem disabled sx={{ opacity: "1 !important" }}><ListItemText primary={activeOrganization.name} secondary={currentOrganizationRole?.replaceAll("_", " ")} /></MenuItem>}
+                                {workspace === "hiring" && organizations.length > 1 && organizations.filter((organization) => organization._id !== activeOrganization?._id).map((organization) => <MenuItem key={organization._id} onClick={() => switchOrganization(organization)}>Switch to {organization.name}</MenuItem>)}
                                 {(workspace === "practice" || (hasHiringOrganization && canViewHiringOverview)) && <MenuItem component={RouterLink} to={workspaceHome} onClick={close}>Overview</MenuItem>}
                                 {workspace === "hiring" && !hasHiringOrganization && <MenuItem component={RouterLink} to="/hiring/team" onClick={close}>Set up Hiring</MenuItem>}
                                 {workspace === "hiring" ? (canManageAssessments && <MenuItem onClick={() => { close(); openNewAssessment(); }}>New assessment</MenuItem>) : <MenuItem component={RouterLink} to="/create-interview" onClick={close}>New practice</MenuItem>}

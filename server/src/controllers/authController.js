@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import mongoose from "mongoose";
 import User from "../models/User.js";
 import { bumpTokenVersion, signAccessToken, issueRefreshToken, validateRefreshToken, revokeAllRefreshTokens } from "../utils/tokens.js";
 import { OAuth2Client } from "google-auth-library";
@@ -370,26 +371,31 @@ export const deleteAccount = async (req, res, next) => {
             ? await Assessment.distinct("_id", { organization: { $in: ownedOrganizationIds } })
             : [];
 
-        await Promise.all([
-            Feedback.deleteMany({ $or: [{ user: user._id }, { _id: { $in: feedbackIds } }] }),
-            Question.deleteMany({ _id: { $in: privateQuestionIds } }),
-            Round.deleteMany({ _id: { $in: roundIds } }),
-            Interview.deleteMany({ user: user._id }),
-            Resume.deleteMany({ user: user._id }),
-            ResumeReview.deleteMany({ user: user._id }),
-            SavedExperience.deleteMany({ user: user._id }),
-            ProductFeedback.deleteMany({ user: user._id }),
-            PracticeUsageCounter.deleteMany({ user: user._id }),
-            ReminderDelivery.deleteMany({ user: user._id }),
-            ProductEvent.deleteMany({ user: user._id }),
-            CandidateAttempt.deleteMany({ assessment: { $in: assessmentIds } }),
-            Assessment.deleteMany({ organization: { $in: ownedOrganizationIds } }),
-            OrganizationMembership.deleteMany({ $or: [{ user: user._id }, { organization: { $in: ownedOrganizationIds } }] }),
-            Organization.deleteMany({ _id: { $in: ownedOrganizationIds } }),
-            RefreshToken.deleteMany({ user: user._id }),
-            AuditLog.deleteMany({ user: user._id }),
-        ]);
-        await User.deleteOne({ _id: user._id });
+        const session = await mongoose.startSession();
+        try {
+            await session.withTransaction(async () => {
+                await Feedback.deleteMany({ $or: [{ user: user._id }, { _id: { $in: feedbackIds } }] }, { session });
+                await Question.deleteMany({ _id: { $in: privateQuestionIds } }, { session });
+                await Round.deleteMany({ _id: { $in: roundIds } }, { session });
+                await Interview.deleteMany({ user: user._id }, { session });
+                await Resume.deleteMany({ user: user._id }, { session });
+                await ResumeReview.deleteMany({ user: user._id }, { session });
+                await SavedExperience.deleteMany({ user: user._id }, { session });
+                await ProductFeedback.deleteMany({ user: user._id }, { session });
+                await PracticeUsageCounter.deleteMany({ user: user._id }, { session });
+                await ReminderDelivery.deleteMany({ user: user._id }, { session });
+                await ProductEvent.deleteMany({ user: user._id }, { session });
+                await CandidateAttempt.deleteMany({ assessment: { $in: assessmentIds } }, { session });
+                await Assessment.deleteMany({ organization: { $in: ownedOrganizationIds } }, { session });
+                await OrganizationMembership.deleteMany({ $or: [{ user: user._id }, { organization: { $in: ownedOrganizationIds } }] }, { session });
+                await Organization.deleteMany({ _id: { $in: ownedOrganizationIds } }, { session });
+                await RefreshToken.deleteMany({ user: user._id }, { session });
+                await AuditLog.deleteMany({ user: user._id }, { session });
+                await User.deleteOne({ _id: user._id }, { session });
+            });
+        } finally {
+            await session.endSession();
+        }
         clearRefreshCookie(res);
 
         const publicIds = resumes.map((resume) => resume.publicId).filter(Boolean);

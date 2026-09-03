@@ -220,18 +220,20 @@ test("reviewer can inspect Hiring but cannot create assessments", async ({ page 
     }));
 
     await page.goto("/assessments");
-    await expect(page.getByRole("heading", { name: "Hiring overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Candidate pipeline" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Hiring overview" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "New assessment" })).toHaveCount(0);
 
     if ((page.viewportSize()?.width || 0) >= 900) {
-        await page.getByRole("link", { name: "Team" }).click();
+        await expect(page.getByRole("link", { name: "Team & billing" })).toHaveCount(0);
     } else {
         await page.getByRole("button", { name: "Open navigation" }).click();
-        await page.getByRole("menuitem", { name: "Team & organization" }).click();
+        await expect(page.getByRole("menuitem", { name: "Team & Hiring billing" })).toHaveCount(0);
+        await page.keyboard.press("Escape");
     }
-    await expect(page).toHaveURL(/\/hiring\/team$/);
-    await expect(page.getByRole("heading", { name: "Team & organization" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Add existing CompanionAI user" })).toHaveCount(0);
+    await page.goto("/hiring/team");
+    await expect(page).toHaveURL(/\/assessments#candidate-pipeline$/);
+    await expect(page.getByRole("heading", { name: "Organization settings" })).toHaveCount(0);
 });
 
 test("candidate completes an assessment without seeing private feedback", async ({ page }) => {

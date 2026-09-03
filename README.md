@@ -21,7 +21,7 @@ See [TESTING.md](TESTING.md) for the short test-command reference.
 - Progress: score trends, completion history, monthly plan usage, and goal-based recommendations
 - Reminders: timezone-aware weekly email reminders with durable delivery records, retries, history, and test delivery
 - Billing: Stripe-hosted Checkout, customer portal, signed/idempotent webhooks, dynamic pricing, and monthly usage limits
-- Plan limits: Free includes 3 interviews, 3 resume reviews, and 2 assessments monthly; Pro raises those to 100/100/50; Scale raises them to 1000/1000/500 by default. Public attempt actions retain Redis-backed abuse quotas on every plan.
+- Monetization: Practice is user-owned (Free: 3 interviews + 3 resume reviews/month; Pro: 100 + 100 by default). Hiring is organization-owned and meters candidate interviews rather than assessment definitions (first organization trial: 5 lifetime credits; Starter: 25/month; Growth: 100/month by default).
 - Admin: role-protected feedback inbox with filtering, pagination, and status management
 - Privacy: complete account-data deletion; the incomplete JSON export remains disabled behind client and server feature flags
 - Product analytics: authenticated, allowlisted funnel events with automatic 180-day expiry
@@ -58,7 +58,7 @@ cd server && npm i && cd ../client && npm i
 - Server: copy the example and fill required values
   - Local minimum: `MONGO_URI`, `JWT_SECRET`, `CLIENT_ORIGIN`, Cloudinary credentials, and `OPENAI_API_KEY` or `GEMINI_API_KEY`
   - Brevo API access is required for verification, password reset, and reminders
-  - Stripe requires `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID`, and `STRIPE_SCALE_PRICE_ID`
+  - Stripe requires `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRACTICE_PRO_PRICE_ID`, `STRIPE_HIRING_STARTER_PRICE_ID`, and `STRIPE_HIRING_GROWTH_PRICE_ID`
   - Production startup fails fast if Redis, metrics protection, CAPTCHA, or enabled feature dependencies are missing
   - Full list and sane defaults live in `server/.env.example`
 ```bash
@@ -122,7 +122,7 @@ Highlighted endpoints
 - Run Code: `POST /api/run-code`
 - Experiences: `GET /api/experiences/search?company=&role=`
 - Job posts: `POST /api/job-posts/import` (authenticated, rate-limited public-page extraction)
-- Billing: `GET /api/billing/entitlements` · `POST /api/billing/checkout-session` · `POST /api/billing/portal-session` · `POST /api/billing/webhook`
+- Billing: Practice uses `/api/billing/practice/entitlements`, `/api/billing/practice/checkout-session`, and `/api/billing/practice/portal-session`; Hiring uses the corresponding organization-scoped `/api/billing/hiring/*` endpoints; Stripe webhooks remain at `/api/billing/webhook`.
 - Recommendations: `GET /api/recommendations`
 - Candidate assessments: create/list/overview/report, duplicate versions, invite/resend/revoke candidates, save answers and system-design scenes, generate contextual AI probes, save human scorecards, and record consented integrity events under `/api/assessments` and `/api/assessments/public/{shareToken}`
 - Product feedback: `POST /api/product-feedback`
@@ -135,7 +135,7 @@ Highlighted endpoints
 - `/` (product landing page)
 - `/dashboard`, `/progress`
 - `/create-interview`, `/interviews/:interviewId`
-- `/assessments`, `/assessments/:assessmentId`, `/assessment/:shareToken`
+- `/assessments`, `/assessments/:assessmentId`, `/assessment/:shareToken`, `/hiring/team`
 - `/experiences`, `/saved-experiences`
 - `/resume-review`, `/resume-reviews`, `/resume-match`, `/resumes`
 - `/pricing`, `/billing/success`
@@ -175,7 +175,7 @@ BullMQ handles question preparation, bulk feedback, and recruiter assessment eva
 
 ## Billing setup
 
-1. Create separate recurring Stripe Prices for Pro and Scale, then set `STRIPE_PRO_PRICE_ID` and `STRIPE_SCALE_PRICE_ID`.
+1. Create a recurring Stripe Price for Practice Pro plus separate recurring Prices for Hiring Starter and Growth; set `STRIPE_PRACTICE_PRO_PRICE_ID`, `STRIPE_HIRING_STARTER_PRICE_ID`, and `STRIPE_HIRING_GROWTH_PRICE_ID`.
 2. Set the restricted or secret server key as `STRIPE_SECRET_KEY`; never expose it to the client.
 3. Forward or configure Stripe webhooks at `/api/billing/webhook` and set the signing secret.
 4. Test checkout, subscription updates, failed/recovered payments, refunds, disputes, cancellation, and portal access in Stripe test mode before using live keys.

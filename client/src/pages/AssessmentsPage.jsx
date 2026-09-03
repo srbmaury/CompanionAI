@@ -41,8 +41,25 @@ export default function AssessmentsPage() {
     const editId = searchParams.get("edit") || "";
     useEffect(() => { if (!canManageAssessments || (searchParams.get("create") !== "1" && !location.state?.openCreate)) return; setShowCreate(true); const timer = setTimeout(() => { if (typeof createFormRef.current?.scrollIntoView === "function") createFormRef.current.scrollIntoView({ behavior: "smooth", block: "start" }); }, 50); return () => clearTimeout(timer); }, [canManageAssessments, location.key, location.state, searchParams]);
     useEffect(() => { if (showCreate && !builderTracked.current) { builderTracked.current = true; trackEvent("assessment_builder_started"); } if (!showCreate) builderTracked.current = false; }, [showCreate]);
-    const load = useCallback(async () => { setLoading(true); setError(""); try { const { data } = await api.get("/assessments", { params: { page, limit: 8 } }); setItems(data.items || []); setTotalPages(data.totalPages || 1); } catch { setError("We couldn’t load your assessments."); } finally { setLoading(false); } }, [page]);
-    const loadOverview = useCallback(async () => { setOverviewLoading(true); try { const { data } = await api.get("/assessments/overview", { params: { page: candidatePage, limit: 8, search: candidateSearch || undefined, status: candidateStatus || undefined, assessmentId: candidateAssessment || undefined } }); setOverview({ summary: data.summary || {}, assessments: data.assessments || [], candidates: data.candidates || [], totalPages: data.totalPages || 1 }); } catch { setError("We couldn’t load the candidate pipeline."); } finally { setOverviewLoading(false); } }, [candidatePage, candidateSearch, candidateStatus, candidateAssessment]);
+    const load = useCallback(async () => {
+        if (!activeOrganization?._id || !canViewAssessments) { setItems([]); setTotalPages(1); setLoading(false); return; }
+        setLoading(true); setError("");
+        try { const { data } = await api.get("/assessments", { params: { page, limit: 8 } }); setItems(data.items || []); setTotalPages(data.totalPages || 1); }
+        catch { setError("We couldn’t load your assessments."); }
+        finally { setLoading(false); }
+    }, [activeOrganization?._id, canViewAssessments, page]);
+    const loadOverview = useCallback(async () => {
+        if (!activeOrganization?._id || !canViewCandidatePipeline) { setOverview({ summary: {}, assessments: [], candidates: [], totalPages: 1 }); setOverviewLoading(false); return; }
+        setOverviewLoading(true);
+        try { const { data } = await api.get("/assessments/overview", { params: { page: candidatePage, limit: 8, search: candidateSearch || undefined, status: candidateStatus || undefined, assessmentId: candidateAssessment || undefined } }); setOverview({ summary: data.summary || {}, assessments: data.assessments || [], candidates: data.candidates || [], totalPages: data.totalPages || 1 }); }
+        catch { setError("We couldn’t load the candidate pipeline."); }
+        finally { setOverviewLoading(false); }
+    }, [activeOrganization?._id, canViewCandidatePipeline, candidatePage, candidateSearch, candidateStatus, candidateAssessment]);
+    useEffect(() => {
+        setItems([]); setPage(1); setTotalPages(1);
+        setOverview({ summary: {}, assessments: [], candidates: [], totalPages: 1 }); setCandidatePage(1); setCandidateSearch(""); setCandidateStatus(""); setCandidateAssessment("");
+        setError("");
+    }, [activeOrganization?._id]);
     useEffect(() => { load(); }, [load]);
     useEffect(() => { const timer = setTimeout(loadOverview, candidateSearch ? 300 : 0); return () => clearTimeout(timer); }, [loadOverview, candidateSearch]);
     useEffect(() => {

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { Alert, Box, Button, Chip, Container, Divider, FormControl, InputLabel, LinearProgress, MenuItem, Paper, Select, Stack, TextField, Typography } from "@mui/material";
 import api from "../api/axios";
@@ -18,9 +18,9 @@ export default function HiringTeamPage() {
     const [billingLoading, setBillingLoading] = useState(false);
     const [billingActionLoading, setBillingActionLoading] = useState(false);
     const { canManageOrganization } = hiringPermissionsFor(currentRole);
-    const assignableRoles = assignableHiringRolesFor(currentRole);
+    const assignableRoles = useMemo(() => assignableHiringRolesFor(currentRole), [currentRole]);
 
-    const loadMembers = async () => {
+    const loadMembers = useCallback(async () => {
         if (!activeOrganization?._id || !canManageOrganization) return;
         setLoading(true);
         setError("");
@@ -32,12 +32,16 @@ export default function HiringTeamPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [activeOrganization?._id, canManageOrganization]);
 
     useEffect(() => {
         if (!canManageOrganization) { setMembers([]); return; }
         loadMembers();
-    }, [activeOrganization?._id, canManageOrganization]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [canManageOrganization, loadMembers]);
+
+    useEffect(() => {
+        if (assignableRoles.length && !assignableRoles.includes(role)) setRole(assignableRoles[0]);
+    }, [assignableRoles, role]);
 
     useEffect(() => {
         if (!activeOrganization?._id || !canManageOrganization) return;
@@ -136,16 +140,7 @@ export default function HiringTeamPage() {
     };
 
     if (organizationLoading) return <Container maxWidth="lg" sx={{ py: 6 }}><LinearProgress /></Container>;
-    if (!activeOrganization) return (
-        <Container maxWidth="sm" sx={{ py: { xs: 4, md: 8 } }}>
-            <Stack spacing={3}>
-                <Box><Typography variant="overline" color="primary.main" fontWeight={850}>Hiring setup</Typography><Typography component="h1" variant="h3" fontWeight={850}>Create your hiring organization</Typography><Typography color="text.secondary" mt={1}>Candidate assessments, team roles, shared interview credits, and Hiring billing belong to an organization—not your personal Practice account.</Typography></Box>
-                <Paper component="form" variant="outlined" sx={{ p: 3, borderRadius: 4 }} onSubmit={createAnotherOrganization}>
-                    <Stack spacing={2}><TextField autoFocus label="Organization name" value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} fullWidth /><Button type="submit" variant="contained" disabled={organizationName.trim().length < 2}>Create organization</Button></Stack>
-                </Paper>
-            </Stack>
-        </Container>
-    );
+    if (!activeOrganization) return null;
     if (!canManageOrganization) return <Navigate to={hiringHomeForRole(currentRole)} replace />;
 
     return (
