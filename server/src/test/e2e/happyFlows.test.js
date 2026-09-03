@@ -286,7 +286,7 @@ describe("Launch-critical full product journey E2E", () => {
         // Assessment links expose only candidate-safe fields; attempts require their opaque secret,
         // duplicate emails cannot overwrite answers, and reports remain owner-only.
         const assessmentCreate = await agent.post("/api/assessments").set(auth).set("origin", origin).set("referer", `${origin}/`).send({
-            title: "Backend candidate screen", company: "Acme", jobRole: "Backend Engineer",
+            title: "Backend candidate screen", jobRole: "Backend Engineer",
             jobDescription: "Build secure and reliable APIs using Node.js and MongoDB.",
             status: "active", followUpsEnabled: false, durationMinutes: 25, contactEmail: "hiring@example.com",
             integrity: { enabled: true, requireFullscreen: true, trackFocus: true, trackClipboard: true, requireCamera: true, monitorFacePresence: true, retentionDays: 14 },
@@ -335,6 +335,8 @@ describe("Launch-critical full product journey E2E", () => {
         expect(publicAssessment.body.shareToken).toBeUndefined();
         expect(publicAssessment.body.rounds[0].questions).toBeUndefined();
 
+        await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "No Consent", email: "no-consent@example.com" }).expect(400);
+        await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "No Integrity Consent", email: "no-integrity@example.com", privacyConsent: true }).expect(400);
         const startedAttempt = await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "Candidate One", email: "candidate@example.com", privacyConsent: true, integrityConsent: true }).expect(201);
         const attemptId = startedAttempt.body.attempt._id;
         const attemptToken = startedAttempt.body.attemptToken;
@@ -356,7 +358,7 @@ describe("Launch-critical full product journey E2E", () => {
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/transcribe`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", "wrong-token").expect(401);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/run-code`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({}).expect(400);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/transcribe`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).expect(400);
-        await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "Overwrite", email: "candidate@example.com" }).expect(409);
+        await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "Overwrite", email: "candidate@example.com", privacyConsent: true, integrityConsent: true }).expect(409);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/submit`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", "wrong-token").expect(401);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/submit`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).expect(400);
         await agent.put(`/api/assessments/public/${shareToken}/attempts/${attemptId}/answer`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", "wrong-token").send({ roundIndex: 0, questionIndex: 0, answer: "Unauthorized overwrite" }).expect(401);
@@ -390,7 +392,7 @@ describe("Launch-critical full product journey E2E", () => {
         expect(exportWithAssessments.body.candidateAttempts).toBeUndefined();
         await agent.patch(`/api/assessments/${assessmentId}`).set(auth).set("origin", origin).set("referer", `${origin}/`).send({ status: "closed" }).expect(200);
         await agent.get(`/api/assessments/public/${shareToken}`).expect(404);
-        await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "Late Candidate", email: "late@example.com" }).expect(404);
+        await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "Late Candidate", email: "late@example.com", privacyConsent: true, integrityConsent: true }).expect(404);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/run-code`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({}).expect(404);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/transcribe`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).expect(404);
         const lifecycleMetric = await metrics.assessmentsTotal.get();

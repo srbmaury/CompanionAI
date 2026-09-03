@@ -6,6 +6,7 @@ import app from "../../app.js";
 import connectDB from "../../config/db.js";
 import User from "../../models/User.js";
 import OrganizationMembership from "../../models/OrganizationMembership.js";
+import Organization from "../../models/Organization.js";
 import { signAccessToken } from "../../utils/tokens.js";
 
 let replset;
@@ -82,6 +83,26 @@ describe("Hiring organization access", () => {
         expect(created.body.organization).toBe(organizationId);
         expect(created.body.createdBy).toBe(String(owner._id));
 
+        const inviteOnlyAssessment = await writeHeaders(agent.post("/api/assessments"), ownerAuth)
+            .send({ ...assessmentInput, title: "Invite-only backend screen", status: "active", inviteOnly: true })
+            .expect(201);
+        const inviteResult = await writeHeaders(
+            agent.post(`/api/assessments/${inviteOnlyAssessment.body._id}/invitations`),
+            ownerAuth,
+        ).send({ candidates: [{ email: "candidate-invite@example.com", name: "Invited Candidate" }] }).expect(200);
+        const invitation = inviteResult.body.invitations[0];
+        await agent.get(`/api/assessments/public/${inviteOnlyAssessment.body.shareToken}`).expect(403);
+        await agent.get(`/api/assessments/public/${inviteOnlyAssessment.body.shareToken}?invite=${invitation._id}`).expect(200);
+        await writeHeaders(agent.post(`/api/assessments/public/${inviteOnlyAssessment.body.shareToken}/start`), {})
+            .send({ name: "Invited Candidate", email: "candidate-invite@example.com", privacyConsent: true })
+            .expect(403);
+        await writeHeaders(agent.post(`/api/assessments/public/${inviteOnlyAssessment.body.shareToken}/start`), {})
+            .send({ name: "Wrong Candidate", email: "wrong@example.com", privacyConsent: true, invitationId: invitation._id })
+            .expect(403);
+        await writeHeaders(agent.post(`/api/assessments/public/${inviteOnlyAssessment.body.shareToken}/start`), {})
+            .send({ name: "Invited Candidate", email: "candidate-invite@example.com", privacyConsent: true, invitationId: invitation._id })
+            .expect(201);
+
         const reviewerAuth = authFor(reviewer, organizationId);
         await agent.get(`/api/organizations/${organizationId}/members`).set(reviewerAuth).expect(403);
         const ownerMembers = await agent.get(`/api/organizations/${organizationId}/members`).set(ownerAuth).expect(200);
@@ -130,6 +151,8 @@ describe("Hiring organization access", () => {
         ]);
         expect(formerOwnerMembership.role).toBe("admin");
         expect(newOwnerMembership.role).toBe("owner");
+        const organizationAfterTransfer = await Organization.findById(organizationId).lean();
+        expect(String(organizationAfterTransfer.createdBy)).toBe(String(owner._id));
 
         // A multi-member organization cannot be orphaned by deleting its current owner account.
         await writeHeaders(agent.delete("/api/auth/profile"), reviewerAuth)
