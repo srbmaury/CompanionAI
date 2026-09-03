@@ -1,0 +1,61 @@
+name: Fix stale header menus after authentication
+
+on:
+  push:
+    branches:
+      - hiring-organizations
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reset detached menu anchors
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("client/src/components/Header.jsx")
+          text = path.read_text()
+
+          anchor = '''    useEffect(() => {
+        setWorkspace(user?._id ? getWorkspacePreference(user._id) || "practice" : "practice");
+    }, [user?._id]);
+'''
+          replacement = anchor + '''    useEffect(() => {
+        setAnchor(null);
+        setWorkspaceAnchor(null);
+        setProfileAnchor(null);
+        setNotificationAnchor(null);
+        setFeedbackOpen(false);
+    }, [user?._id, location.pathname, location.search, location.hash]);
+'''
+          if anchor not in text:
+              raise SystemExit("Header workspace effect anchor not found")
+          text = text.replace(anchor, replacement, 1)
+
+          replacements = {
+              'open={Boolean(workspaceAnchor)}': 'open={Boolean(workspaceAnchor?.isConnected)}',
+              'open={Boolean(notificationAnchor)}': 'open={Boolean(notificationAnchor?.isConnected)}',
+              'open={Boolean(profileAnchor)}': 'open={Boolean(profileAnchor?.isConnected)}',
+              'open={Boolean(anchor)}': 'open={Boolean(anchor?.isConnected)}',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f"Expected menu open expression not found: {old}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add client/src/components/Header.jsx
+          git diff --cached --check
+          git commit -m "Prevent detached header menus after login"
+          git push
