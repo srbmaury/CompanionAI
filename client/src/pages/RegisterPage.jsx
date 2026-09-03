@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams, Link as RouterLink } from "react-router-d
 import { AuthContext } from "../context/AuthContext";
 import Captcha from "../components/Captcha";
 import AuthShell from "../components/AuthShell";
+import { getWorkspaceHome, getWorkspacePreference, setWorkspacePreference } from "../utils/workspacePreference";
 
 import {
     Box,
@@ -26,8 +27,9 @@ const RegisterPage = () => {
     const [params] = useSearchParams();
     const workspaceParam = params.get("workspace");
     const requestedWorkspace = ["practice", "hiring"].includes(workspaceParam) ? workspaceParam : null;
-    if (requestedWorkspace) localStorage.setItem("companionai:workspace", requestedWorkspace);
-    const postAuthDestination = requestedWorkspace === "hiring" || localStorage.getItem("companionai:workspace") === "hiring" ? "/assessments" : "/dashboard";
+    useEffect(() => {
+        if (requestedWorkspace) setWorkspacePreference(requestedWorkspace);
+    }, [requestedWorkspace]);
     const loginPath = requestedWorkspace ? `/login?workspace=${requestedWorkspace}` : "/login";
 
     const [name, setName] = useState("");
@@ -119,8 +121,9 @@ const RegisterPage = () => {
                 client_id: clientId,
                 callback: async (response) => {
                     try {
-                        await googleLogin(response.credential);
-                        navigate(postAuthDestination, { replace: true });
+                        const authenticatedUser = await googleLogin(response.credential);
+                        const workspace = requestedWorkspace || getWorkspacePreference(authenticatedUser?._id) || "practice";
+                        navigate(getWorkspaceHome(workspace), { replace: true });
                     } catch {
                         setErrors((prev) => ({ ...prev, password: "Google sign-in failed" }));
                     }
@@ -134,7 +137,7 @@ const RegisterPage = () => {
         } catch (e) {
             console.warn("Google button init failed", e);
         }
-    }, [acceptedTerms, gsiReady, googleLogin, navigate, postAuthDestination]);
+    }, [acceptedTerms, gsiReady, googleLogin, navigate, requestedWorkspace]);
 
     return (
         <AuthShell eyebrow="Get started" title="Create your CompanionAI account" subtitle="Choose Practice or Hiring after sign-up, and switch whenever you need.">

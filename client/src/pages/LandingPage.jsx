@@ -4,6 +4,7 @@ import { ArrowForwardRounded, AssignmentTurnedInRounded, AutoAwesome, Descriptio
 import { Box, Button, Chip, Container, Grid, Paper, Stack, Typography } from "@mui/material";
 import { AuthContext } from "../context/AuthContext";
 import SiteFooter from "../components/SiteFooter";
+import { setWorkspacePreference } from "../utils/workspacePreference";
 
 const features = [
     { icon: <WorkOutline />, title: "Built for your target role", body: "Turn any job description and resume into a realistic, multi-round interview plan." },
@@ -17,7 +18,7 @@ export default function LandingPage() {
     const primaryPath = user ? "/dashboard" : "/register?workspace=practice";
     const hiringPath = user ? "/assessments" : "/register?workspace=hiring";
     const rememberWorkspace = (workspace) => {
-        if (!user) localStorage.setItem("companionai:workspace", workspace);
+        if (!user) setWorkspacePreference(workspace);
     };
 
     return (

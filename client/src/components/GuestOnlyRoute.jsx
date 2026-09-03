@@ -2,6 +2,7 @@ import { useContext } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { Box, CircularProgress } from "@mui/material";
 import { AuthContext } from "../context/AuthContext";
+import { getWorkspaceHome, getWorkspacePreference } from "../utils/workspacePreference";
 
 export default function GuestOnlyRoute({ children }) {
     const { user, loading } = useContext(AuthContext);
@@ -19,9 +20,7 @@ export default function GuestOnlyRoute({ children }) {
         : workspaceParam === "practice"
             ? "/dashboard"
             : null;
-    const workspaceDestination = typeof localStorage !== "undefined" && localStorage.getItem("companionai:workspace") === "hiring"
-        ? "/assessments"
-        : "/dashboard";
+    const workspaceDestination = getWorkspaceHome(getWorkspacePreference(user?._id) || "practice");
 
     return user ? <Navigate to={requestedDestination || explicitWorkspaceDestination || workspaceDestination} replace /> : children;
 }

@@ -3,6 +3,7 @@ import { useSearchParams, Link as RouterLink, useNavigate } from "react-router-d
 import { Box, Card, CardContent, Typography, Button, CircularProgress, Stack, Link } from "@mui/material";
 import api from "../api/axios";
 import { AuthContext } from "../context/AuthContext";
+import { getWorkspacePreference } from "../utils/workspacePreference";
 
 const VerifyEmailPage = () => {
     const { resendVerification } = useContext(AuthContext);
@@ -11,7 +12,7 @@ const VerifyEmailPage = () => {
     const token = params.get("token");
     const email = params.get("email");
     const workspaceParam = params.get("workspace");
-    const requestedWorkspace = ["practice", "hiring"].includes(workspaceParam) ? workspaceParam : localStorage.getItem("companionai:workspace");
+    const requestedWorkspace = ["practice", "hiring"].includes(workspaceParam) ? workspaceParam : getWorkspacePreference();
     const loginPath = requestedWorkspace === "hiring" ? "/login?workspace=hiring" : requestedWorkspace === "practice" ? "/login?workspace=practice" : "/login";
     const [status, setStatus] = useState("idle");
     const [message, setMessage] = useState("");

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import { AuthContext } from "../context/AuthContext";
 import { trackEvent } from "../utils/analytics";
+import { getWorkspacePreference, setWorkspacePreference } from "../utils/workspacePreference";
 
 import { Add, ArrowForward, CheckCircleOutline, InsightsOutlined, PlayCircleOutline, RadioButtonUnchecked, TrackChanges } from "@mui/icons-material";
 import { Alert, Box, Button, Card, CardActionArea, CardContent, Chip, Container, Grid, LinearProgress, Pagination, Skeleton, Stack, Typography, ToggleButton, ToggleButtonGroup } from "@mui/material";
@@ -23,8 +24,15 @@ const DashboardPage = () => {
     const [recommendations, setRecommendations] = useState([]);
     const [entitlements, setEntitlements] = useState(null);
     const [resumeCount, setResumeCount] = useState(0);
-    const [workspaceChosen, setWorkspaceChosen] = useState(() => Boolean(localStorage.getItem("companionai:workspace")));
-    const chooseWorkspace = (workspace) => { localStorage.setItem("companionai:workspace", workspace); setWorkspaceChosen(true); window.dispatchEvent(new CustomEvent("companionai:workspace", { detail: workspace })); if (workspace === "hiring") navigate("/assessments"); };
+    const [workspaceChosen, setWorkspaceChosen] = useState(false);
+    useEffect(() => {
+        if (user?._id) setWorkspaceChosen(Boolean(getWorkspacePreference(user._id)));
+    }, [user?._id]);
+    const chooseWorkspace = (workspace) => {
+        if (user?._id) setWorkspacePreference(workspace, user._id);
+        setWorkspaceChosen(true);
+        if (workspace === "hiring") navigate("/assessments");
+    };
 
     useEffect(() => {
         if (!user?._id) return;

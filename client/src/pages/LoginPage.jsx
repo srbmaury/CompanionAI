@@ -1,8 +1,9 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, Link as RouterLink } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import Captcha from "../components/Captcha";
 import AuthShell from "../components/AuthShell";
+import { getWorkspaceHome, getWorkspacePreference, setWorkspacePreference } from "../utils/workspacePreference";
 
 // MUI components
 import {
@@ -41,10 +42,17 @@ const LoginPage = () => {
     const requested = location.state?.from;
     const workspaceParam = new URLSearchParams(location.search).get("workspace");
     const requestedWorkspace = ["practice", "hiring"].includes(workspaceParam) ? workspaceParam : null;
-    if (requestedWorkspace) localStorage.setItem("companionai:workspace", requestedWorkspace);
-    const authenticatedDestination = requested?.pathname
+    useEffect(() => {
+        if (requestedWorkspace) setWorkspacePreference(requestedWorkspace);
+    }, [requestedWorkspace]);
+    const requestedDestination = requested?.pathname
         ? `${requested.pathname}${requested.search || ""}${requested.hash || ""}`
-        : requestedWorkspace === "hiring" || localStorage.getItem("companionai:workspace") === "hiring" ? "/assessments" : "/dashboard";
+        : null;
+    const authenticatedDestinationFor = useCallback((authenticatedUser) => (
+        requestedDestination || getWorkspaceHome(
+            requestedWorkspace || getWorkspacePreference(authenticatedUser?._id) || "practice"
+        )
+    ), [requestedDestination, requestedWorkspace]);
     const registerPath = requestedWorkspace ? `/register?workspace=${requestedWorkspace}` : "/register";
 
     const validate = () => {
@@ -62,8 +70,8 @@ const LoginPage = () => {
         setApiError("");
         setSubmitting(true);
         try {
-            await login(email, password, captchaToken);
-            navigate(authenticatedDestination, { replace: true });
+            const authenticatedUser = await login(email, password, captchaToken);
+            navigate(authenticatedDestinationFor(authenticatedUser), { replace: true });
         } catch (err) {
             const msg = err?.response?.data?.message || "Invalid credentials";
             if (msg === "Email not verified") {
@@ -109,8 +117,8 @@ const LoginPage = () => {
                 client_id: clientId,
                 callback: async (response) => {
                     try {
-                        await googleLoginRef.current(response.credential);
-                        navigate(authenticatedDestination, { replace: true });
+                        const authenticatedUser = await googleLoginRef.current(response.credential);
+                        navigate(authenticatedDestinationFor(authenticatedUser), { replace: true });
                     } catch (e) {
                         console.error(e);
                         setErrors((prev) => ({ ...prev, password: "Google sign-in failed" }));
@@ -130,7 +138,7 @@ const LoginPage = () => {
         } catch (e) {
             console.error("GIS button render error", e);
         }
-    }, [authenticatedDestination, gsiReady, navigate]);
+    }, [authenticatedDestinationFor, gsiReady, navigate]);
 
     return (
         <AuthShell eyebrow="Welcome back" title="Sign in to CompanionAI" subtitle="Continue in your Practice or Hiring workspace.">

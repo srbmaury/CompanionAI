@@ -7,6 +7,7 @@ import { AppBar, Avatar, Badge, Box, Button, Container, Divider, IconButton, Lis
 import ProductFeedbackDialog from "./ProductFeedbackDialog";
 import useSafeBack from "../hooks/useSafeBack";
 import { useNotifications } from "../context/NotificationContext";
+import { getWorkspacePreference, setWorkspacePreference, WORKSPACE_EVENT } from "../utils/workspacePreference";
 
 const Brand = ({ to }) => (
     <Typography component={RouterLink} to={to} variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1.15, textDecoration: "none", color: "inherit", fontWeight: 850, letterSpacing: "-.025em" }}>
@@ -26,17 +27,28 @@ export default function Header() {
     const [feedbackOpen, setFeedbackOpen] = useState(false);
     const [notificationAnchor, setNotificationAnchor] = useState(null);
     const { notifications, clearNotifications } = useNotifications();
-    const [workspace, setWorkspace] = useState(() => localStorage.getItem("companionai:workspace") || "practice");
-    useEffect(() => { const sync = (event) => setWorkspace(event.detail || localStorage.getItem("companionai:workspace") || "practice"); window.addEventListener("companionai:workspace", sync); return () => window.removeEventListener("companionai:workspace", sync); }, []);
+    const [workspace, setWorkspace] = useState("practice");
+    useEffect(() => {
+        setWorkspace(user?._id ? getWorkspacePreference(user._id) || "practice" : "practice");
+    }, [user?._id]);
+    useEffect(() => {
+        const sync = (event) => {
+            const detail = event.detail || {};
+            if (detail.userId !== user?._id) return;
+            setWorkspace(detail.workspace || getWorkspacePreference(user?._id) || "practice");
+        };
+        window.addEventListener(WORKSPACE_EVENT, sync);
+        return () => window.removeEventListener(WORKSPACE_EVENT, sync);
+    }, [user?._id]);
     useEffect(() => {
         const hiringRoute = location.pathname.startsWith("/assessments");
         const practiceRoute = ["/dashboard", "/create-interview", "/interviews", "/resume", "/progress", "/experiences", "/saved-experiences"].some((path) => location.pathname.startsWith(path));
-        if (!hiringRoute && !practiceRoute) return;
+        if (!user?._id || (!hiringRoute && !practiceRoute)) return;
         const next = hiringRoute ? "hiring" : "practice";
-        localStorage.setItem("companionai:workspace", next);
+        setWorkspacePreference(next, user._id);
         setWorkspace(next);
-    }, [location.pathname]);
-    const switchWorkspace = (next) => { localStorage.setItem("companionai:workspace", next); setWorkspace(next); window.dispatchEvent(new CustomEvent("companionai:workspace", { detail: next })); setWorkspaceAnchor(null); setProfileAnchor(null); navigate(next === "hiring" ? "/assessments" : "/dashboard"); };
+    }, [location.pathname, user?._id]);
+    const switchWorkspace = (next) => { if (user?._id) setWorkspacePreference(next, user._id); setWorkspace(next); setWorkspaceAnchor(null); setProfileAnchor(null); navigate(next === "hiring" ? "/assessments" : "/dashboard"); };
     const isActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`);
     const isRootScreen = location.pathname === "/" || location.pathname === "/dashboard" || (location.pathname === "/assessments" && !location.search && !location.hash);
     const isCandidateAssessment = location.pathname.startsWith("/assessment/");

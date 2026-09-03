@@ -3,6 +3,8 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import api from "../api/axios";
 import BillingSuccessPage from "../pages/BillingSuccessPage";
+import { AuthContext } from "../context/AuthContext";
+import { setWorkspacePreference } from "../utils/workspacePreference";
 
 vi.mock("../api/axios", () => ({ default: { get: vi.fn() } }));
 
@@ -20,10 +22,15 @@ describe("BillingSuccessPage", () => {
     afterEach(() => vi.unstubAllGlobals());
 
     it("recognizes a Scale checkout and returns recruiters to Hiring", async () => {
-        localStorage.setItem("companionai:workspace", "hiring");
+        const user = { _id: "recruiter-1" };
+        setWorkspacePreference("hiring", user._id);
         api.get.mockResolvedValue({ data: { plan: "scale" } });
 
-        render(<MemoryRouter><BillingSuccessPage /></MemoryRouter>);
+        render(
+            <AuthContext.Provider value={{ user }}>
+                <MemoryRouter><BillingSuccessPage /></MemoryRouter>
+            </AuthContext.Provider>
+        );
 
         expect(await screen.findByText("Scale is active on your account.")).toBeTruthy();
         expect(screen.getByRole("link", { name: "Continue to Hiring" }).getAttribute("href")).toBe("/assessments");
