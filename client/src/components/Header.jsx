@@ -57,6 +57,13 @@ export default function Header() {
         setWorkspace(user?._id ? getWorkspacePreference(user._id) || "practice" : "practice");
     }, [user?._id]);
     useEffect(() => {
+        setAnchor(null);
+        setWorkspaceAnchor(null);
+        setProfileAnchor(null);
+        setNotificationAnchor(null);
+        setFeedbackOpen(false);
+    }, [user?._id, location.pathname, location.search, location.hash]);
+    useEffect(() => {
         const sync = (event) => {
             const detail = event.detail || {};
             if (detail.userId !== user?._id) return;
@@ -107,7 +114,7 @@ export default function Header() {
                         <Brand to={user && !isCandidateAssessment ? workspaceHome : "/"} />
                         {user && !isCandidateAssessment && <>
                             <Button onClick={(event) => setWorkspaceAnchor(event.currentTarget)} aria-label="Switch workspace" color="inherit" size="small" startIcon={<WorkspaceIcon />} endIcon={<ExpandMoreRounded />} sx={{ ml: { xs: .25, sm: 1 }, px: { xs: 1, sm: 1.25 }, bgcolor: "action.hover", whiteSpace: "nowrap", "& .MuiButton-startIcon": { mr: { xs: 0, sm: .75 } }, "& .MuiButton-endIcon": { display: { xs: "none", sm: "inherit" } } }}><Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>{workspaceLabel}</Box></Button>
-                            <Menu anchorEl={workspaceAnchor} open={Boolean(workspaceAnchor)} onClose={() => setWorkspaceAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "left" }} transformOrigin={{ vertical: "top", horizontal: "left" }} PaperProps={{ sx: { width: 310, maxWidth: "calc(100vw - 24px)" } }}>
+                            <Menu anchorEl={workspaceAnchor} open={Boolean(workspaceAnchor?.isConnected)} onClose={() => setWorkspaceAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "left" }} transformOrigin={{ vertical: "top", horizontal: "left" }} PaperProps={{ sx: { width: 310, maxWidth: "calc(100vw - 24px)" } }}>
                                 <MenuItem selected={workspace === "practice"} onClick={() => switchWorkspace("practice")}><SchoolOutlined sx={{ mr: 1.5 }} /><ListItemText primary="Practice" secondary="Interviews, resumes, and personal progress" /></MenuItem>
                                 <MenuItem selected={workspace === "hiring"} onClick={() => switchWorkspace("hiring")}><WorkOutlineRounded sx={{ mr: 1.5 }} /><ListItemText primary="Hiring" secondary="Assessments, candidates, and reports" /></MenuItem>
                             </Menu>
@@ -143,7 +150,7 @@ export default function Header() {
                                 {user?.role === "admin" && <Button component={RouterLink} to="/admin/feedback" sx={navSx("/admin/feedback")}>Feedback inbox</Button>}
                                 {(workspace !== "hiring" || canManageAssessments) && <Button component={workspace === "hiring" ? "button" : RouterLink} to={workspace === "hiring" ? undefined : "/create-interview"} onClick={workspace === "hiring" ? openNewAssessment : undefined} variant="contained" startIcon={<AddRounded />} sx={{ ml: 1, px: 2 }}>{workspace === "hiring" ? "New assessment" : "New practice"}</Button>}
                                 <Tooltip title="Notifications"><IconButton onClick={(event) => setNotificationAnchor(event.currentTarget)} aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}><Badge color="error" badgeContent={unreadCount} max={9}><NotificationsNoneRounded /></Badge></IconButton></Tooltip>
-                                <Menu anchorEl={notificationAnchor} open={Boolean(notificationAnchor)} onClose={() => setNotificationAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }} PaperProps={{ sx: { width: 390, maxWidth: "calc(100vw - 24px)", maxHeight: 480 } }}>
+                                <Menu anchorEl={notificationAnchor} open={Boolean(notificationAnchor?.isConnected)} onClose={() => setNotificationAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }} PaperProps={{ sx: { width: 390, maxWidth: "calc(100vw - 24px)", maxHeight: 480 } }}>
                                     <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1} px={2} py={1.25}>
                                         <Box><Typography fontWeight={800}>Notifications</Typography><Typography variant="caption" color="text.secondary">{unreadCount ? `${unreadCount} unread` : "You’re all caught up"}</Typography></Box>
                                         <Stack direction="row" spacing={.25}>{unreadCount > 0 && <Button size="small" onClick={markAllRead}>Mark read</Button>}{notifications.length > 0 && <Button size="small" color="inherit" onClick={clearNotifications}>Clear</Button>}</Stack>
@@ -151,7 +158,7 @@ export default function Header() {
                                     {notifications.length === 0 ? <Box px={2} py={3}><Typography variant="body2" color="text.secondary">No notifications yet. Saved changes, completed actions, and errors will appear here.</Typography></Box> : notifications.slice(0, 10).map((item) => <MenuItem key={item.id} selected={!item.read} onClick={() => markNotificationRead(item.id)} sx={{ whiteSpace: "normal", alignItems: "flex-start", gap: 1, py: 1.25 }}><Box aria-hidden="true" sx={{ width: 8, height: 8, borderRadius: "50%", mt: .75, flexShrink: 0, bgcolor: item.severity === "error" ? "error.main" : item.severity === "warning" ? "warning.main" : item.severity === "success" ? "success.main" : "primary.main", opacity: item.read ? .3 : 1 }} /><ListItemText primary={item.message} secondary={notificationTime(item.at)} primaryTypographyProps={{ variant: "body2", fontWeight: item.read ? 500 : 750, color: item.severity === "error" ? "error.main" : "text.primary" }} secondaryTypographyProps={{ variant: "caption" }} /><IconButton size="small" aria-label="Dismiss notification" onClick={(event) => { event.stopPropagation(); dismissNotification(item.id); }}><Typography component="span" aria-hidden="true" fontSize={18} lineHeight={1}>×</Typography></IconButton></MenuItem>)}
                                 </Menu>
                                 <Tooltip title="Account"><IconButton onClick={(event) => setProfileAnchor(event.currentTarget)} aria-label="Open account menu"><Avatar sx={{ width: 36, height: 36, bgcolor: "primary.main", fontSize: 14, fontWeight: 800 }}>{user?.name?.charAt(0)?.toUpperCase() || "U"}</Avatar></IconButton></Tooltip>
-                                <Menu anchorEl={profileAnchor} open={Boolean(profileAnchor)} onClose={() => setProfileAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }}>
+                                <Menu anchorEl={profileAnchor} open={Boolean(profileAnchor?.isConnected)} onClose={() => setProfileAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }}>
                                     <MenuItem component={RouterLink} to="/profile" onClick={() => setProfileAnchor(null)}>Profile & settings</MenuItem>
                                     {workspace === "practice" && <MenuItem component={RouterLink} to="/pricing" onClick={() => setProfileAnchor(null)}>Practice plans & billing</MenuItem>}
                                     {workspace === "hiring" && canManageOrganization && <MenuItem component={RouterLink} to="/hiring/team" onClick={() => setProfileAnchor(null)}>Team & Hiring billing</MenuItem>}
@@ -162,7 +169,7 @@ export default function Header() {
                                 </Menu>
                             </Stack>
                             <IconButton sx={{ display: { md: "none" } }} onClick={(event) => setAnchor(event.currentTarget)} aria-label="Open navigation"><MenuIcon /></IconButton>
-                            <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={close} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }}>
+                            <Menu anchorEl={anchor} open={Boolean(anchor?.isConnected)} onClose={close} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }}>
                                 <MenuItem disabled sx={{ opacity: "1 !important" }}><ListItemText primary={`${workspaceLabel} workspace`} primaryTypographyProps={{ variant: "overline", fontWeight: 800, color: "primary.main" }} /></MenuItem>
                                 {(workspace === "practice" || (hasHiringOrganization && canViewHiringOverview)) && <MenuItem component={RouterLink} to={workspaceHome} onClick={close}>Overview</MenuItem>}
                                 {workspace === "hiring" && !hasHiringOrganization && <MenuItem component={RouterLink} to="/hiring/team" onClick={close}>Set up Hiring</MenuItem>}
