@@ -53,12 +53,20 @@ export const listOrganizations = async (req, res, next) => {
 };
 
 export const createOrganization = async (req, res, next) => {
+    let organization = null;
+    let trialClaimed = false;
     try {
-        const existingCreatedOrganizations = await Organization.countDocuments({ createdBy: req.user._id });
-        const organization = await Organization.create({
+        const trialClaim = await User.findOneAndUpdate(
+            { _id: req.user._id, hiringTrialClaimed: false },
+            { $set: { hiringTrialClaimed: true } },
+            { new: true },
+        );
+        trialClaimed = Boolean(trialClaim);
+
+        organization = await Organization.create({
             name: req.body.name,
             createdBy: req.user._id,
-            hiringTrialEligible: existingCreatedOrganizations === 0,
+            hiringTrialEligible: trialClaimed,
         });
         const membership = await OrganizationMembership.create({
             organization: organization._id,
@@ -69,6 +77,13 @@ export const createOrganization = async (req, res, next) => {
         membership.organization = organization;
         return res.status(201).json({ organization: organizationView(membership, 1) });
     } catch (error) {
+        if (organization?._id) await Organization.deleteOne({ _id: organization._id }).catch(() => {});
+        if (trialClaimed) {
+            await User.updateOne(
+                { _id: req.user._id },
+                { $set: { hiringTrialClaimed: false } },
+            ).catch(() => {});
+        }
         return next(error);
     }
 };
@@ -109,9 +124,9 @@ export const listMembers = async (req, res, next) => {
                 _id: membership._id,
                 user: membership.user,
                 role: membership.role,
+                status: membership.status,
                 joinedAt: membership.joinedAt,
             })),
-            currentRole: requester.role,
         });
     } catch (error) {
         return next(error);
@@ -120,62 +135,57 @@ export const listMembers = async (req, res, next) => {
 
 export const addMember = async (req, res, next) => {
     try {
-        const actor = await activeMembership(req.params.organizationId, req.user._id);
-        if (!actor || !["owner", "admin"].includes(actor.role)) {
-            return res.status(403).json({ message: "You do not have permission to manage this team" });
+        const requester = await activeMembership(req.params.organizationId, req.user._id);
+        if (!requester) return res.status(404).json({ message: "Organization not found" });
+        if (!["owner", "admin"].includes(requester.role)) {
+            return res.status(403).json({ message: "You do not have permission to manage this organization" });
         }
-        if (!canManageMember(actor.role, "reviewer", req.body.role)) {
-            return res.status(403).json({ message: "You cannot assign that role" });
+        if (requester.role === "admin" && req.body.role === "admin") {
+            return res.status(403).json({ message: "Only the organization owner can add another admin" });
         }
-        const user = await User.findOne({ email: req.body.email.toLowerCase().trim() }).select("_id name email");
-        if (!user) return res.status(404).json({ message: "No CompanionAI account exists for that email" });
-
-        let membership = await OrganizationMembership.findOne({
-            organization: req.params.organizationId,
-            user: user._id,
-        });
-        if (membership?.status === "active") {
-            return res.status(409).json({ message: "This person is already a member" });
-        }
-        if (membership) {
-            membership.role = req.body.role;
-            membership.status = "active";
-            membership.joinedAt = new Date();
-            await membership.save();
-        } else {
-            membership = await OrganizationMembership.create({
-                organization: req.params.organizationId,
-                user: user._id,
-                role: req.body.role,
-                status: "active",
-            });
-        }
+        const user = await User.findOne({ email: req.body.email.toLowerCase().trim() });
+        if (!user) return res.status(404).json({ message: "That person needs a CompanionAI account before they can be added" });
+        const membership = await OrganizationMembership.findOneAndUpdate(
+            { organization: req.params.organizationId, user: user._id },
+            {
+                $set: { role: req.body.role, status: "active", joinedAt: new Date() },
+                $setOnInsert: { organization: req.params.organizationId, user: user._id },
+            },
+            { upsert: true, new: true, runValidators: true },
+        ).populate("user", "_id name email");
         return res.status(201).json({
-            member: { _id: membership._id, user, role: membership.role, joinedAt: membership.joinedAt },
+            membership: {
+                _id: membership._id,
+                user: membership.user,
+                role: membership.role,
+                status: membership.status,
+                joinedAt: membership.joinedAt,
+            },
         });
     } catch (error) {
         return next(error);
     }
 };
 
-export const updateMemberRole = async (req, res, next) => {
+export const updateMember = async (req, res, next) => {
     try {
-        const actor = await activeMembership(req.params.organizationId, req.user._id);
-        if (!actor || !["owner", "admin"].includes(actor.role)) {
-            return res.status(403).json({ message: "You do not have permission to manage this team" });
+        const requester = await activeMembership(req.params.organizationId, req.user._id);
+        if (!requester) return res.status(404).json({ message: "Organization not found" });
+        if (!["owner", "admin"].includes(requester.role)) {
+            return res.status(403).json({ message: "You do not have permission to manage this organization" });
         }
         const target = await OrganizationMembership.findOne({
             _id: req.params.membershipId,
             organization: req.params.organizationId,
             status: "active",
-        }).populate("user", "_id name email");
+        });
         if (!target) return res.status(404).json({ message: "Member not found" });
-        if (!canManageMember(actor.role, target.role, req.body.role)) {
-            return res.status(403).json({ message: "You cannot change this member's role" });
+        if (!canManageMember(requester.role, target.role, req.body.role)) {
+            return res.status(403).json({ message: "You cannot change that member's role" });
         }
         target.role = req.body.role;
         await target.save();
-        return res.json({ member: { _id: target._id, user: target.user, role: target.role, joinedAt: target.joinedAt } });
+        return res.json({ membership: { _id: target._id, role: target.role, status: target.status } });
     } catch (error) {
         return next(error);
     }
@@ -183,9 +193,10 @@ export const updateMemberRole = async (req, res, next) => {
 
 export const removeMember = async (req, res, next) => {
     try {
-        const actor = await activeMembership(req.params.organizationId, req.user._id);
-        if (!actor || !["owner", "admin"].includes(actor.role)) {
-            return res.status(403).json({ message: "You do not have permission to manage this team" });
+        const requester = await activeMembership(req.params.organizationId, req.user._id);
+        if (!requester) return res.status(404).json({ message: "Organization not found" });
+        if (!["owner", "admin"].includes(requester.role)) {
+            return res.status(403).json({ message: "You do not have permission to manage this organization" });
         }
         const target = await OrganizationMembership.findOne({
             _id: req.params.membershipId,
@@ -193,47 +204,39 @@ export const removeMember = async (req, res, next) => {
             status: "active",
         });
         if (!target) return res.status(404).json({ message: "Member not found" });
-        if (!canManageMember(actor.role, target.role)) {
-            return res.status(403).json({ message: "You cannot remove this member" });
+        if (!canManageMember(requester.role, target.role)) {
+            return res.status(403).json({ message: "You cannot remove that member" });
         }
         target.status = "disabled";
         await target.save();
-        return res.status(204).end();
+        return res.json({ message: "Member removed" });
     } catch (error) {
         return next(error);
     }
 };
 
-
 export const transferOwnership = async (req, res, next) => {
     try {
-        const actor = await activeMembership(req.params.organizationId, req.user._id);
-        if (!actor || actor.role !== "owner") {
+        const requester = await activeMembership(req.params.organizationId, req.user._id);
+        if (!requester) return res.status(404).json({ message: "Organization not found" });
+        if (requester.role !== "owner") {
             return res.status(403).json({ message: "Only the organization owner can transfer ownership" });
         }
         const target = await OrganizationMembership.findOne({
             _id: req.body.membershipId,
             organization: req.params.organizationId,
             status: "active",
-        }).populate("user", "_id name email");
-        if (!target) return res.status(404).json({ message: "Member not found" });
-        if (String(target.user?._id || target.user) === String(req.user._id)) {
-            return res.status(400).json({ message: "Choose another team member" });
-        }
-
-        await OrganizationMembership.bulkWrite([
-            { updateOne: { filter: { _id: target._id }, update: { $set: { role: "owner" } } } },
-            { updateOne: { filter: { _id: actor._id }, update: { $set: { role: "admin" } } } },
-        ]);
-
-        return res.json({
-            owner: {
-                membershipId: target._id,
-                user: target.user,
-                role: "owner",
-            },
-            previousOwnerRole: "admin",
         });
+        if (!target) return res.status(404).json({ message: "Member not found" });
+        if (String(target.user) === String(req.user._id)) {
+            return res.status(400).json({ message: "Choose another active organization member" });
+        }
+        requester.role = "admin";
+        target.role = "owner";
+        await requester.save();
+        await target.save();
+        await Organization.updateOne({ _id: req.params.organizationId }, { $set: { createdBy: target.user } });
+        return res.json({ message: "Ownership transferred", ownerMembershipId: target._id });
     } catch (error) {
         return next(error);
     }
