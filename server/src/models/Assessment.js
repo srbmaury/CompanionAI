@@ -15,7 +15,8 @@ const assessmentRoundSchema = new mongoose.Schema({
 }, { _id: true });
 
 const assessmentSchema = new mongoose.Schema({
-    owner: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    organization: { type: mongoose.Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
     title: { type: String, required: true, maxlength: 160 },
     company: { type: String, maxlength: 120, default: "" },
     jobRole: { type: String, required: true, maxlength: 120 },
@@ -54,6 +55,7 @@ const assessmentSchema = new mongoose.Schema({
     rounds: { type: [assessmentRoundSchema], validate: (value) => value.length >= 1 && value.length <= 5 },
 }, { timestamps: true });
 
-assessmentSchema.index({ owner: 1, createdAt: -1 });
+assessmentSchema.index({ organization: 1, createdAt: -1 });
+assessmentSchema.index({ organization: 1, status: 1, createdAt: -1 });
 
 export default mongoose.model("Assessment", assessmentSchema);
