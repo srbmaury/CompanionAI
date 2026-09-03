@@ -7,6 +7,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
 import AdminRoute from "./components/AdminRoute";
 import GuestOnlyRoute from "./components/GuestOnlyRoute";
+import HiringOrganizationGate from "./components/HiringOrganizationGate";
 
 const CreateInterviewPage = lazy(() => import("./pages/CreateInterviewPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
@@ -34,11 +35,18 @@ const AssessmentsPage = lazy(() => import("./pages/AssessmentsPage.jsx"));
 const AssessmentReportPage = lazy(() => import("./pages/AssessmentReportPage.jsx"));
 const CandidateAssessmentPage = lazy(() => import("./pages/CandidateAssessmentPage.jsx"));
 const AssessmentPreviewPage = lazy(() => import("./pages/AssessmentPreviewPage.jsx"));
+const HiringTeamPage = lazy(() => import("./pages/HiringTeamPage.jsx"));
 
 const PageLoader = () => (
     <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }} role="status" aria-label="Loading page">
         <CircularProgress />
     </Box>
+);
+
+const HiringRoute = ({ children }) => (
+    <ProtectedRoute>
+        <HiringOrganizationGate>{children}</HiringOrganizationGate>
+    </ProtectedRoute>
 );
 
 function App() {
@@ -90,30 +98,9 @@ function App() {
                 <Route path="/assessment/:shareToken" element={<CandidateAssessmentPage />} />
 
                 {/* Protected routes */}
-                <Route
-                    path="/dashboard"
-                    element={
-                        <ProtectedRoute>
-                            <DashboardPage />
-                        </ProtectedRoute>
-                    }
-                />
-                <Route
-                    path="/experiences"
-                    element={
-                        <ProtectedRoute>
-                            <ExperiencesPage />
-                        </ProtectedRoute>
-                    }
-                />
-                <Route
-                    path="/profile"
-                    element={
-                        <ProtectedRoute>
-                            <ProfilePage />
-                        </ProtectedRoute>
-                    }
-                />
+                <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+                <Route path="/experiences" element={<ProtectedRoute><ExperiencesPage /></ProtectedRoute>} />
+                <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                 <Route path="/progress" element={<ProtectedRoute><ProgressPage /></ProtectedRoute>} />
                 <Route path="/resume-reviews" element={<ProtectedRoute><ReviewHistoryPage /></ProtectedRoute>} />
                 <Route path="/resume-match" element={<ProtectedRoute><ResumeMatcherPage /></ProtectedRoute>} />
@@ -123,35 +110,14 @@ function App() {
                 <Route path="/billing/success" element={<ProtectedRoute><BillingSuccessPage /></ProtectedRoute>} />
                 <Route path="/admin/feedback" element={<ProtectedRoute><AdminRoute><AdminFeedbackPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/admin/audit" element={<ProtectedRoute><AdminRoute><AdminAuditPage /></AdminRoute></ProtectedRoute>} />
-                <Route path="/assessments" element={<ProtectedRoute><AssessmentsPage /></ProtectedRoute>} />
-                <Route path="/assessments/:assessmentId" element={<ProtectedRoute><AssessmentReportPage /></ProtectedRoute>} />
-                <Route path="/assessments/:assessmentId/preview" element={<ProtectedRoute><AssessmentPreviewPage /></ProtectedRoute>} />
-                <Route
-                    path="/create-interview"
-                    element={
-                        <ProtectedRoute>
-                            <CreateInterviewPage />
-                        </ProtectedRoute>
-                    }
-                />
+                <Route path="/assessments" element={<HiringRoute><AssessmentsPage /></HiringRoute>} />
+                <Route path="/assessments/:assessmentId" element={<HiringRoute><AssessmentReportPage /></HiringRoute>} />
+                <Route path="/assessments/:assessmentId/preview" element={<HiringRoute><AssessmentPreviewPage /></HiringRoute>} />
+                <Route path="/hiring/team" element={<HiringRoute><HiringTeamPage /></HiringRoute>} />
+                <Route path="/create-interview" element={<ProtectedRoute><CreateInterviewPage /></ProtectedRoute>} />
+                <Route path="/resume-review" element={<ProtectedRoute><ResumeReviewPage /></ProtectedRoute>} />
+                <Route path="/interviews/:interviewId" element={<ProtectedRoute><InterviewPage /></ProtectedRoute>} />
 
-                <Route
-                    path="/resume-review"
-                    element={
-                        <ProtectedRoute>
-                            <ResumeReviewPage />
-                        </ProtectedRoute>
-                    }
-                />
-
-                <Route
-                    path="/interviews/:interviewId"
-                    element={
-                        <ProtectedRoute>
-                            <InterviewPage />
-                        </ProtectedRoute>
-                    }
-                />
                 {/* For any invalid url return to the product home */}
                 <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
