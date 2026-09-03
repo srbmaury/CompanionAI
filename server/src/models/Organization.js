@@ -25,12 +25,13 @@ const organizationSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
             required: true,
+            immutable: true,
             index: true,
         },
         hiringPlan: {
             type: String,
-            enum: ["trial", "starter", "growth", "enterprise"],
-            default: "trial",
+            enum: ["none", "trial", "starter", "growth", "enterprise"],
+            default: "none",
             index: true,
         },
         hiringSubscriptionStatus: {
@@ -40,7 +41,7 @@ const organizationSchema = new mongoose.Schema(
         },
         hiringTrialEligible: {
             type: Boolean,
-            default: true,
+            default: false,
         },
         hiringBillingProvider: {
             type: String,
