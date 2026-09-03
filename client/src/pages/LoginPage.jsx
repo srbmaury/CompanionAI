@@ -39,9 +39,13 @@ const LoginPage = () => {
     const [errors, setErrors] = useState({ email: "", password: "" });
     const [apiError, setApiError] = useState("");
     const requested = location.state?.from;
+    const workspaceParam = new URLSearchParams(location.search).get("workspace");
+    const requestedWorkspace = ["practice", "hiring"].includes(workspaceParam) ? workspaceParam : null;
+    if (requestedWorkspace) localStorage.setItem("companionai:workspace", requestedWorkspace);
     const authenticatedDestination = requested?.pathname
         ? `${requested.pathname}${requested.search || ""}${requested.hash || ""}`
-        : localStorage.getItem("companionai:workspace") === "hiring" ? "/assessments" : "/dashboard";
+        : requestedWorkspace === "hiring" || localStorage.getItem("companionai:workspace") === "hiring" ? "/assessments" : "/dashboard";
+    const registerPath = requestedWorkspace ? `/register?workspace=${requestedWorkspace}` : "/register";
 
     const validate = () => {
         const next = { email: "", password: "" };
@@ -50,8 +54,6 @@ const LoginPage = () => {
         setErrors(next);
         return !next.email && !next.password;
     };
-
-    // CAPTCHA not shown in development; enable when CAPTCHA_ENABLED in prod
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -74,7 +76,6 @@ const LoginPage = () => {
         }
     };
 
-    // Detect when GIS script is ready
     useEffect(() => {
         const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
         if (!clientId) return;
@@ -97,11 +98,9 @@ const LoginPage = () => {
         };
     }, []);
 
-    // Stable ref so the GIS effect doesn't re-run when googleLogin identity changes
     const googleLoginRef = useRef(googleLogin);
     useEffect(() => { googleLoginRef.current = googleLogin; }, [googleLogin]);
 
-    // Google Identity Services button
     useEffect(() => {
         const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
         if (!clientId || !gsiReady || !googleDivRef.current) return;
@@ -119,8 +118,6 @@ const LoginPage = () => {
                 },
                 auto_select: false,
                 ux_mode: "popup",
-                // Prefer the browser-owned FedCM dialog where supported. This avoids
-                // fragile OAuth popup rendering in Chromium-based embedded browsers.
                 use_fedcm_for_button: true,
                 itp_support: true,
             });
@@ -135,140 +132,27 @@ const LoginPage = () => {
         }
     }, [authenticatedDestination, gsiReady, navigate]);
 
-    // no manual click handler; rely on the rendered Google button only
-
     return (
         <AuthShell eyebrow="Welcome back" title="Sign in to CompanionAI" subtitle="Continue in your Practice or Hiring workspace.">
                     <Box component="form" noValidate onSubmit={handleSubmit}>
                         <Stack spacing={{ xs: 2.25, md: 1.5 }}>
                             {apiError && <Alert severity="error" onClose={() => setApiError("")}>{apiError}</Alert>}
-                            {/* Email */}
                             <FormControl fullWidth>
-                                <TextField
-                                    id="email"
-                                    label="Email"
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    required
-                                    placeholder="name@example.com"
-                                    autoComplete="email"
-                                    error={!!errors.email}
-                                    helperText={errors.email || undefined}
-                                    size="medium"
-                                />
+                                <TextField id="email" label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="name@example.com" autoComplete="email" error={!!errors.email} helperText={errors.email || undefined} size="medium" />
                             </FormControl>
-
-                            {/* Password */}
                             <FormControl fullWidth>
-                                <TextField
-                                    id="password"
-                                    label="Password"
-                                    type={showPassword ? "text" : "password"}
-                                    value={password}
-                                    onChange={(e) =>
-                                        setPassword(e.target.value)
-                                    }
-                                    required
-                                    placeholder="••••••••"
-                                    autoComplete="current-password"
-                                    error={!!errors.password}
-                                    size="medium"
-                                    InputProps={{
-                                        endAdornment: (
-                                            <InputAdornment position="end">
-                                                <IconButton
-                                                    aria-label={
-                                                        showPassword
-                                                            ? "Hide password"
-                                                            : "Show password"
-                                                    }
-                                                    onClick={() =>
-                                                        setShowPassword(
-                                                            (s) => !s
-                                                        )
-                                                    }
-                                                    edge="end"
-                                                >
-                                                    {showPassword ? (
-                                                        <VisibilityOff />
-                                                    ) : (
-                                                        <Visibility />
-                                                    )}
-                                                </IconButton>
-                                            </InputAdornment>
-                                        ),
-                                    }}
-                                />
+                                <TextField id="password" label="Password" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••" autoComplete="current-password" error={!!errors.password} size="medium" InputProps={{ endAdornment: <InputAdornment position="end"><IconButton aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((s) => !s)} edge="end">{showPassword ? <VisibilityOff /> : <Visibility />}</IconButton></InputAdornment> }} />
                                 {errors.password && <FormHelperText error>{errors.password}</FormHelperText>}
-                                <Typography variant="body2" align="right" sx={{ mt: 1 }}>
-                                    <Link component={RouterLink} to="/forgot-password" underline="hover">
-                                        Forgot password?
-                                    </Link>
-                                </Typography>
+                                <Typography variant="body2" align="right" sx={{ mt: 1 }}><Link component={RouterLink} to="/forgot-password" underline="hover">Forgot password?</Link></Typography>
                             </FormControl>
-
-                            {errors.password === "Email not verified" && (
-                                <Stack spacing={1}>
-                                    <Typography variant="body2" color="text.secondary">
-                                        Didn’t receive the verification email?
-                                    </Typography>
-                                    <Button
-                                        size="small"
-                                        variant="text"
-                                        onClick={async () => {
-                                            try {
-                                                const r = await resendVerification(email);
-                                                setErrors((p) => ({ ...p, password: r?.message || "Verification email sent" }));
-                                            } catch (e) {
-                                                console.error(e);
-                                            }
-                                        }}
-                                    >
-                                        Resend verification
-                                    </Button>
-                                </Stack>
-                            )}
-                            {/* CAPTCHA: server validates only in prod; safe in dev */}
+                            {errors.password === "Email not verified" && <Stack spacing={1}><Typography variant="body2" color="text.secondary">Didn’t receive the verification email?</Typography><Button size="small" variant="text" onClick={async () => { try { const r = await resendVerification(email); setErrors((p) => ({ ...p, password: r?.message || "Verification email sent" })); } catch (e) { console.error(e); } }}>Resend verification</Button></Stack>}
                             <Captcha onVerify={(t) => setCaptchaToken(t)} onExpire={() => setCaptchaToken("")} />
-                            {/* Submit */}
-                            <Button
-                                type="submit"
-                                variant="contained"
-                                size="large"
-                                startIcon={<LoginIcon />}
-                                disabled={submitting}
-                                sx={{
-                                    py: 1.25,
-                                    borderRadius: 2,
-                                    textTransform: "none",
-                                    fontWeight: 700,
-                                }}
-                            >
-                                {submitting ? "Signing in..." : "Sign in"}
-                            </Button>
+                            <Button type="submit" variant="contained" size="large" startIcon={<LoginIcon />} disabled={submitting} sx={{ py: 1.25, borderRadius: 2, textTransform: "none", fontWeight: 700 }}>{submitting ? "Signing in..." : "Sign in"}</Button>
                         </Stack>
                     </Box>
-
                     <Divider sx={{ my: { xs: 3, md: 2 } }}><Typography variant="caption" color="text.secondary">OR CONTINUE WITH</Typography></Divider>
-
-                    <Stack spacing={2} alignItems="center">
-                        <div ref={googleDivRef} />
-                        <Typography variant="caption" color="text.secondary" align="center">
-                            Google sign-in may not display in embedded browsers. If the Google window is blank, open CompanionAI in Chrome or Safari, or use email and password.
-                        </Typography>
-                    </Stack>
-
-                    <Typography align="center" color="text.secondary">
-                        Don’t have an account?{" "}
-                        <Link
-                            component={RouterLink}
-                            to="/register"
-                            underline="hover"
-                        >
-                            Register
-                        </Link>
-                    </Typography>
+                    <Stack spacing={2} alignItems="center"><div ref={googleDivRef} /><Typography variant="caption" color="text.secondary" align="center">Google sign-in may not display in embedded browsers. If the Google window is blank, open CompanionAI in Chrome or Safari, or use email and password.</Typography></Stack>
+                    <Typography align="center" color="text.secondary">Don’t have an account? <Link component={RouterLink} to={registerPath} underline="hover">Register</Link></Typography>
         </AuthShell>
     );
 };
