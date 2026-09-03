@@ -1,0 +1,41 @@
+name: Fix public code editor auth context
+
+on:
+  push:
+    branches: [hiring-organizations]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make auth context optional for public code editor
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("client/src/components/CodeEditorField.jsx")
+          text = path.read_text()
+          old = '''    const muiTheme = useTheme();
+    const { user } = useContext(AuthContext);
+    const preferredProgrammingLanguage = user?.preferredProgrammingLanguage;
+'''
+          new = '''    const muiTheme = useTheme();
+    const authContext = useContext(AuthContext);
+    const preferredProgrammingLanguage = authContext?.user?.preferredProgrammingLanguage;
+'''
+          if old not in text:
+              raise SystemExit("CodeEditorField auth context block not found")
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add client/src/components/CodeEditorField.jsx
+          git diff --cached --check
+          git commit -m "Allow code editor outside auth provider"
+          git push
