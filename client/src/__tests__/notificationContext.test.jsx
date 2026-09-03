@@ -1,5 +1,5 @@
-import { beforeEach, fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
 import { NotificationProvider, useNotifications, useNotify } from "../context/NotificationContext";
 
 function NotificationHarness() {
