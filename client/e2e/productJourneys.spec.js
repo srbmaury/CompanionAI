@@ -6,9 +6,12 @@ const mockSignedOut = async (page) => {
     await page.route("**/api/auth/refresh", (route) => json(route, { message: "Unauthenticated" }, 401));
 };
 
-const mockSignedIn = async (page, user = { _id: "user-1", name: "Recruiter One", email: "recruiter@example.com", role: "user", plan: "free" }) => {
+const mockSignedIn = async (page, user = { _id: "user-1", name: "Recruiter One", email: "recruiter@example.com", role: "user", plan: "free" }, organizationRole = "owner") => {
     await page.route("**/api/auth/refresh", (route) => json(route, { token: "test-access-token" }));
     await page.route("**/api/auth/profile", (route) => json(route, user));
+    await page.route("**/api/organizations", (route) => json(route, {
+        organizations: [{ _id: "org-1", name: "Acme Hiring", role: organizationRole, memberCount: 1 }],
+    }));
 };
 
 test("public homepage explains both candidate and recruiter value", async ({ page }) => {
@@ -192,6 +195,30 @@ test("recruiter can publish a hybrid assessment with all candidate experiences",
     await expect.poll(() => published?.rounds?.map((round) => round.deliveryMode)).toEqual(["conversational", "online-assessment", "system-design"]);
     expect(published.status).toBe("active");
     expect(published.rounds.every((round) => round.questionCount === 1)).toBeTruthy();
+});
+
+test("reviewer can inspect Hiring but cannot create assessments", async ({ page }) => {
+    await mockSignedIn(page, undefined, "reviewer");
+    await page.route("**/api/assessments/overview**", (route) => json(route, { summary: {}, assessments: [], candidates: [], totalPages: 1 }));
+    await page.route("**/api/assessments?**", (route) => json(route, { items: [], totalPages: 1 }));
+    await page.route("**/api/organizations/org-1/members", (route) => json(route, {
+        currentRole: "reviewer",
+        members: [{ _id: "membership-1", role: "reviewer", joinedAt: "2026-09-03T00:00:00Z", user: { _id: "user-1", name: "Recruiter One", email: "recruiter@example.com" } }],
+    }));
+
+    await page.goto("/assessments");
+    await expect(page.getByRole("heading", { name: "Hiring overview" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "New assessment" })).toHaveCount(0);
+
+    if ((page.viewportSize()?.width || 0) >= 900) {
+        await page.getByRole("link", { name: "Team" }).click();
+    } else {
+        await page.getByRole("button", { name: "Open navigation" }).click();
+        await page.getByRole("menuitem", { name: "Team & organization" }).click();
+    }
+    await expect(page).toHaveURL(/\/hiring\/team$/);
+    await expect(page.getByRole("heading", { name: "Team & organization" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Add existing CompanionAI user" })).toHaveCount(0);
 });
 
 test("candidate completes an assessment without seeing private feedback", async ({ page }) => {

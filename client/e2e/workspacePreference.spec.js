@@ -17,6 +17,9 @@ test("workspace preference stays scoped to the authenticated account", async ({ 
 
     await page.route("**/api/auth/refresh", (route) => json(route, { token: "test-access-token" }));
     await page.route("**/api/auth/profile", (route) => json(route, currentUser));
+    await page.route("**/api/organizations", (route) => json(route, {
+        organizations: [{ _id: `org-${currentUser._id}`, name: `${currentUser.name} Hiring`, role: "owner", memberCount: 1 }],
+    }));
     await page.route("**/api/assessments/overview**", (route) => json(route, {
         summary: {},
         assessments: [],
