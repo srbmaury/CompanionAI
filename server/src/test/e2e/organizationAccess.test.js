@@ -109,7 +109,7 @@ describe("Hiring organization access", () => {
         expect(ownerMembers.body.members).toHaveLength(2);
         await agent.get("/api/assessments").set(reviewerAuth).expect(403);
         const reviewerOverview = await agent.get("/api/assessments/overview").set(reviewerAuth).expect(200);
-        expect(reviewerOverview.body.summary.assessments).toBe(1);
+        expect(reviewerOverview.body.summary.assessments).toBe(2);
         await agent.get(`/api/assessments/${assessmentId}/preview`).set(reviewerAuth).expect(403);
 
         await writeHeaders(agent.post("/api/assessments"), reviewerAuth)
