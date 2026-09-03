@@ -11,7 +11,7 @@ const writeHistory = (key, items) => { try { window.sessionStorage?.setItem(key,
 const NotificationContext = createContext({ notify: () => {}, notifications: [], unreadCount: 0, markNotificationRead: () => {}, markAllRead: () => {}, dismissNotification: () => {}, clearNotifications: () => {} });
 
 export function NotificationProvider({ children }) {
-    const { user } = useContext(AuthContext);
+    const { user } = useContext(AuthContext) || {};
     const storageKey = useMemo(() => storageKeyFor(user?._id), [user?._id]);
     const [notification, setNotification] = useState(null);
     const [notifications, setNotifications] = useState(() => readHistory(storageKey));
