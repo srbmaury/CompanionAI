@@ -107,6 +107,8 @@ const userSchema = new mongoose.Schema(
         practiceBillingCustomerId: { type: String, default: "", select: false },
         practiceBillingSubscriptionId: { type: String, default: "", select: false },
         practiceCurrentPeriodEnd: { type: Date, default: null },
+        // Trial eligibility is user-level anti-abuse state only. Hiring billing and usage remain organization-owned.
+        hiringTrialClaimed: { type: Boolean, default: false, select: false },
         tokenVersion: {
             type: Number,
             default: 0,
