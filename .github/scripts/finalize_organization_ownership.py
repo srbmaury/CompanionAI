@@ -23,7 +23,8 @@ text = text.replace(
     '        return res.json({ exportedAt: new Date().toISOString(), profile, interviews, assessments, candidateAttempts, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents });',
     '        return res.json({ exportedAt: new Date().toISOString(), profile, interviews, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents });',
 )
-if 'owner: userId' in text or 'candidateAttempts' in text or 'assessments,' in text[text.find('router.get("/export"'):]::
+export_section = text[text.find('router.get("/export"'):]
+if 'owner: userId' in export_section or 'candidateAttempts' in export_section or 'assessments,' in export_section:
     raise RuntimeError('Legacy Hiring data remains in personal account export')
 p.write_text(text)
 
