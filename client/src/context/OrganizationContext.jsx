@@ -3,7 +3,19 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import api, { setOrganizationId as setApiOrganizationId } from "../api/axios";
 import { AuthContext } from "./AuthContext";
 
-export const OrganizationContext = createContext(null);
+const defaultOrganizationContext = {
+    organizations: [],
+    activeOrganization: null,
+    activeOrganizationId: null,
+    currentRole: "owner",
+    loading: false,
+    error: "",
+    selectOrganization: () => {},
+    createOrganization: async () => null,
+    refreshOrganizations: async () => [],
+};
+
+export const OrganizationContext = createContext(defaultOrganizationContext);
 
 const preferenceKey = (userId) => `companionai:organization:user:${userId}`;
 
