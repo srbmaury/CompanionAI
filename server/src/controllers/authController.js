@@ -298,9 +298,6 @@ export const updateProfile = async (req, res, next) => {
             user.password = newPassword;
         }
 
-        if (typeof preferredLanguage === "string" && preferredLanguage.trim()) {
-            user.preferredLanguage = preferredLanguage.trim();
-        }
         if (typeof preferredProgrammingLanguage === "string" && preferredProgrammingLanguage.trim()) {
             user.preferredProgrammingLanguage = preferredProgrammingLanguage.trim();
         }

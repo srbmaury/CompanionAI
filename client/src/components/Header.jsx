@@ -10,6 +10,7 @@ import useSafeBack from "../hooks/useSafeBack";
 import { useNotifications } from "../context/NotificationContext";
 import { getWorkspacePreference, setWorkspacePreference, WORKSPACE_EVENT } from "../utils/workspacePreference";
 import { hiringHomeForRole, hiringPermissionsFor } from "../utils/hiringPermissions";
+import { shouldShowGlobalBack } from "../utils/navigationHierarchy";
 
 const Brand = ({ to }) => (
     <Typography component={RouterLink} to={to} variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1.15, textDecoration: "none", color: "inherit", fontWeight: 850, letterSpacing: "-.025em" }}>
@@ -17,6 +18,18 @@ const Brand = ({ to }) => (
         <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>CompanionAI</Box>
     </Typography>
 );
+
+const notificationTime = (value) => {
+    const timestamp = new Date(value).getTime();
+    if (!Number.isFinite(timestamp)) return "Just now";
+    const ageMs = Math.max(0, Date.now() - timestamp);
+    const minutes = Math.floor(ageMs / 60000);
+    if (minutes < 1) return "Just now";
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return new Date(timestamp).toLocaleDateString();
+};
 
 export default function Header() {
     const { user, loading, logout } = useContext(AuthContext);
@@ -28,7 +41,7 @@ export default function Header() {
     const [profileAnchor, setProfileAnchor] = useState(null);
     const [feedbackOpen, setFeedbackOpen] = useState(false);
     const [notificationAnchor, setNotificationAnchor] = useState(null);
-    const { notifications, clearNotifications } = useNotifications();
+    const { notifications, unreadCount, markNotificationRead, markAllRead, dismissNotification, clearNotifications } = useNotifications();
     const organizationContext = useContext(OrganizationContext);
     const currentOrganizationRole = organizationContext?.currentRole || null;
     const hasHiringOrganization = Boolean(organizationContext?.activeOrganizationId);
@@ -62,9 +75,11 @@ export default function Header() {
     }, [location.pathname, user?._id]);
     const switchWorkspace = (next) => { if (user?._id) setWorkspacePreference(next, user._id); setWorkspace(next); setWorkspaceAnchor(null); setProfileAnchor(null); navigate(next === "hiring" ? (hasHiringOrganization ? hiringHomeForRole(currentOrganizationRole) : "/hiring/team") : "/dashboard"); };
     const isActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`);
-    const isHiringHome = location.pathname === "/assessments" && !location.search && (!location.hash || (currentOrganizationRole === "reviewer" && location.hash === "#candidate-pipeline"));
-    const isRootScreen = location.pathname === "/" || location.pathname === "/dashboard" || isHiringHome || (location.pathname === "/hiring/team" && !hasHiringOrganization);
+    const hiringOverviewActive = location.pathname === "/assessments" && !location.search && !location.hash;
+    const hiringCandidatePipelineActive = location.pathname === "/assessments" && !location.search && location.hash === "#candidate-pipeline";
+    const hiringAssessmentsActive = location.pathname === "/assessments" && !location.search && location.hash === "#assessment-list";
     const isCandidateAssessment = location.pathname.startsWith("/assessment/");
+    const showBackButton = shouldShowGlobalBack(location);
     const navSx = (path) => ({ px: 1.5, color: isActive(path) ? "primary.main" : "text.secondary", bgcolor: isActive(path) ? "action.selected" : "transparent", "&:hover": { bgcolor: "action.hover", color: "text.primary" } });
     const handleLogout = async () => { await logout(); navigate("/login", { replace: true }); };
     const close = () => setAnchor(null);
@@ -84,7 +99,7 @@ export default function Header() {
             <Container maxWidth="xl">
                 <Toolbar disableGutters sx={{ minHeight: { xs: 64, md: 72 }, justifyContent: "space-between" }}>
                     <Stack direction="row" spacing={{ xs: .5, sm: 1 }} alignItems="center" minWidth={0}>
-                        {!isRootScreen && !isCandidateAssessment && (
+                        {showBackButton && !isCandidateAssessment && (
                             <Tooltip title="Go back">
                                 <IconButton onClick={goBack} aria-label="Go back" edge="start"><ArrowBackRounded /></IconButton>
                             </Tooltip>
@@ -120,17 +135,20 @@ export default function Header() {
                                     <Button component={RouterLink} to="/experiences" sx={navSx("/experiences")}>Company insights</Button>
                                 </> : <>
                                     {!hasHiringOrganization && <Button component={RouterLink} to="/hiring/team" sx={navSx("/hiring/team")}>Set up Hiring</Button>}
-                                    {hasHiringOrganization && canViewHiringOverview && <Button onClick={openHiringOverview} sx={{ px: 1.5, color: !location.hash ? "primary.main" : "text.secondary", bgcolor: !location.hash ? "action.selected" : "transparent", "&:hover": { bgcolor: "action.hover", color: "text.primary" } }}>Overview</Button>}
-                                    {hasHiringOrganization && canViewCandidatePipeline && <Button onClick={() => openHiringSection("candidate-pipeline")} sx={{ px: 1.5, color: location.hash === "#candidate-pipeline" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#candidate-pipeline" ? "action.selected" : "transparent" }}>Candidate pipeline</Button>}
-                                    {hasHiringOrganization && canViewAssessments && <Button onClick={() => openHiringSection("assessment-list")} sx={{ px: 1.5, color: location.hash === "#assessment-list" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#assessment-list" ? "action.selected" : "transparent" }}>Assessments</Button>}
+                                    {hasHiringOrganization && canViewHiringOverview && <Button onClick={openHiringOverview} sx={{ px: 1.5, color: hiringOverviewActive ? "primary.main" : "text.secondary", bgcolor: hiringOverviewActive ? "action.selected" : "transparent", "&:hover": { bgcolor: "action.hover", color: "text.primary" } }}>Overview</Button>}
+                                    {hasHiringOrganization && canViewCandidatePipeline && <Button onClick={() => openHiringSection("candidate-pipeline")} sx={{ px: 1.5, color: hiringCandidatePipelineActive ? "primary.main" : "text.secondary", bgcolor: hiringCandidatePipelineActive ? "action.selected" : "transparent" }}>Candidate pipeline</Button>}
+                                    {hasHiringOrganization && canViewAssessments && <Button onClick={() => openHiringSection("assessment-list")} sx={{ px: 1.5, color: hiringAssessmentsActive ? "primary.main" : "text.secondary", bgcolor: hiringAssessmentsActive ? "action.selected" : "transparent" }}>Assessments</Button>}
                                     {hasHiringOrganization && canManageOrganization && <Button component={RouterLink} to="/hiring/team" sx={navSx("/hiring/team")}>Team & billing</Button>}
                                 </>}
                                 {user?.role === "admin" && <Button component={RouterLink} to="/admin/feedback" sx={navSx("/admin/feedback")}>Feedback inbox</Button>}
                                 {(workspace !== "hiring" || canManageAssessments) && <Button component={workspace === "hiring" ? "button" : RouterLink} to={workspace === "hiring" ? undefined : "/create-interview"} onClick={workspace === "hiring" ? openNewAssessment : undefined} variant="contained" startIcon={<AddRounded />} sx={{ ml: 1, px: 2 }}>{workspace === "hiring" ? "New assessment" : "New practice"}</Button>}
-                                <Tooltip title="Recent notifications"><IconButton onClick={(event) => setNotificationAnchor(event.currentTarget)} aria-label={`Recent notifications${notifications.length ? `, ${notifications.length} items` : ""}`}><Badge color="error" badgeContent={notifications.length} max={9}><NotificationsNoneRounded /></Badge></IconButton></Tooltip>
-                                <Menu anchorEl={notificationAnchor} open={Boolean(notificationAnchor)} onClose={() => setNotificationAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }} PaperProps={{ sx: { width: 360, maxWidth: "calc(100vw - 24px)", maxHeight: 440 } }}>
-                                    <Stack direction="row" alignItems="center" justifyContent="space-between" px={2} py={1}><Typography fontWeight={800}>Recent notifications</Typography>{notifications.length > 0 && <Button size="small" onClick={clearNotifications}>Clear</Button>}</Stack><Divider />
-                                    {notifications.length === 0 ? <MenuItem disabled>No notifications yet</MenuItem> : notifications.map((item) => <MenuItem key={item.id} sx={{ whiteSpace: "normal", alignItems: "flex-start" }}><ListItemText primary={item.message} secondary={new Date(item.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} primaryTypographyProps={{ variant: "body2", color: item.severity === "error" ? "error.main" : "text.primary" }} /></MenuItem>)}
+                                <Tooltip title="Notifications"><IconButton onClick={(event) => setNotificationAnchor(event.currentTarget)} aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}><Badge color="error" badgeContent={unreadCount} max={9}><NotificationsNoneRounded /></Badge></IconButton></Tooltip>
+                                <Menu anchorEl={notificationAnchor} open={Boolean(notificationAnchor)} onClose={() => setNotificationAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }} PaperProps={{ sx: { width: 390, maxWidth: "calc(100vw - 24px)", maxHeight: 480 } }}>
+                                    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1} px={2} py={1.25}>
+                                        <Box><Typography fontWeight={800}>Notifications</Typography><Typography variant="caption" color="text.secondary">{unreadCount ? `${unreadCount} unread` : "You’re all caught up"}</Typography></Box>
+                                        <Stack direction="row" spacing={.25}>{unreadCount > 0 && <Button size="small" onClick={markAllRead}>Mark read</Button>}{notifications.length > 0 && <Button size="small" color="inherit" onClick={clearNotifications}>Clear</Button>}</Stack>
+                                    </Stack><Divider />
+                                    {notifications.length === 0 ? <Box px={2} py={3}><Typography variant="body2" color="text.secondary">No notifications yet. Saved changes, completed actions, and errors will appear here.</Typography></Box> : notifications.slice(0, 10).map((item) => <MenuItem key={item.id} selected={!item.read} onClick={() => markNotificationRead(item.id)} sx={{ whiteSpace: "normal", alignItems: "flex-start", gap: 1, py: 1.25 }}><Box aria-hidden="true" sx={{ width: 8, height: 8, borderRadius: "50%", mt: .75, flexShrink: 0, bgcolor: item.severity === "error" ? "error.main" : item.severity === "warning" ? "warning.main" : item.severity === "success" ? "success.main" : "primary.main", opacity: item.read ? .3 : 1 }} /><ListItemText primary={item.message} secondary={notificationTime(item.at)} primaryTypographyProps={{ variant: "body2", fontWeight: item.read ? 500 : 750, color: item.severity === "error" ? "error.main" : "text.primary" }} secondaryTypographyProps={{ variant: "caption" }} /><IconButton size="small" aria-label="Dismiss notification" onClick={(event) => { event.stopPropagation(); dismissNotification(item.id); }}><Typography component="span" aria-hidden="true" fontSize={18} lineHeight={1}>×</Typography></IconButton></MenuItem>)}
                                 </Menu>
                                 <Tooltip title="Account"><IconButton onClick={(event) => setProfileAnchor(event.currentTarget)} aria-label="Open account menu"><Avatar sx={{ width: 36, height: 36, bgcolor: "primary.main", fontSize: 14, fontWeight: 800 }}>{user?.name?.charAt(0)?.toUpperCase() || "U"}</Avatar></IconButton></Tooltip>
                                 <Menu anchorEl={profileAnchor} open={Boolean(profileAnchor)} onClose={() => setProfileAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }}>
@@ -163,7 +181,7 @@ export default function Header() {
                                 {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/feedback" onClick={close}>Feedback inbox</MenuItem>}
                                 {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/audit" onClick={close}>Audit activity</MenuItem>}
                                 {notifications.length > 0 && <Divider />}
-                                {notifications.slice(0, 3).map((item) => <MenuItem key={item.id} disabled sx={{ whiteSpace: "normal", maxWidth: 320 }}><ListItemText primary={item.message} secondary="Recent notification" primaryTypographyProps={{ variant: "body2" }} /></MenuItem>)}
+                                {notifications.slice(0, 3).map((item) => <MenuItem key={item.id} onClick={() => { markNotificationRead(item.id); close(); }} sx={{ whiteSpace: "normal", maxWidth: 320 }}><ListItemText primary={item.message} secondary={notificationTime(item.at)} primaryTypographyProps={{ variant: "body2", fontWeight: item.read ? 500 : 750 }} /></MenuItem>)}
                                 <MenuItem onClick={() => { close(); setFeedbackOpen(true); }}>Share feedback</MenuItem>
                                 <MenuItem onClick={() => { toggle(); close(); }}>{mode === "dark" ? "Light theme" : "Dark theme"}</MenuItem>
                                 <MenuItem onClick={() => { close(); handleLogout(); }}>Log out</MenuItem>
