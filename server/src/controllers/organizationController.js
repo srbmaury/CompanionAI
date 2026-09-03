@@ -1,13 +1,17 @@
+import mongoose from "mongoose";
 import Organization from "../models/Organization.js";
 import OrganizationMembership from "../models/OrganizationMembership.js";
 import User from "../models/User.js";
 import { activeHiringPlan } from "../services/hiringEntitlements.js";
 
-const activeMembership = (organizationId, userId) => OrganizationMembership.findOne({
-    organization: organizationId,
-    user: userId,
-    status: "active",
-});
+const activeMembership = (organizationId, userId, session = null) => {
+    const query = OrganizationMembership.findOne({
+        organization: organizationId,
+        user: userId,
+        status: "active",
+    });
+    return session ? query.session(session) : query;
+};
 
 const organizationView = (membership, memberCount = 0) => ({
     _id: membership.organization._id,
@@ -53,38 +57,37 @@ export const listOrganizations = async (req, res, next) => {
 };
 
 export const createOrganization = async (req, res, next) => {
-    let organization = null;
-    let trialClaimed = false;
+    const session = await mongoose.startSession();
     try {
-        const trialClaim = await User.findOneAndUpdate(
-            { _id: req.user._id, hiringTrialClaimed: false },
-            { $set: { hiringTrialClaimed: true } },
-            { new: true },
-        );
-        trialClaimed = Boolean(trialClaim);
+        let createdView = null;
+        await session.withTransaction(async () => {
+            const trialClaim = await User.findOneAndUpdate(
+                { _id: req.user._id, hiringTrialClaimed: false },
+                { $set: { hiringTrialClaimed: true } },
+                { new: true, session },
+            );
+            const trialClaimed = Boolean(trialClaim);
 
-        organization = await Organization.create({
-            name: req.body.name,
-            createdBy: req.user._id,
-            hiringTrialEligible: trialClaimed,
+            const [organization] = await Organization.create([{
+                name: req.body.name,
+                createdBy: req.user._id,
+                hiringTrialEligible: trialClaimed,
+                hiringPlan: trialClaimed ? "trial" : "none",
+            }], { session });
+            const [membership] = await OrganizationMembership.create([{
+                organization: organization._id,
+                user: req.user._id,
+                role: "owner",
+                status: "active",
+            }], { session });
+            membership.organization = organization;
+            createdView = organizationView(membership, 1);
         });
-        const membership = await OrganizationMembership.create({
-            organization: organization._id,
-            user: req.user._id,
-            role: "owner",
-            status: "active",
-        });
-        membership.organization = organization;
-        return res.status(201).json({ organization: organizationView(membership, 1) });
+        return res.status(201).json({ organization: createdView });
     } catch (error) {
-        if (organization?._id) await Organization.deleteOne({ _id: organization._id }).catch(() => {});
-        if (trialClaimed) {
-            await User.updateOne(
-                { _id: req.user._id },
-                { $set: { hiringTrialClaimed: false } },
-            ).catch(() => {});
-        }
         return next(error);
+    } finally {
+        await session.endSession();
     }
 };
 
@@ -219,28 +222,47 @@ export const removeMember = async (req, res, next) => {
 };
 
 export const transferOwnership = async (req, res, next) => {
+    const session = await mongoose.startSession();
     try {
-        const requester = await activeMembership(req.params.organizationId, req.user._id);
-        if (!requester) return res.status(404).json({ message: "Organization not found" });
-        if (requester.role !== "owner") {
-            return res.status(403).json({ message: "Only the organization owner can transfer ownership" });
-        }
-        const target = await OrganizationMembership.findOne({
-            _id: req.body.membershipId,
-            organization: req.params.organizationId,
-            status: "active",
+        let ownerMembershipId = null;
+        await session.withTransaction(async () => {
+            const requester = await activeMembership(req.params.organizationId, req.user._id, session);
+            if (!requester) {
+                const error = new Error("Organization not found");
+                error.statusCode = 404;
+                throw error;
+            }
+            if (requester.role !== "owner") {
+                const error = new Error("Only the organization owner can transfer ownership");
+                error.statusCode = 403;
+                throw error;
+            }
+            const target = await OrganizationMembership.findOne({
+                _id: req.body.membershipId,
+                organization: req.params.organizationId,
+                status: "active",
+            }).session(session);
+            if (!target) {
+                const error = new Error("Member not found");
+                error.statusCode = 404;
+                throw error;
+            }
+            if (String(target.user) === String(req.user._id)) {
+                const error = new Error("Choose another active organization member");
+                error.statusCode = 400;
+                throw error;
+            }
+            requester.role = "admin";
+            target.role = "owner";
+            await requester.save({ session });
+            await target.save({ session });
+            ownerMembershipId = target._id;
         });
-        if (!target) return res.status(404).json({ message: "Member not found" });
-        if (String(target.user) === String(req.user._id)) {
-            return res.status(400).json({ message: "Choose another active organization member" });
-        }
-        requester.role = "admin";
-        target.role = "owner";
-        await requester.save();
-        await target.save();
-        await Organization.updateOne({ _id: req.params.organizationId }, { $set: { createdBy: target.user } });
-        return res.json({ message: "Ownership transferred", ownerMembershipId: target._id });
+        return res.json({ message: "Ownership transferred", ownerMembershipId });
     } catch (error) {
+        if (error?.statusCode) return res.status(error.statusCode).json({ message: error.message });
         return next(error);
+    } finally {
+        await session.endSession();
     }
 };
