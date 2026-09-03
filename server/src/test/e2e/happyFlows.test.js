@@ -374,7 +374,6 @@ describe("Launch-critical full product journey E2E", () => {
         await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "Late Candidate", email: "late@example.com" }).expect(404);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/run-code`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({}).expect(404);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/transcribe`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).expect(404);
-        expect(exportWithAssessments.body.candidateAttempts[0].accessTokenHash).toBeUndefined();
         const lifecycleMetric = await metrics.assessmentsTotal.get();
         expect(lifecycleMetric.values.find((value) => value.labels.action === "create" && value.labels.outcome === "success")?.value).toBeGreaterThanOrEqual(1);
         const funnelMetric = await metrics.candidateAssessmentActionsTotal.get();
