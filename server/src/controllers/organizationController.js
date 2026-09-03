@@ -113,6 +113,9 @@ export const listMembers = async (req, res, next) => {
     try {
         const requester = await activeMembership(req.params.organizationId, req.user._id);
         if (!requester) return res.status(404).json({ message: "Organization not found" });
+        if (!["owner", "admin"].includes(requester.role)) {
+            return res.status(403).json({ message: "You do not have permission to view organization members" });
+        }
         const memberships = await OrganizationMembership.find({
             organization: req.params.organizationId,
             status: "active",

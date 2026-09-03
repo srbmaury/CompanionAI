@@ -84,6 +84,9 @@ describe("Hiring organization access", () => {
         expect(created.body.createdBy).toBe(String(owner._id));
 
         const reviewerAuth = authFor(reviewer, organizationId);
+        await agent.get(`/api/organizations/${organizationId}/members`).set(reviewerAuth).expect(403);
+        const ownerMembers = await agent.get(`/api/organizations/${organizationId}/members`).set(ownerAuth).expect(200);
+        expect(ownerMembers.body.members).toHaveLength(2);
         const reviewerList = await agent.get("/api/assessments").set(reviewerAuth).expect(200);
         expect(reviewerList.body.items).toHaveLength(1);
         expect(reviewerList.body.items[0]._id).toBe(assessmentId);

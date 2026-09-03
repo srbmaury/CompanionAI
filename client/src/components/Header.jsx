@@ -31,6 +31,7 @@ export default function Header() {
     const { notifications, clearNotifications } = useNotifications();
     const organizationContext = useContext(OrganizationContext);
     const currentOrganizationRole = organizationContext?.currentRole || null;
+    const hasHiringOrganization = Boolean(organizationContext?.activeOrganizationId);
     const {
         canViewOverview: canViewHiringOverview,
         canViewCandidatePipeline,
@@ -59,9 +60,10 @@ export default function Header() {
         setWorkspacePreference(next, user._id);
         setWorkspace(next);
     }, [location.pathname, user?._id]);
-    const switchWorkspace = (next) => { if (user?._id) setWorkspacePreference(next, user._id); setWorkspace(next); setWorkspaceAnchor(null); setProfileAnchor(null); navigate(next === "hiring" ? hiringHomeForRole(currentOrganizationRole) : "/dashboard"); };
+    const switchWorkspace = (next) => { if (user?._id) setWorkspacePreference(next, user._id); setWorkspace(next); setWorkspaceAnchor(null); setProfileAnchor(null); navigate(next === "hiring" ? (hasHiringOrganization ? hiringHomeForRole(currentOrganizationRole) : "/hiring/team") : "/dashboard"); };
     const isActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`);
-    const isRootScreen = location.pathname === "/" || location.pathname === "/dashboard" || (location.pathname === "/assessments" && !location.search && !location.hash);
+    const isHiringHome = location.pathname === "/assessments" && !location.search && (!location.hash || (currentOrganizationRole === "reviewer" && location.hash === "#candidate-pipeline"));
+    const isRootScreen = location.pathname === "/" || location.pathname === "/dashboard" || isHiringHome || (location.pathname === "/hiring/team" && !hasHiringOrganization);
     const isCandidateAssessment = location.pathname.startsWith("/assessment/");
     const navSx = (path) => ({ px: 1.5, color: isActive(path) ? "primary.main" : "text.secondary", bgcolor: isActive(path) ? "action.selected" : "transparent", "&:hover": { bgcolor: "action.hover", color: "text.primary" } });
     const handleLogout = async () => { await logout(); navigate("/login", { replace: true }); };
@@ -73,7 +75,7 @@ export default function Header() {
         navigate(`/assessments#${id}`);
         window.requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }));
     };
-    const workspaceHome = workspace === "hiring" ? hiringHomeForRole(currentOrganizationRole) : "/dashboard";
+    const workspaceHome = workspace === "hiring" ? (hasHiringOrganization ? hiringHomeForRole(currentOrganizationRole) : "/hiring/team") : "/dashboard";
     const workspaceLabel = workspace === "hiring" ? "Hiring" : "Practice";
     const WorkspaceIcon = workspace === "hiring" ? WorkOutlineRounded : SchoolOutlined;
 
@@ -117,10 +119,11 @@ export default function Header() {
                                     <Button component={RouterLink} to="/progress" sx={navSx("/progress")}>Progress</Button>
                                     <Button component={RouterLink} to="/experiences" sx={navSx("/experiences")}>Company insights</Button>
                                 </> : <>
-                                    {canViewHiringOverview && <Button onClick={openHiringOverview} sx={{ px: 1.5, color: !location.hash ? "primary.main" : "text.secondary", bgcolor: !location.hash ? "action.selected" : "transparent", "&:hover": { bgcolor: "action.hover", color: "text.primary" } }}>Overview</Button>}
-                                    {canViewCandidatePipeline && <Button onClick={() => openHiringSection("candidate-pipeline")} sx={{ px: 1.5, color: location.hash === "#candidate-pipeline" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#candidate-pipeline" ? "action.selected" : "transparent" }}>Candidate pipeline</Button>}
-                                    {canViewAssessments && <Button onClick={() => openHiringSection("assessment-list")} sx={{ px: 1.5, color: location.hash === "#assessment-list" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#assessment-list" ? "action.selected" : "transparent" }}>Assessments</Button>}
-                                    {canManageOrganization && <Button component={RouterLink} to="/hiring/team" sx={navSx("/hiring/team")}>Team & billing</Button>}
+                                    {!hasHiringOrganization && <Button component={RouterLink} to="/hiring/team" sx={navSx("/hiring/team")}>Set up Hiring</Button>}
+                                    {hasHiringOrganization && canViewHiringOverview && <Button onClick={openHiringOverview} sx={{ px: 1.5, color: !location.hash ? "primary.main" : "text.secondary", bgcolor: !location.hash ? "action.selected" : "transparent", "&:hover": { bgcolor: "action.hover", color: "text.primary" } }}>Overview</Button>}
+                                    {hasHiringOrganization && canViewCandidatePipeline && <Button onClick={() => openHiringSection("candidate-pipeline")} sx={{ px: 1.5, color: location.hash === "#candidate-pipeline" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#candidate-pipeline" ? "action.selected" : "transparent" }}>Candidate pipeline</Button>}
+                                    {hasHiringOrganization && canViewAssessments && <Button onClick={() => openHiringSection("assessment-list")} sx={{ px: 1.5, color: location.hash === "#assessment-list" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#assessment-list" ? "action.selected" : "transparent" }}>Assessments</Button>}
+                                    {hasHiringOrganization && canManageOrganization && <Button component={RouterLink} to="/hiring/team" sx={navSx("/hiring/team")}>Team & billing</Button>}
                                 </>}
                                 {user?.role === "admin" && <Button component={RouterLink} to="/admin/feedback" sx={navSx("/admin/feedback")}>Feedback inbox</Button>}
                                 {(workspace !== "hiring" || canManageAssessments) && <Button component={workspace === "hiring" ? "button" : RouterLink} to={workspace === "hiring" ? undefined : "/create-interview"} onClick={workspace === "hiring" ? openNewAssessment : undefined} variant="contained" startIcon={<AddRounded />} sx={{ ml: 1, px: 2 }}>{workspace === "hiring" ? "New assessment" : "New practice"}</Button>}
@@ -143,14 +146,15 @@ export default function Header() {
                             <IconButton sx={{ display: { md: "none" } }} onClick={(event) => setAnchor(event.currentTarget)} aria-label="Open navigation"><MenuIcon /></IconButton>
                             <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={close} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }}>
                                 <MenuItem disabled sx={{ opacity: "1 !important" }}><ListItemText primary={`${workspaceLabel} workspace`} primaryTypographyProps={{ variant: "overline", fontWeight: 800, color: "primary.main" }} /></MenuItem>
-                                <MenuItem component={RouterLink} to={workspaceHome} onClick={close}>Overview</MenuItem>
+                                {(workspace === "practice" || (hasHiringOrganization && canViewHiringOverview)) && <MenuItem component={RouterLink} to={workspaceHome} onClick={close}>Overview</MenuItem>}
+                                {workspace === "hiring" && !hasHiringOrganization && <MenuItem component={RouterLink} to="/hiring/team" onClick={close}>Set up Hiring</MenuItem>}
                                 {workspace === "hiring" ? (canManageAssessments && <MenuItem onClick={() => { close(); openNewAssessment(); }}>New assessment</MenuItem>) : <MenuItem component={RouterLink} to="/create-interview" onClick={close}>New practice</MenuItem>}
                                 {workspace === "practice" && <MenuItem component={RouterLink} to="/resume-review" onClick={close}>Resume review</MenuItem>}
                                 {workspace === "practice" && <MenuItem component={RouterLink} to="/progress" onClick={close}>Progress</MenuItem>}
                                 {workspace === "practice" && <MenuItem component={RouterLink} to="/experiences" onClick={close}>Company insights</MenuItem>}
-                                {workspace === "hiring" && canViewCandidatePipeline && <MenuItem onClick={() => { close(); openHiringSection("candidate-pipeline"); }}>Candidate pipeline</MenuItem>}
-                                {workspace === "hiring" && canViewAssessments && <MenuItem onClick={() => { close(); openHiringSection("assessment-list"); }}>Assessments</MenuItem>}
-                                {workspace === "hiring" && canManageOrganization && <MenuItem component={RouterLink} to="/hiring/team" onClick={close}>Team & Hiring billing</MenuItem>}
+                                {workspace === "hiring" && hasHiringOrganization && canViewCandidatePipeline && <MenuItem onClick={() => { close(); openHiringSection("candidate-pipeline"); }}>Candidate pipeline</MenuItem>}
+                                {workspace === "hiring" && hasHiringOrganization && canViewAssessments && <MenuItem onClick={() => { close(); openHiringSection("assessment-list"); }}>Assessments</MenuItem>}
+                                {workspace === "hiring" && hasHiringOrganization && canManageOrganization && <MenuItem component={RouterLink} to="/hiring/team" onClick={close}>Team & Hiring billing</MenuItem>}
                                 <MenuItem onClick={() => { close(); switchWorkspace(workspace === "practice" ? "hiring" : "practice"); }}>Switch to {workspace === "practice" ? "hiring" : "practice"} workspace</MenuItem>
                                 <Divider />
                                 <MenuItem component={RouterLink} to="/profile" onClick={close}>Profile & settings</MenuItem>
