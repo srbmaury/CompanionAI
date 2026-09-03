@@ -1,7 +1,9 @@
 import { useContext, useEffect, useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { Alert, Box, Button, Chip, Container, Divider, FormControl, InputLabel, LinearProgress, MenuItem, Paper, Select, Stack, TextField, Typography } from "@mui/material";
 import api from "../api/axios";
 import { OrganizationContext } from "../context/OrganizationContext";
+import { hiringHomeForRole, hiringPermissionsFor } from "../utils/hiringPermissions";
 
 const ROLE_LABELS = {
     owner: "Owner",
@@ -14,7 +16,7 @@ const ROLE_LABELS = {
 const ASSIGNABLE_ROLES = ["admin", "recruiter", "hiring_manager", "reviewer"];
 
 export default function HiringTeamPage() {
-    const { activeOrganization, currentRole, organizations, selectOrganization, createOrganization, refreshOrganizations } = useContext(OrganizationContext);
+    const { activeOrganization, currentRole, organizations, loading: organizationLoading, selectOrganization, createOrganization, refreshOrganizations } = useContext(OrganizationContext);
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -25,7 +27,8 @@ export default function HiringTeamPage() {
     const [billing, setBilling] = useState(null);
     const [billingLoading, setBillingLoading] = useState(false);
     const [billingActionLoading, setBillingActionLoading] = useState(false);
-    const canManage = ["owner", "admin"].includes(currentRole);
+    const { canManageOrganization } = hiringPermissionsFor(currentRole);
+    const canManage = canManageOrganization;
 
     const loadMembers = async () => {
         if (!activeOrganization?._id) return;
@@ -140,6 +143,9 @@ export default function HiringTeamPage() {
             setError(err?.response?.data?.message || "Could not create organization");
         }
     };
+
+    if (organizationLoading) return <Container maxWidth="lg" sx={{ py: 6 }}><LinearProgress /></Container>;
+    if (activeOrganization && !canManageOrganization) return <Navigate to={hiringHomeForRole(currentRole)} replace />;
 
     return (
         <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 } }}>

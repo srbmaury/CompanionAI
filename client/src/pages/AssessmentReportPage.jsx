@@ -6,6 +6,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import api from "../api/axios";
 import { useNotify } from "../context/NotificationContext";
 import { OrganizationContext } from "../context/OrganizationContext";
+import { hiringPermissionsFor } from "../utils/hiringPermissions";
 
 const SystemDesignCanvas = lazy(() => import("../components/SystemDesignCanvas"));
 
@@ -35,7 +36,7 @@ function CompetencySummary({ attempt, compact = false }) {
 }
 
 export default function AssessmentReportPage() {
-    const { assessmentId } = useParams(); const location = useLocation(); const navigate = useNavigate(); const notify = useNotify(); const { currentRole } = useContext(OrganizationContext); const canManageAssessments = ["owner", "admin", "recruiter"].includes(currentRole); const [data, setData] = useState(null); const [error, setError] = useState(""); const [loading, setLoading] = useState(true);
+    const { assessmentId } = useParams(); const location = useLocation(); const navigate = useNavigate(); const notify = useNotify(); const { currentRole } = useContext(OrganizationContext); const canManageAssessments = hiringPermissionsFor(currentRole).canManageAssessments; const [data, setData] = useState(null); const [error, setError] = useState(""); const [loading, setLoading] = useState(true);
     const [query, setQuery] = useState(""); const [status, setStatus] = useState("all");
     const [inviteText, setInviteText] = useState(""); const [reviews, setReviews] = useState({}); const [duplicating, setDuplicating] = useState(false);
     const load = useCallback(async () => { setLoading(true); try { const response = await api.get(`/assessments/${assessmentId}`); setData(response.data); } catch { setError("This assessment or its reports could not be loaded."); } finally { setLoading(false); } }, [assessmentId]);
