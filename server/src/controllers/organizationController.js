@@ -1,7 +1,6 @@
 import Organization from "../models/Organization.js";
 import OrganizationMembership from "../models/OrganizationMembership.js";
 import User from "../models/User.js";
-import { ensureDefaultOrganization } from "../middleware/organizationContext.js";
 
 const activeMembership = (organizationId, userId) => OrganizationMembership.findOne({
     organization: organizationId,
@@ -26,7 +25,6 @@ const canManageMember = (actorRole, targetRole, nextRole = targetRole) => {
 
 export const listOrganizations = async (req, res, next) => {
     try {
-        await ensureDefaultOrganization(req.user);
         const memberships = await OrganizationMembership.find({ user: req.user._id, status: "active" })
             .sort({ createdAt: 1 })
             .populate("organization");

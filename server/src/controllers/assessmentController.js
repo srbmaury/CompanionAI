@@ -117,7 +117,7 @@ export const createAssessment = async (req, res, next) => {
             generatedRounds.push({ name: input.name, description: input.description || "", deliveryMode: input.deliveryMode || "conversational", questions: texts.map((text, index) => ({ text, weight: input.questions?.[index]?.weight || 1, competencies: input.questions?.[index]?.competencies || [], knockout: Boolean(input.questions?.[index]?.knockout) })) });
         }
         const assessment = await Assessment.create({
-            owner: req.user._id, title, company, jobRole, jobDescription, followUpsEnabled, inviteOnly,
+            organization: req.organizationId, createdBy: req.user._id, title, company, jobRole, jobDescription, followUpsEnabled, inviteOnly,
             candidateInstructions, contactEmail, durationMinutes, opensAt: opensAt || undefined, expiresAt: expiresAt || undefined, timezone, rounds: generatedRounds, integrity, rubric, templateName,
             status, publishedAt: status === "active" ? new Date() : undefined, shareToken: crypto.randomBytes(24).toString("base64url"),
         });
@@ -152,7 +152,7 @@ export const improveAssessmentQuestionText = async (req, res, next) => {
 export const listAssessments = async (req, res, next) => {
     try {
         const page = Math.max(Number(req.query.page) || 1, 1); const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50);
-        const filter = { owner: req.user._id };
+        const filter = { organization: req.organizationId };
         const [total, items] = await Promise.all([
             Assessment.countDocuments(filter),
             Assessment.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
@@ -170,7 +170,7 @@ export const getHiringOverview = async (req, res, next) => {
         const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50);
         const search = (req.query.search || "").toString().trim().slice(0, 100);
         const status = ["started", "evaluating", "submitted", "evaluation_failed"].includes(req.query.status) ? req.query.status : "";
-        const assessments = await Assessment.find({ owner: req.user._id }).select("title company jobRole status opensAt expiresAt createdAt invitations.status").sort({ createdAt: -1 }).lean();
+        const assessments = await Assessment.find({ organization: req.organizationId }).select("title company jobRole status opensAt expiresAt createdAt invitations.status").sort({ createdAt: -1 }).lean();
         const assessmentIds = assessments.map((item) => item._id);
         const assessmentById = new Map(assessments.map((item) => [String(item._id), item]));
         const requestedAssessmentId = req.query.assessmentId;
@@ -215,7 +215,7 @@ export const getHiringOverview = async (req, res, next) => {
 
 export const getAssessmentReport = async (req, res, next) => {
     try {
-        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, owner: req.user._id }).lean();
+        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, organization: req.organizationId }).lean();
         if (!assessment) return res.status(404).json({ message: "Assessment not found" });
         const attempts = await CandidateAttempt.find({ assessment: assessment._id }).sort({ createdAt: -1 }).lean();
         try { metrics.assessmentReportsViewedTotal.labels(attempts.some((attempt) => attempt.status === "submitted") ? "yes" : "no").inc(); } catch {}
@@ -225,7 +225,7 @@ export const getAssessmentReport = async (req, res, next) => {
 
 export const updateAssessment = async (req, res, next) => {
     try {
-        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, owner: req.user._id });
+        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, organization: req.organizationId });
         if (!assessment) return res.status(404).json({ message: "Assessment not found" });
         const attempts = await CandidateAttempt.countDocuments({ assessment: assessment._id });
         if (req.body.status) {
@@ -264,7 +264,7 @@ export const getPublicAssessment = async (req, res, next) => {
 
 export const previewAssessment = async (req, res, next) => {
     try {
-        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, owner: req.user._id });
+        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, organization: req.organizationId });
         if (!assessment) return res.status(404).json({ message: "Assessment not found" });
         return res.json({ ...publicAssessment(assessment), status: assessment.status, rounds: assessment.rounds.map((round) => ({ name: round.name, description: round.description, deliveryMode: round.deliveryMode || "conversational", questionCount: round.questions.length, questions: round.questions.map((question) => ({ text: question.text })) })) });
     } catch (error) { return next(error); }
@@ -308,7 +308,7 @@ export const recordIntegrityEvent = async (req, res, next) => {
 
 export const inviteCandidates = async (req, res, next) => {
     try {
-        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, owner: req.user._id });
+        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, organization: req.organizationId });
         if (!assessment) return res.status(404).json({ message: "Assessment not found" });
         if (!["draft", "scheduled", "active"].includes(assessment.status)) return res.status(409).json({ message: "Invitations cannot be changed for this assessment." });
         const appUrl = (process.env.CLIENT_URL || "http://localhost:5173").split(",")[0].trim();
@@ -333,7 +333,7 @@ export const inviteCandidates = async (req, res, next) => {
 
 export const revokeInvitation = async (req, res, next) => {
     try {
-        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, owner: req.user._id });
+        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, organization: req.organizationId });
         if (!assessment) return res.status(404).json({ message: "Assessment not found" });
         const invitation = assessment.invitations.id(req.params.invitationId);
         if (!invitation) return res.status(404).json({ message: "Invitation not found" });
@@ -344,7 +344,7 @@ export const revokeInvitation = async (req, res, next) => {
 
 export const reviewCandidateAttempt = async (req, res, next) => {
     try {
-        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, owner: req.user._id });
+        const assessment = await Assessment.findOne({ _id: req.params.assessmentId, organization: req.organizationId });
         if (!assessment) return res.status(404).json({ message: "Assessment not found" });
         const attempt = await CandidateAttempt.findOne({ _id: req.params.attemptId, assessment: assessment._id });
         if (!attempt) return res.status(404).json({ message: "Candidate attempt not found" });
@@ -356,11 +356,11 @@ export const reviewCandidateAttempt = async (req, res, next) => {
 
 export const duplicateAssessment = async (req, res, next) => {
     try {
-        const source = await Assessment.findOne({ _id: req.params.assessmentId, owner: req.user._id }).lean();
+        const source = await Assessment.findOne({ _id: req.params.assessmentId, organization: req.organizationId }).lean();
         if (!source) return res.status(404).json({ message: "Assessment not found" });
         const { _id, createdAt, updatedAt, __v, invitations, ...copy } = source;
         const nextVersion = (source.templateVersion || 1) + 1;
-        const assessment = await Assessment.create({ ...copy, owner: req.user._id, title: req.body.title || `${source.title} · v${nextVersion}`, status: "draft", publishedAt: undefined, archivedAt: undefined, shareToken: crypto.randomBytes(24).toString("base64url"), invitations: [], templateVersion: nextVersion });
+        const assessment = await Assessment.create({ ...copy, organization: req.organizationId, createdBy: req.user._id, title: req.body.title || `${source.title} · v${nextVersion}`, status: "draft", publishedAt: undefined, archivedAt: undefined, shareToken: crypto.randomBytes(24).toString("base64url"), invitations: [], templateVersion: nextVersion });
         return res.status(201).json(assessment);
     } catch (error) { return next(error); }
 };

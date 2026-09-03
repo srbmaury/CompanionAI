@@ -90,6 +90,10 @@ describe("Launch-critical full product journey E2E", () => {
         expect(accessToken).toBeDefined();
 
         const auth = { Authorization: `Bearer ${accessToken}` };
+        const hiringOrganization = await agent.post("/api/organizations")
+            .set(auth).set("origin", origin).set("referer", `${origin}/`)
+            .send({ name: "Acme Hiring" }).expect(201);
+        auth["X-Organization-Id"] = hiringOrganization.body.organization._id;
 
         // Create minimal resume directly via model (avoids Cloudinary)
         const me = await User.findOne({ email: "t@example.com" });
@@ -172,6 +176,10 @@ describe("Launch-critical full product journey E2E", () => {
             isVerified: true,
         });
         const otherAuth = { Authorization: `Bearer ${signAccessToken(otherUser._id, otherUser.tokenVersion)}` };
+        const otherOrganization = await agent.post("/api/organizations")
+            .set(otherAuth).set("origin", origin).set("referer", `${origin}/`)
+            .send({ name: "Other Hiring Team" }).expect(201);
+        otherAuth["X-Organization-Id"] = otherOrganization.body.organization._id;
         await agent.get(`/api/interviews/${interviewId}`).set(otherAuth).expect(404);
         await agent
             .post("/api/interviews")
@@ -274,7 +282,7 @@ describe("Launch-critical full product journey E2E", () => {
         }).expect(201);
         const assessmentId = assessmentCreate.body._id;
         const shareToken = assessmentCreate.body.shareToken;
-        expect(await Assessment.exists({ _id: assessmentId, owner: me._id })).toBeTruthy();
+        expect(await Assessment.exists({ _id: assessmentId, organization: hiringOrganization.body.organization._id, createdBy: me._id })).toBeTruthy();
         expect(assessmentCreate.body.rounds[0].questions[0]).toMatchObject({ text: "How would you secure a production API?", weight: 2, competencies: ["Security"], knockout: true });
         const invitationResponse = await agent.post(`/api/assessments/${assessmentId}/invitations`).set(auth).set("origin", origin).set("referer", `${origin}/`).send({ candidates: [{ email: "candidate@example.com", name: "Candidate One" }] }).expect(200);
         expect(invitationResponse.body.invitations[0]).toMatchObject({ email: "candidate@example.com", status: "sent" });

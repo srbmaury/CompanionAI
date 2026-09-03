@@ -38,6 +38,7 @@ import productEventRoutes from "./routes/productEventRoutes.js";
 import assessmentRoutes from "./routes/assessmentRoutes.js";
 import emailWebhookRoutes from "./routes/emailWebhookRoutes.js";
 import jobPostRoutes from "./routes/jobPostRoutes.js";
+import organizationRoutes from "./routes/organizationRoutes.js";
 
 const app = express();
 
@@ -88,6 +89,7 @@ const corsOptions =
                   "X-XSRF-Token",
                   "X-Captcha-Token",
                   "X-Attempt-Token",
+                  "X-Organization-Id",
               ],
               exposedHeaders: ["X-CSRF-Token", "X-XSRF-Token"],
               methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
@@ -105,6 +107,7 @@ const corsOptions =
                   "X-XSRF-Token",
                   "X-Captcha-Token",
                   "X-Attempt-Token",
+                  "X-Organization-Id",
               ],
               exposedHeaders: ["X-CSRF-Token", "X-XSRF-Token"],
               methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
@@ -287,6 +290,7 @@ app.use("/api/product-feedback", productFeedbackRoutes);
 app.use("/api/billing", billingRoutes);
 app.use("/api/recommendations", recommendationRoutes);
 app.use("/api/events", productEventRoutes);
+app.use("/api/organizations", organizationRoutes);
 app.use("/api/assessments", assessmentRoutes);
 
 // Health endpoints
