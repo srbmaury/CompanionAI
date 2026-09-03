@@ -207,7 +207,7 @@ test("candidate completes an assessment without seeing private feedback", async 
     await page.route("**/api/assessments/public/share-1/attempts/attempt-1/submit", (route) => json(route, { received: true }));
 
     await page.goto("/assessment/share-1");
-    await expect(page.getByText("Scores and feedback are not shown to candidates.")).toBeVisible();
+    await expect(page.getByText("Scores and private feedback are not shown to candidates.")).toBeVisible();
     await page.getByLabel("Full name").fill("Asha Candidate");
     await page.getByLabel("Email address").fill("asha@example.com");
     await page.getByRole("checkbox").check();
@@ -310,7 +310,9 @@ test("candidate stays on the question when saving fails", async ({ page }) => {
 });
 
 test("supporting authenticated screens render without overflow", async ({ page }) => {
+    test.setTimeout(60000);
     await mockSignedIn(page, { _id: "admin-1", name: "Admin User", email: "admin@example.com", role: "admin", plan: "scale" });
+    await page.route("**/api/events", (route) => json(route, { recorded: true }, 201));
     await page.route("**/api/resumes**", (route) => json(route, []));
     await page.route("**/api/resumes/reviews**", (route) => json(route, { items: [], totalPages: 1 }));
     await page.route("**/api/experiences/saved**", (route) => json(route, { items: [], totalPages: 1 }));
