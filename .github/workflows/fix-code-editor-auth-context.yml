@@ -10,28 +10,15 @@ permissions:
 
 jobs:
   patch:
-    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
     steps:
       - uses: actions/checkout@v4
       - name: Make auth context optional for public code editor
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path("client/src/components/CodeEditorField.jsx")
-          text = path.read_text()
-          old = """    const muiTheme = useTheme();
-    const { user } = useContext(AuthContext);
-    const preferredProgrammingLanguage = user?.preferredProgrammingLanguage;
-"""
-          new = """    const muiTheme = useTheme();
-    const authContext = useContext(AuthContext);
-    const preferredProgrammingLanguage = authContext?.user?.preferredProgrammingLanguage;
-"""
-          if old not in text:
-              raise SystemExit("CodeEditorField auth context block not found")
-          path.write_text(text.replace(old, new, 1))
-          PY
+          grep -q 'const { user } = useContext(AuthContext);' client/src/components/CodeEditorField.jsx
+          sed -i 's/const { user } = useContext(AuthContext);/const authContext = useContext(AuthContext);/' client/src/components/CodeEditorField.jsx
+          sed -i 's/const preferredProgrammingLanguage = user?.preferredProgrammingLanguage;/const preferredProgrammingLanguage = authContext?.user?.preferredProgrammingLanguage;/' client/src/components/CodeEditorField.jsx
       - name: Commit fix
         run: |
           git config user.name "github-actions[bot]"
