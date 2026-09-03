@@ -31,8 +31,8 @@ const languages = [
 
 const CodeEditorField = ({ value, onChange, onFocus, minRows = 6, outlinedInputSx, onModeChange, draftKey, suggestCode = false, executionEndpoint = "/run-code", executionHeaders = {}, skipAuthRedirect = false, canRun = true }) => {
     const muiTheme = useTheme();
-    const { user } = useContext(AuthContext);
-    const preferredProgrammingLanguage = user?.preferredProgrammingLanguage;
+    const authContext = useContext(AuthContext);
+    const preferredProgrammingLanguage = authContext?.user?.preferredProgrammingLanguage;
     const [useEditor, setUseEditor] = useState(() => Boolean(suggestCode));
     const [language, setLanguage] = useState("cpp");
     const [stdin, setStdin] = useState("");
