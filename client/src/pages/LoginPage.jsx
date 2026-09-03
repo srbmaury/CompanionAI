@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from "react";
-import { useNavigate, Link as RouterLink } from "react-router-dom";
+import { useLocation, useNavigate, Link as RouterLink } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import Captcha from "../components/Captcha";
 import AuthShell from "../components/AuthShell";
@@ -25,6 +25,7 @@ import { Login as LoginIcon, Visibility, VisibilityOff } from "@mui/icons-materi
 
 const LoginPage = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { login, googleLogin, resendVerification } = useContext(AuthContext);
 
     const [email, setEmail] = useState("");
@@ -37,6 +38,10 @@ const LoginPage = () => {
 
     const [errors, setErrors] = useState({ email: "", password: "" });
     const [apiError, setApiError] = useState("");
+    const requested = location.state?.from;
+    const authenticatedDestination = requested?.pathname
+        ? `${requested.pathname}${requested.search || ""}${requested.hash || ""}`
+        : localStorage.getItem("companionai:workspace") === "hiring" ? "/assessments" : "/dashboard";
 
     const validate = () => {
         const next = { email: "", password: "" };
@@ -56,7 +61,7 @@ const LoginPage = () => {
         setSubmitting(true);
         try {
             await login(email, password, captchaToken);
-            navigate("/dashboard");
+            navigate(authenticatedDestination, { replace: true });
         } catch (err) {
             const msg = err?.response?.data?.message || "Invalid credentials";
             if (msg === "Email not verified") {
@@ -106,7 +111,7 @@ const LoginPage = () => {
                 callback: async (response) => {
                     try {
                         await googleLoginRef.current(response.credential);
-                        navigate("/dashboard");
+                        navigate(authenticatedDestination, { replace: true });
                     } catch (e) {
                         console.error(e);
                         setErrors((prev) => ({ ...prev, password: "Google sign-in failed" }));
@@ -128,12 +133,12 @@ const LoginPage = () => {
         } catch (e) {
             console.error("GIS button render error", e);
         }
-    }, [gsiReady, navigate]);
+    }, [authenticatedDestination, gsiReady, navigate]);
 
     // no manual click handler; rely on the rendered Google button only
 
     return (
-        <AuthShell eyebrow="Welcome back" title="Sign in to CompanionAI" subtitle="Continue your practice and pick up where you left off.">
+        <AuthShell eyebrow="Welcome back" title="Sign in to CompanionAI" subtitle="Continue in your Practice or Hiring workspace.">
                     <Box component="form" noValidate onSubmit={handleSubmit}>
                         <Stack spacing={{ xs: 2.25, md: 1.5 }}>
                             {apiError && <Alert severity="error" onClose={() => setApiError("")}>{apiError}</Alert>}

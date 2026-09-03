@@ -105,13 +105,13 @@ export default function ResumeReviewPage() {
         <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 5 } }}>
         <Paper variant="outlined" sx={{ p: { xs: 2.5, sm: 4 }, borderRadius: 3 }}>
             <Typography component="h1" variant="h4" fontWeight={800}>AI resume review</Typography>
-            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} gap={1} sx={{ mt: .75, mb: 3 }}><Typography color="text.secondary">Compare your resume with a target role and get focused, actionable improvements.</Typography><Button component={RouterLink} to="/resume-match" variant="outlined" size="small">Find my best resume</Button></Stack>
+            <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ md: "center" }} gap={1.5} sx={{ mt: .75, mb: 3 }}><Typography color="text.secondary">Compare your resume with a target role and get focused, actionable improvements.</Typography><Stack direction="row" gap={1} flexWrap="wrap"><Button component={RouterLink} to="/resumes" size="small">Resume library</Button><Button component={RouterLink} to="/resume-reviews" size="small">Past reviews</Button><Button component={RouterLink} to="/resume-match" variant="outlined" size="small">Find best match</Button></Stack></Stack>
             <Stack spacing={2}>
                 {resumes.length > 0 && (
                     <TextField
                         fullWidth
                         select
-                        label="Choose Resume"
+                        label="Choose resume"
                         value={resumeId}
                         onChange={(e) => setResumeId(e.target.value)}
                         helperText={!resumeId ? "Upload or select a resume" : ""}
@@ -157,22 +157,22 @@ export default function ResumeReviewPage() {
                     label={<Typography variant="body2" color="text.secondary">I understand my resume is stored and processed to provide AI feedback. See the <Link href="/privacy">privacy notice</Link>.</Typography>}
                 />
                 <Button fullWidth variant="outlined" component="label" disabled={uploading || !uploadConsent}>
-                    {uploading ? "Uploading..." : "Upload Resume (PDF)"}
+                    {uploading ? "Uploading…" : "Upload resume PDF"}
                     <input type="file" hidden accept="application/pdf" onChange={handleUpload} />
                 </Button>
 
                 <JobPostImporter onImport={({ jobRole, jobDescription: importedDescription }) => { setRole(jobRole); setJobDescription(importedDescription); }} />
-                <TextField fullWidth label="Target Role" value={role} onChange={(e) => setRole(e.target.value)} />
+                <TextField fullWidth label="Target role" value={role} onChange={(e) => setRole(e.target.value)} />
                 <TextField
                     fullWidth
-                    label="Job Description"
+                    label="Job description"
                     value={jobDescription}
                     onChange={(e) => setJobDescription(e.target.value)}
                     multiline
                     rows={6}
                 />
                 <Button fullWidth variant="contained" disabled={!isReady || loadingReview} onClick={requestReview}>
-                    {loadingReview ? "Analyzing..." : "Generate AI Review"}
+                    {loadingReview ? "Analyzing…" : "Generate AI review"}
                 </Button>
                 {loadingReview && <LinearProgress />}
             </Stack>

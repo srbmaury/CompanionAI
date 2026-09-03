@@ -15,11 +15,11 @@ export default function AuthShell({ eyebrow, title, subtitle, children }) {
             <Container maxWidth="lg">
                 <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "minmax(0,.88fr) minmax(440px,1fr)" }, gap: { xs: 4, md: 7 }, alignItems: "center" }}>
                     <Stack spacing={2.25} sx={{ display: { xs: "none", md: "flex" }, maxWidth: 480 }}>
-                        <Chip icon={<AutoAwesome />} label="Practice with a plan" color="primary" variant="outlined" sx={{ alignSelf: "flex-start" }} />
-                        <Typography variant="h3" fontWeight={850} letterSpacing="-.045em" lineHeight={1.05}>Turn preparation into progress.</Typography>
-                        <Typography color="text.secondary" fontSize="1.05rem" lineHeight={1.6}>Build realistic interviews from your target role, practice in the format you’ll face, and leave every session knowing what to improve.</Typography>
+                        <Chip icon={<AutoAwesome />} label="Practice and Hiring" color="primary" variant="outlined" sx={{ alignSelf: "flex-start" }} />
+                        <Typography variant="h3" fontWeight={850} letterSpacing="-.045em" lineHeight={1.05}>One account. Two focused workflows.</Typography>
+                        <Typography color="text.secondary" fontSize="1.05rem" lineHeight={1.6}>Prepare for interviews without mixing your personal work with structured candidate assessments and hiring reports.</Typography>
                         <Stack spacing={1.15} pt={0.5}>
-                            {["Role-specific interview plans", "Voice and coding practice", "Actionable answer feedback"].map((item) => (
+                            {["Practice interviews and resume feedback", "Candidate assessments and reports", "Switch workspaces anytime"].map((item) => (
                                 <Stack direction="row" spacing={1.25} alignItems="center" key={item}><CheckCircleRounded color="secondary" fontSize="small" /><Typography fontWeight={650}>{item}</Typography></Stack>
                             ))}
                         </Stack>

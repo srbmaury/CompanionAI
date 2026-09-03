@@ -129,7 +129,7 @@ const RegisterPage = () => {
                 callback: async (response) => {
                     try {
                         await googleLogin(response.credential);
-                        navigate("/dashboard");
+                        navigate(localStorage.getItem("companionai:workspace") === "hiring" ? "/assessments" : "/dashboard", { replace: true });
                     } catch {
                         setErrors((prev) => ({ ...prev, password: "Google sign-in failed" }));
                     }
@@ -155,7 +155,7 @@ const RegisterPage = () => {
     // no manual click handler; rely on the rendered Google button only
 
     return (
-        <AuthShell eyebrow="Create your account" title="Start practicing with purpose" subtitle="Your first tailored interview plan is only a few minutes away.">
+        <AuthShell eyebrow="Get started" title="Create your CompanionAI account" subtitle="Choose Practice or Hiring after sign-up, and switch whenever you need.">
                     <Box component="form" noValidate onSubmit={handleSubmit}>
                         <Stack spacing={{ xs: 2.25, md: 1.35 }}>
                             {successMsg && (

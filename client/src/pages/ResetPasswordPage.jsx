@@ -52,7 +52,7 @@ const ResetPasswordPage = () => {
             setMessage(r?.message || "Password updated");
             setTimeout(() => navigate("/login"), 1200);
         } catch (e) {
-            setError(e?.response?.data?.message || "Something went wrong");
+            setError(e?.response?.data?.message || "We couldn’t reset your password. Request a new link and try again.");
         } finally {
             setSubmitting(false);
         }
@@ -62,8 +62,8 @@ const ResetPasswordPage = () => {
         <Box sx={{ display: "flex", justifyContent: "center", py: 6, px: 2 }}>
             <Card sx={{ maxWidth: 520, width: "100%" }}>
                 <CardContent sx={{ p: { xs: 3, sm: 5 } }}>
-                    <Typography variant="h5" fontWeight={700} gutterBottom>
-                        Reset Password
+                    <Typography component="h1" variant="h5" fontWeight={700} gutterBottom>
+                        Reset your password
                     </Typography>
                     {!hasValidLink ? (
                         <Stack spacing={2}>
@@ -117,7 +117,7 @@ const ResetPasswordPage = () => {
                             />
                             <Captcha onVerify={(t) => setCaptchaToken(t)} onExpire={() => setCaptchaToken("")} />
                             <Button type="submit" variant="contained" disabled={disabled}>
-                                {submitting ? "Saving..." : "Set new password"}
+                                {submitting ? "Saving…" : "Set new password"}
                             </Button>
                             {message && <Alert severity="success">{message}</Alert>}
                             {error && <Alert severity="error">{error}</Alert>}

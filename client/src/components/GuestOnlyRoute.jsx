@@ -6,5 +6,6 @@ import { AuthContext } from "../context/AuthContext";
 export default function GuestOnlyRoute({ children }) {
     const { user, loading } = useContext(AuthContext);
     if (loading) return <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }}><CircularProgress /></Box>;
-    return user ? <Navigate to="/dashboard" replace /> : children;
+    const destination = typeof localStorage !== "undefined" && localStorage.getItem("companionai:workspace") === "hiring" ? "/assessments" : "/dashboard";
+    return user ? <Navigate to={destination} replace /> : children;
 }

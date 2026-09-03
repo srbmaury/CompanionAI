@@ -86,14 +86,14 @@ const OAForm = ({
                     onClick={onSubmit}
                     disabled={submitting}
                 >
-                    {submitting ? "Submitting..." : "Submit Round"}
+                    {submitting ? "Submitting…" : "Submit round"}
                 </Button>
                 <SkipRoundButton onSkip={onSkip} />
             </Stack>
 
             <Typography variant="caption" color="text.secondary">
                 Use Speak to hear a question and Start Voice to dictate. Fill
-                all answers, then click Submit Round.
+                all answers, then select Submit round.
             </Typography>
         </>
     );

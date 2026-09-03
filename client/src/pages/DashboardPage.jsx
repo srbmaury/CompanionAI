@@ -80,7 +80,7 @@ const DashboardPage = () => {
                 <Button variant="outlined" size="large" startIcon={<InsightsOutlined />} onClick={() => navigate("/progress")} sx={{ flexShrink: 0 }}>View progress</Button>
             </Stack>
 
-            {!workspaceChosen && <Alert severity="info" sx={{ mb: 3 }}><Typography fontWeight={800}>What would you like to do first?</Typography><Typography variant="body2" sx={{ mt: .5, mb: 1.5 }}>You can switch workspaces anytime from your account menu.</Typography><Stack direction={{ xs: "column", sm: "row" }} gap={1}><Button variant="contained" onClick={() => chooseWorkspace("practice")}>Prepare for interviews</Button><Button variant="outlined" onClick={() => chooseWorkspace("hiring")}>Interview candidates</Button></Stack></Alert>}
+            {!workspaceChosen && <Alert severity="info" sx={{ mb: 3 }}><Typography fontWeight={800}>What would you like to do first?</Typography><Typography variant="body2" sx={{ mt: .5, mb: 1.5 }}>You can switch between Practice and Hiring anytime beside the CompanionAI logo.</Typography><Stack direction={{ xs: "column", sm: "row" }} gap={1}><Button variant="contained" onClick={() => chooseWorkspace("practice")}>Prepare for interviews</Button><Button variant="outlined" onClick={() => chooseWorkspace("hiring")}>Assess candidates</Button></Stack></Alert>}
 
             {!user?.targetRole && Number(progress.completed || 0) > 0 && <Alert severity="info" sx={{ mb: 3 }} action={<Button color="inherit" size="small" onClick={() => navigate("/profile")}>Set my goal</Button>}>
                 Personalize your plan with a target role and weekly practice goal.

@@ -256,14 +256,14 @@ const CreateInterviewPage = () => {
                         helperText="Adding a company can ground the plan in public role-specific interview information when available."
                     />
                     <TextField
-                        label="Job Role"
+                        label="Job role"
                         name="jobRole"
                         value={formData.jobRole}
                         onChange={handleChange}
                         required
                     />
                     <TextField
-                        label="Job Description"
+                        label="Job description"
                         name="jobDescription"
                         value={formData.jobDescription}
                         multiline
@@ -309,7 +309,7 @@ const CreateInterviewPage = () => {
                         {resumes.length > 0 && (
                             <TextField
                                 select
-                                label="Choose from existing resumes"
+                                label="Choose an existing resume"
                                 value={formData.resumeId}
                                 onChange={(e) =>
                                     setFormData({
@@ -385,7 +385,7 @@ const CreateInterviewPage = () => {
                     />
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5}>
                         <Button variant="outlined" onClick={() => setActiveStep(0)}>Back</Button>
-                        <Button type="submit" variant="contained" disabled={!isFormValid || selectedRounds.length === 0} sx={{ flex: 1 }}>Start Interview</Button>
+                        <Button type="submit" variant="contained" disabled={!isFormValid || selectedRounds.length === 0} sx={{ flex: 1 }}>Start interview</Button>
                     </Stack>
                     </>}
                 </Stack>

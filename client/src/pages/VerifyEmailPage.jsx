@@ -38,24 +38,24 @@ const VerifyEmailPage = () => {
     const handleGoLogin = () => navigate("/login");
 
     return (
-        <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", px: 2 }}>
+        <Box sx={{ minHeight: { xs: "calc(100dvh - 65px)", md: "calc(100dvh - 73px)" }, display: "flex", alignItems: "center", justifyContent: "center", px: 2, py: 3 }}>
             <Card sx={{ maxWidth: 640, width: "100%", borderRadius: 3 }}>
                 <CardContent sx={{ p: { xs: 3, sm: 5 } }}>
-                    <Typography variant="h4" fontWeight={700} gutterBottom>
-                        Email Verification
+                    <Typography component="h1" variant="h4" fontWeight={700} gutterBottom>
+                        Verify your email
                     </Typography>
                     <Stack alignItems="center" spacing={3} sx={{ mt: 2 }}>
                         {status === "verifying" && (
                             <>
                                 <CircularProgress />
-                                <Typography>Verifying your email...</Typography>
+                                <Typography>Verifying your email…</Typography>
                             </>
                         )}
                         {(status === "success" || status === "error") && (
                             <>
                                 <Typography color={status === "error" ? "error" : "primary"}>{message}</Typography>
                                 <Button variant="contained" onClick={handleGoLogin}>
-                                    Go to Login
+                                    Go to sign in
                                 </Button>
                                 {status === "error" && (
                                     <Stack spacing={1} alignItems="center">
