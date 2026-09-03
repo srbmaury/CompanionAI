@@ -13,9 +13,15 @@ export default function GuestOnlyRoute({ children }) {
     const requestedDestination = requested?.pathname
         ? `${requested.pathname}${requested.search || ""}${requested.hash || ""}`
         : null;
+    const workspaceParam = new URLSearchParams(location.search).get("workspace");
+    const explicitWorkspaceDestination = workspaceParam === "hiring"
+        ? "/assessments"
+        : workspaceParam === "practice"
+            ? "/dashboard"
+            : null;
     const workspaceDestination = typeof localStorage !== "undefined" && localStorage.getItem("companionai:workspace") === "hiring"
         ? "/assessments"
         : "/dashboard";
 
-    return user ? <Navigate to={requestedDestination || workspaceDestination} replace /> : children;
+    return user ? <Navigate to={requestedDestination || explicitWorkspaceDestination || workspaceDestination} replace /> : children;
 }
