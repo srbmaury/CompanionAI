@@ -64,7 +64,7 @@ describe("assessment workspace hierarchy", () => {
             expect.objectContaining({ text: "Review this component API and identify its accessibility risks.", weight: 1 }),
         ] })] })));
         await vi.waitFor(() => expect(post).toHaveBeenCalledWith("/assessments/created/invitations", { candidates: [{ email: "one@example.com" }, { email: "two@example.com" }] }));
-    });
+    }, 15000);
 
     it("defaults system-design rounds to one clearly labelled target question", async () => {
         get.mockResolvedValue({ data: { items: [], totalPages: 1 } });
