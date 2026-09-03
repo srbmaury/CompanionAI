@@ -15,6 +15,10 @@ import metrics from "../metrics/index.js";
 const router = express.Router();
 const clientOrigin = () => process.env.CLIENT_ORIGIN || "http://localhost:5173";
 const billingConfigured = () => Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
+const PORTAL_REQUIRED_STATUSES = new Set(["incomplete", "trialing", "active", "past_due", "unpaid", "paused"]);
+const requiresBillingPortal = (hasBillingAccount, subscriptionStatus) => (
+    Boolean(hasBillingAccount) && PORTAL_REQUIRED_STATUSES.has(subscriptionStatus)
+);
 
 const safePrice = async (product, plan) => {
     try {
@@ -34,11 +38,14 @@ router.get("/practice/entitlements", protect, async (req, res, next) => {
         const counters = await PracticeUsageCounter.find({ user: req.user._id, period }).lean();
         const used = Object.fromEntries(counters.map((item) => [item.metric, item.used]));
         const proPrice = await safePrice("practice", "pro");
+        const hasBillingAccount = Boolean(req.user.practiceBillingCustomerId);
         return res.json({
             product: "practice",
             period,
             plan: limits.plan,
             subscriptionStatus: req.user.practiceSubscriptionStatus,
+            hasBillingAccount,
+            requiresBillingPortal: requiresBillingPortal(hasBillingAccount, req.user.practiceSubscriptionStatus),
             limits: {
                 interviews: limits.interviewsPerMonth,
                 resumeReviews: limits.resumeReviewsPerMonth,
@@ -75,8 +82,8 @@ router.post(
             const priceId = getConfiguredPriceId("practice", selectedPlan);
             if (!priceId) return res.status(503).json({ message: "Practice Pro checkout is not configured" });
             if (practiceLimitsFor(req.user).plan === "pro") return res.status(409).json({ message: "Practice Pro is already active" });
-            if (req.user.practiceBillingCustomerId && req.user.practiceSubscriptionStatus !== "inactive") {
-                return res.status(409).json({ message: "Use Manage billing to change your Practice subscription" });
+            if (requiresBillingPortal(Boolean(req.user.practiceBillingCustomerId), req.user.practiceSubscriptionStatus)) {
+                return res.status(409).json({ message: "Use Manage billing to resolve or change your existing Practice subscription" });
             }
             const session = await getStripe().checkout.sessions.create({
                 mode: "subscription",
@@ -117,21 +124,25 @@ router.get("/hiring/entitlements", protect, organizationContext, async (req, res
         res.setHeader("Cache-Control", "no-store");
         const limits = hiringLimitsFor(req.organization);
         const period = hiringUsagePeriod(req.organization);
-        const counter = await OrganizationUsageCounter.findOne({
-            organization: req.organizationId,
-            metric: "candidateInterviews",
-            period: period.key,
-        }).lean();
-        const [starterPrice, growthPrice] = await Promise.all([
+        const [counter, billingOrganization, starterPrice, growthPrice] = await Promise.all([
+            OrganizationUsageCounter.findOne({
+                organization: req.organizationId,
+                metric: "candidateInterviews",
+                period: period.key,
+            }).lean(),
+            Organization.findById(req.organizationId).select("+hiringBillingCustomerId").lean(),
             safePrice("hiring", "starter"),
             safePrice("hiring", "growth"),
         ]);
         const used = counter?.used || 0;
+        const hasBillingAccount = Boolean(billingOrganization?.hiringBillingCustomerId);
         return res.json({
             product: "hiring",
             organization: { _id: req.organization._id, name: req.organization.name },
             plan: limits.plan,
             subscriptionStatus: req.organization.hiringSubscriptionStatus,
+            hasBillingAccount,
+            requiresBillingPortal: requiresBillingPortal(hasBillingAccount, req.organization.hiringSubscriptionStatus),
             period: period.key,
             periodType: period.cadence,
             limits: { candidateInterviews: limits.candidateInterviews },
@@ -171,8 +182,8 @@ router.post(
             const organization = await Organization.findById(req.organizationId)
                 .select("+hiringBillingCustomerId +hiringBillingSubscriptionId");
             if (!organization) return res.status(404).json({ message: "Organization not found" });
-            if (organization.hiringBillingCustomerId && ["active", "trialing"].includes(organization.hiringSubscriptionStatus)) {
-                return res.status(409).json({ message: "Use Manage billing to change this organization's active Hiring subscription" });
+            if (requiresBillingPortal(Boolean(organization.hiringBillingCustomerId), organization.hiringSubscriptionStatus)) {
+                return res.status(409).json({ message: "Use Manage billing to resolve or change this organization's existing Hiring subscription" });
             }
             const session = await getStripe().checkout.sessions.create({
                 mode: "subscription",
