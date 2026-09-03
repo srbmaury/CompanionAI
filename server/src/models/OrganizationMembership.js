@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 
 export const ORGANIZATION_ROLES = ["owner", "admin", "recruiter", "hiring_manager", "reviewer"];
+export const ASSIGNABLE_ORGANIZATION_ROLES = ORGANIZATION_ROLES.filter((role) => role !== "owner");
 
 const organizationMembershipSchema = new mongoose.Schema(
     {
