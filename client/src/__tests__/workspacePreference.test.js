@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
     adoptGuestWorkspacePreference,
     clearGuestWorkspacePreference,
+    clearWorkspacePreference,
     getWorkspaceHome,
     getWorkspacePreference,
     setWorkspacePreference,
@@ -38,6 +39,16 @@ describe("workspacePreference", () => {
 
         expect(adoptGuestWorkspacePreference("user-a")).toBe("practice");
         expect(getWorkspacePreference("user-a")).toBe("practice");
+    });
+
+    it("clears only the requested account preference", () => {
+        setWorkspacePreference("hiring", "user-a");
+        setWorkspacePreference("practice", "user-b");
+
+        clearWorkspacePreference("user-a");
+
+        expect(getWorkspacePreference("user-a")).toBeNull();
+        expect(getWorkspacePreference("user-b")).toBe("practice");
     });
 
     it("maps workspaces to their home routes", () => {
