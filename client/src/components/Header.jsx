@@ -1,6 +1,7 @@
 import { useContext, useEffect, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
+import { OrganizationContext } from "../context/OrganizationContext";
 import { useThemeMode } from "../context/ThemeContext";
 import { AddRounded, ArrowBackRounded, DarkMode, ExpandMoreRounded, LightMode, LogoutRounded, Menu as MenuIcon, NotificationsNoneRounded, RateReviewOutlined, SchoolOutlined, WorkOutlineRounded } from "@mui/icons-material";
 import { AppBar, Avatar, Badge, Box, Button, Container, Divider, IconButton, ListItemText, Menu, MenuItem, Skeleton, Stack, Toolbar, Tooltip, Typography } from "@mui/material";
@@ -27,6 +28,9 @@ export default function Header() {
     const [feedbackOpen, setFeedbackOpen] = useState(false);
     const [notificationAnchor, setNotificationAnchor] = useState(null);
     const { notifications, clearNotifications } = useNotifications();
+    const organizationContext = useContext(OrganizationContext);
+    const currentOrganizationRole = organizationContext?.currentRole || null;
+    const canManageAssessments = ["owner", "admin", "recruiter"].includes(currentOrganizationRole);
     const [workspace, setWorkspace] = useState("practice");
     useEffect(() => {
         setWorkspace(user?._id ? getWorkspacePreference(user._id) || "practice" : "practice");
@@ -41,7 +45,7 @@ export default function Header() {
         return () => window.removeEventListener(WORKSPACE_EVENT, sync);
     }, [user?._id]);
     useEffect(() => {
-        const hiringRoute = location.pathname.startsWith("/assessments");
+        const hiringRoute = location.pathname.startsWith("/assessments") || location.pathname.startsWith("/hiring");
         const practiceRoute = ["/dashboard", "/create-interview", "/interviews", "/resume", "/progress", "/experiences", "/saved-experiences"].some((path) => location.pathname.startsWith(path));
         if (!user?._id || (!hiringRoute && !practiceRoute)) return;
         const next = hiringRoute ? "hiring" : "practice";
@@ -109,9 +113,10 @@ export default function Header() {
                                     <Button onClick={openHiringOverview} sx={{ px: 1.5, color: !location.hash ? "primary.main" : "text.secondary", bgcolor: !location.hash ? "action.selected" : "transparent", "&:hover": { bgcolor: "action.hover", color: "text.primary" } }}>Overview</Button>
                                     <Button onClick={() => openHiringSection("candidate-pipeline")} sx={{ px: 1.5, color: location.hash === "#candidate-pipeline" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#candidate-pipeline" ? "action.selected" : "transparent" }}>Candidate pipeline</Button>
                                     <Button onClick={() => openHiringSection("assessment-list")} sx={{ px: 1.5, color: location.hash === "#assessment-list" ? "primary.main" : "text.secondary", bgcolor: location.hash === "#assessment-list" ? "action.selected" : "transparent" }}>Assessments</Button>
+                                    <Button component={RouterLink} to="/hiring/team" sx={navSx("/hiring/team")}>Team</Button>
                                 </>}
                                 {user?.role === "admin" && <Button component={RouterLink} to="/admin/feedback" sx={navSx("/admin/feedback")}>Feedback inbox</Button>}
-                                <Button component={workspace === "hiring" ? "button" : RouterLink} to={workspace === "hiring" ? undefined : "/create-interview"} onClick={workspace === "hiring" ? openNewAssessment : undefined} variant="contained" startIcon={<AddRounded />} sx={{ ml: 1, px: 2 }}>{workspace === "hiring" ? "New assessment" : "New practice"}</Button>
+                                {(workspace !== "hiring" || canManageAssessments) && <Button component={workspace === "hiring" ? "button" : RouterLink} to={workspace === "hiring" ? undefined : "/create-interview"} onClick={workspace === "hiring" ? openNewAssessment : undefined} variant="contained" startIcon={<AddRounded />} sx={{ ml: 1, px: 2 }}>{workspace === "hiring" ? "New assessment" : "New practice"}</Button>}
                                 <Tooltip title="Recent notifications"><IconButton onClick={(event) => setNotificationAnchor(event.currentTarget)} aria-label={`Recent notifications${notifications.length ? `, ${notifications.length} items` : ""}`}><Badge color="error" badgeContent={notifications.length} max={9}><NotificationsNoneRounded /></Badge></IconButton></Tooltip>
                                 <Menu anchorEl={notificationAnchor} open={Boolean(notificationAnchor)} onClose={() => setNotificationAnchor(null)} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }} PaperProps={{ sx: { width: 360, maxWidth: "calc(100vw - 24px)", maxHeight: 440 } }}>
                                     <Stack direction="row" alignItems="center" justifyContent="space-between" px={2} py={1}><Typography fontWeight={800}>Recent notifications</Typography>{notifications.length > 0 && <Button size="small" onClick={clearNotifications}>Clear</Button>}</Stack><Divider />
@@ -131,12 +136,13 @@ export default function Header() {
                             <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={close} anchorOrigin={{ vertical: "bottom", horizontal: "right" }} transformOrigin={{ vertical: "top", horizontal: "right" }}>
                                 <MenuItem disabled sx={{ opacity: "1 !important" }}><ListItemText primary={`${workspaceLabel} workspace`} primaryTypographyProps={{ variant: "overline", fontWeight: 800, color: "primary.main" }} /></MenuItem>
                                 <MenuItem component={RouterLink} to={workspaceHome} onClick={close}>Overview</MenuItem>
-                                {workspace === "hiring" ? <MenuItem onClick={() => { close(); openNewAssessment(); }}>New assessment</MenuItem> : <MenuItem component={RouterLink} to="/create-interview" onClick={close}>New practice</MenuItem>}
+                                {workspace === "hiring" ? (canManageAssessments && <MenuItem onClick={() => { close(); openNewAssessment(); }}>New assessment</MenuItem>) : <MenuItem component={RouterLink} to="/create-interview" onClick={close}>New practice</MenuItem>}
                                 {workspace === "practice" && <MenuItem component={RouterLink} to="/resume-review" onClick={close}>Resume review</MenuItem>}
                                 {workspace === "practice" && <MenuItem component={RouterLink} to="/progress" onClick={close}>Progress</MenuItem>}
                                 {workspace === "practice" && <MenuItem component={RouterLink} to="/experiences" onClick={close}>Company insights</MenuItem>}
                                 {workspace === "hiring" && <MenuItem onClick={() => { close(); openHiringSection("candidate-pipeline"); }}>Candidate pipeline</MenuItem>}
                                 {workspace === "hiring" && <MenuItem onClick={() => { close(); openHiringSection("assessment-list"); }}>Assessments</MenuItem>}
+                                {workspace === "hiring" && <MenuItem component={RouterLink} to="/hiring/team" onClick={close}>Team & organization</MenuItem>}
                                 <MenuItem onClick={() => { close(); switchWorkspace(workspace === "practice" ? "hiring" : "practice"); }}>Switch to {workspace === "practice" ? "hiring" : "practice"} workspace</MenuItem>
                                 <Divider />
                                 <MenuItem component={RouterLink} to="/profile" onClick={close}>Profile & settings</MenuItem>
