@@ -71,6 +71,17 @@ export default function HiringTeamPage() {
         }
     };
 
+    const transferOwnership = async (membershipId) => {
+        setError("");
+        try {
+            await api.post(`/organizations/${activeOrganization._id}/transfer-ownership`, { membershipId });
+            await refreshOrganizations();
+            await loadMembers();
+        } catch (err) {
+            setError(err?.response?.data?.message || "Could not transfer ownership");
+        }
+    };
+
     const removeMember = async (membershipId) => {
         setError("");
         try {
@@ -137,7 +148,7 @@ export default function HiringTeamPage() {
                                         <Typography fontWeight={750}>{membership.user?.name || membership.user?.email}</Typography>
                                         <Typography variant="body2" color="text.secondary">{membership.user?.email}</Typography>
                                     </Box>
-                                    <Stack direction="row" spacing={1} alignItems="center">
+                                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                                         {canManage && !isOwner ? (
                                             <FormControl size="small" sx={{ minWidth: 160 }}>
                                                 <Select value={membership.role} onChange={(event) => changeRole(membership._id, event.target.value)} aria-label={`Role for ${membership.user?.email}`}>
@@ -145,6 +156,7 @@ export default function HiringTeamPage() {
                                                 </Select>
                                             </FormControl>
                                         ) : <Chip size="small" label={ROLE_LABELS[membership.role] || membership.role} />}
+                                        {currentRole === "owner" && !isOwner && <Button size="small" onClick={() => transferOwnership(membership._id)}>Make owner</Button>}
                                         {canManage && !isOwner && <Button color="error" size="small" onClick={() => removeMember(membership._id)}>Remove</Button>}
                                     </Stack>
                                 </Stack>
