@@ -30,7 +30,7 @@ export default function Header() {
     useEffect(() => { const sync = (event) => setWorkspace(event.detail || localStorage.getItem("companionai:workspace") || "practice"); window.addEventListener("companionai:workspace", sync); return () => window.removeEventListener("companionai:workspace", sync); }, []);
     useEffect(() => {
         const hiringRoute = location.pathname.startsWith("/assessments");
-        const practiceRoute = ["/create-interview", "/interviews", "/resume", "/progress", "/experiences", "/saved-experiences"].some((path) => location.pathname.startsWith(path));
+        const practiceRoute = ["/dashboard", "/create-interview", "/interviews", "/resume", "/progress", "/experiences", "/saved-experiences"].some((path) => location.pathname.startsWith(path));
         if (!hiringRoute && !practiceRoute) return;
         const next = hiringRoute ? "hiring" : "practice";
         localStorage.setItem("companionai:workspace", next);
