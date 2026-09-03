@@ -56,7 +56,7 @@ export default function HiringTeamPage() {
             .then(({ data }) => setBilling(data))
             .catch((err) => setError(err?.response?.data?.message || "Could not load Hiring plan"))
             .finally(() => setBillingLoading(false));
-    }, [activeOrganization?._id]);
+    }, [activeOrganization?._id, canManageOrganization]);
 
     const memberCountLabel = useMemo(() => `${members.length} active member${members.length === 1 ? "" : "s"}`, [members.length]);
 
