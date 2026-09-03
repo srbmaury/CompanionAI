@@ -367,7 +367,8 @@ describe("Launch-critical full product journey E2E", () => {
         const otherHiringOverview = await agent.get("/api/assessments/overview").set(otherAuth).expect(200);
         expect(otherHiringOverview.body).toMatchObject({ summary: { assessments: 0, totalCandidates: 0 }, candidates: [] });
         const exportWithAssessments = await agent.get("/api/auth/export").set(auth).expect(200);
-        expect(exportWithAssessments.body.assessments).toHaveLength(2);
+        expect(exportWithAssessments.body.assessments).toBeUndefined();
+        expect(exportWithAssessments.body.candidateAttempts).toBeUndefined();
         await agent.patch(`/api/assessments/${assessmentId}`).set(auth).set("origin", origin).set("referer", `${origin}/`).send({ status: "closed" }).expect(200);
         await agent.get(`/api/assessments/public/${shareToken}`).expect(404);
         await agent.post(`/api/assessments/public/${shareToken}/start`).set("origin", origin).set("referer", `${origin}/`).send({ name: "Late Candidate", email: "late@example.com" }).expect(404);

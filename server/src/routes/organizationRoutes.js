@@ -11,6 +11,7 @@ import {
     removeMember,
     updateMemberRole,
     updateOrganization,
+    transferOwnership,
 } from "../controllers/organizationController.js";
 
 const router = express.Router();
@@ -23,6 +24,7 @@ router.get("/", listOrganizations);
 router.post("/", validate(z.object({ name: z.string().trim().min(2).max(120) })), createOrganization);
 router.patch("/:organizationId", validate(organizationParams, "params"), validate(z.object({ name: z.string().trim().min(2).max(120) })), updateOrganization);
 router.get("/:organizationId/members", validate(organizationParams, "params"), listMembers);
+router.post("/:organizationId/transfer-ownership", validate(organizationParams, "params"), validate(z.object({ membershipId: ObjectIdString })), transferOwnership);
 router.post("/:organizationId/members", validate(organizationParams, "params"), validate(z.object({ email: z.string().trim().email().max(254), role })), addMember);
 router.patch("/:organizationId/members/:membershipId", validate(memberParams, "params"), validate(z.object({ role })), updateMemberRole);
 router.delete("/:organizationId/members/:membershipId", validate(memberParams, "params"), removeMember);

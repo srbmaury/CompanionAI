@@ -198,3 +198,38 @@ export const removeMember = async (req, res, next) => {
         return next(error);
     }
 };
+
+
+export const transferOwnership = async (req, res, next) => {
+    try {
+        const actor = await activeMembership(req.params.organizationId, req.user._id);
+        if (!actor || actor.role !== "owner") {
+            return res.status(403).json({ message: "Only the organization owner can transfer ownership" });
+        }
+        const target = await OrganizationMembership.findOne({
+            _id: req.body.membershipId,
+            organization: req.params.organizationId,
+            status: "active",
+        }).populate("user", "_id name email");
+        if (!target) return res.status(404).json({ message: "Member not found" });
+        if (String(target.user?._id || target.user) === String(req.user._id)) {
+            return res.status(400).json({ message: "Choose another team member" });
+        }
+
+        await OrganizationMembership.bulkWrite([
+            { updateOne: { filter: { _id: target._id }, update: { $set: { role: "owner" } } } },
+            { updateOne: { filter: { _id: actor._id }, update: { $set: { role: "admin" } } } },
+        ]);
+
+        return res.json({
+            owner: {
+                membershipId: target._id,
+                user: target.user,
+                role: "owner",
+            },
+            previousOwnerRole: "admin",
+        });
+    } catch (error) {
+        return next(error);
+    }
+};

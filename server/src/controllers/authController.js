@@ -21,6 +21,8 @@ import ReminderDelivery from "../models/ReminderDelivery.js";
 import ProductEvent from "../models/ProductEvent.js";
 import Assessment from "../models/Assessment.js";
 import CandidateAttempt from "../models/CandidateAttempt.js";
+import Organization from "../models/Organization.js";
+import OrganizationMembership from "../models/OrganizationMembership.js";
 import cloudinary from "../config/cloudinaryConfig.js";
 
 const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7);
@@ -350,7 +352,17 @@ export const deleteAccount = async (req, res, next) => {
         const sharedQuestionIds = await Round.distinct("questions.question", { _id: { $nin: roundIds }, "questions.question": { $in: questionIds } });
         const sharedSet = new Set(sharedQuestionIds.map(String));
         const privateQuestionIds = questionIds.filter((id) => !sharedSet.has(String(id)));
-        const assessmentIds = await Assessment.distinct("_id", { owner: user._id });
+        const ownedMemberships = await OrganizationMembership.find({ user: user._id, role: "owner", status: "active" }).select("organization").lean();
+        const ownedOrganizationIds = ownedMemberships.map((membership) => membership.organization);
+        for (const organizationId of ownedOrganizationIds) {
+            const activeMembers = await OrganizationMembership.countDocuments({ organization: organizationId, status: "active" });
+            if (activeMembers > 1) {
+                return res.status(409).json({ message: "Transfer ownership of your hiring organization before deleting your account" });
+            }
+        }
+        const assessmentIds = ownedOrganizationIds.length
+            ? await Assessment.distinct("_id", { organization: { $in: ownedOrganizationIds } })
+            : [];
 
         await Promise.all([
             Feedback.deleteMany({ $or: [{ user: user._id }, { _id: { $in: feedbackIds } }] }),
@@ -365,7 +377,9 @@ export const deleteAccount = async (req, res, next) => {
             ReminderDelivery.deleteMany({ user: user._id }),
             ProductEvent.deleteMany({ user: user._id }),
             CandidateAttempt.deleteMany({ assessment: { $in: assessmentIds } }),
-            Assessment.deleteMany({ owner: user._id }),
+            Assessment.deleteMany({ organization: { $in: ownedOrganizationIds } }),
+            OrganizationMembership.deleteMany({ $or: [{ user: user._id }, { organization: { $in: ownedOrganizationIds } }] }),
+            Organization.deleteMany({ _id: { $in: ownedOrganizationIds } }),
             RefreshToken.deleteMany({ user: user._id }),
             AuditLog.deleteMany({ user: user._id }),
         ]);
