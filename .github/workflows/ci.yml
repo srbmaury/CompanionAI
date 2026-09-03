@@ -60,3 +60,20 @@ jobs:
       - name: Server API journeys
         run: npm run test:e2e
       - run: npm audit --omit=dev --audit-level=high
+
+  account-workspace-patch:
+    if: github.ref == 'refs/heads/separate-flows' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply account-specific workspace refactor
+        run: python .github/scripts/account_workspace_patch.py
+      - name: Commit refactor
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add client/src
+          git commit -m "Make workspace preference account-specific"
+          git push origin HEAD:separate-flows
