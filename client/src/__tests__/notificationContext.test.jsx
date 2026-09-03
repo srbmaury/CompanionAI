@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { NotificationProvider, useNotifications, useNotify } from "../context/NotificationContext";
+import { AuthContext } from "../context/AuthContext";
 
 function NotificationHarness() {
     const notify = useNotify();
@@ -16,11 +17,17 @@ function NotificationHarness() {
     </>;
 }
 
+const renderNotifications = (userId = "user-1") => render(
+    <AuthContext.Provider value={{ user: userId ? { _id: userId } : null }}>
+        <NotificationProvider><NotificationHarness /></NotificationProvider>
+    </AuthContext.Provider>,
+);
+
 beforeEach(() => window.sessionStorage.clear());
 
 describe("NotificationProvider", () => {
     it("shows action feedback and tracks unread state", async () => {
-        render(<NotificationProvider><NotificationHarness /></NotificationProvider>);
+        renderNotifications();
         fireEvent.click(screen.getByRole("button", { name: "Save" }));
         expect((await screen.findByRole("status")).textContent).toContain("Changes saved.");
         expect(screen.getByTestId("unread").textContent).toBe("1");
@@ -29,11 +36,21 @@ describe("NotificationProvider", () => {
     });
 
     it("deduplicates rapid repeats and supports dismissing history", () => {
-        render(<NotificationProvider><NotificationHarness /></NotificationProvider>);
+        renderNotifications();
         fireEvent.click(screen.getByRole("button", { name: "Save" }));
         fireEvent.click(screen.getByRole("button", { name: "Save duplicate" }));
         expect(screen.getByTestId("count").textContent).toBe("1");
         fireEvent.click(screen.getByRole("button", { name: "Dismiss first" }));
+        expect(screen.getByTestId("count").textContent).toBe("0");
+    });
+
+    it("does not expose one account's notification history to another account", () => {
+        const first = renderNotifications("user-a");
+        fireEvent.click(screen.getByRole("button", { name: "Save" }));
+        expect(screen.getByTestId("count").textContent).toBe("1");
+        first.unmount();
+
+        renderNotifications("user-b");
         expect(screen.getByTestId("count").textContent).toBe("0");
     });
 });
