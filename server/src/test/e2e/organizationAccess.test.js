@@ -74,7 +74,7 @@ describe("Hiring organization access", () => {
         )
             .send({ email: reviewer.email, role: "reviewer" })
             .expect(201);
-        const reviewerMembershipId = memberResponse.body.membership._id;
+        const reviewerMembershipId = memberResponse.body.member._id;
 
         const created = await writeHeaders(agent.post("/api/assessments"), ownerAuth)
             .send(assessmentInput)
@@ -118,8 +118,8 @@ describe("Hiring organization access", () => {
         )
             .send({ membershipId: reviewerMembershipId })
             .expect(200);
-        expect(transfer.body.owner.role).toBe("owner");
-        expect(transfer.body.previousOwnerRole).toBe("admin");
+        expect(transfer.body.message).toBe("Ownership transferred");
+        expect(String(transfer.body.ownerMembershipId)).toBe(String(reviewerMembershipId));
 
         const [formerOwnerMembership, newOwnerMembership] = await Promise.all([
             OrganizationMembership.findOne({ organization: organizationId, user: owner._id }).lean(),
