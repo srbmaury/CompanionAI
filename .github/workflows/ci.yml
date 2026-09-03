@@ -68,6 +68,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: Update workspace-specific test
+        run: python .github/scripts/account_workspace_test_patch.py
       - name: Apply account-specific workspace refactor
         run: python .github/scripts/account_workspace_patch.py
       - name: Commit refactor
