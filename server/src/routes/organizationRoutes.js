@@ -3,6 +3,7 @@ import { z } from "zod";
 import protect from "../middleware/authMiddleware.js";
 import validate from "../middleware/validate.js";
 import { ObjectIdString } from "../validation/commonSchemas.js";
+import { ASSIGNABLE_ORGANIZATION_ROLES } from "../models/OrganizationMembership.js";
 import {
     addMember,
     createOrganization,
@@ -15,7 +16,7 @@ import {
 } from "../controllers/organizationController.js";
 
 const router = express.Router();
-const role = z.enum(["admin", "recruiter", "hiring_manager", "reviewer"]);
+const role = z.enum(ASSIGNABLE_ORGANIZATION_ROLES);
 const organizationParams = z.object({ organizationId: ObjectIdString });
 const memberParams = z.object({ organizationId: ObjectIdString, membershipId: ObjectIdString });
 
