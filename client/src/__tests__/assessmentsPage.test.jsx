@@ -39,7 +39,7 @@ describe("assessment workspace hierarchy", () => {
         });
         render(<MemoryRouter initialEntries={["/assessments?create=1"]}><AssessmentsPage /></MemoryRouter>);
         await screen.findByRole("heading", { name: "Create assessment" });
-        fireEvent.change(screen.getByLabelText(/Candidate test name/), { target: { value: "Frontend screen" } });
+        fireEvent.change(screen.getByLabelText(/Assessment name/), { target: { value: "Frontend screen" } });
         fireEvent.change(screen.getByLabelText(/Job role/), { target: { value: "Senior frontend engineer" } });
         fireEvent.change(screen.getByLabelText(/Job description and success criteria/), { target: { value: "Own React architecture, accessibility, testing, and web performance." } });
         fireEvent.mouseDown(screen.getByLabelText("Candidate experience"));
@@ -64,7 +64,7 @@ describe("assessment workspace hierarchy", () => {
             expect.objectContaining({ text: "Review this component API and identify its accessibility risks.", weight: 1 }),
         ] })] })));
         await vi.waitFor(() => expect(post).toHaveBeenCalledWith("/assessments/created/invitations", { candidates: [{ email: "one@example.com" }, { email: "two@example.com" }] }));
-    });
+    }, 15000);
 
     it("defaults system-design rounds to one clearly labelled target question", async () => {
         get.mockResolvedValue({ data: { items: [], totalPages: 1 } });

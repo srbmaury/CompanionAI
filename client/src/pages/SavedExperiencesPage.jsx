@@ -84,9 +84,9 @@ export default function SavedExperiencesPage() {
     return (
         <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 5 } }}>
             <Box sx={{ mb: 3 }}>
-                <Typography component="h1" variant="h4" fontWeight={800}>Saved experiences</Typography>
+                <Typography component="h1" variant="h4" fontWeight={800}>Saved company insights</Typography>
                 <Typography color="text.secondary" sx={{ mt: 0.75 }}>
-                    Revisit the interview research you bookmarked.
+                    Revisit company and role insights you saved for later.
                 </Typography>
             </Box>
 

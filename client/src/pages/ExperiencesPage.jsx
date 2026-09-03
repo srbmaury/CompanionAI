@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link as RouterLink } from "react-router-dom";
 import { Alert, Box, Button, Card, CardContent, CircularProgress, Container, Paper, Stack, TextField, Typography } from "@mui/material";
 import api from "../api/axios";
 import { BookmarkAddOutlined, BookmarkRounded } from "@mui/icons-material";
@@ -42,10 +43,7 @@ const ExperiencesPage = () => {
 
     return (
         <Container maxWidth="lg" sx={{ py: { xs: 3, sm: 5 } }}>
-            <Box sx={{ mb: 3 }}>
-                <Typography component="h1" variant="h4" fontWeight={800}>Interview experiences</Typography>
-                <Typography color="text.secondary" sx={{ mt: .75 }}>See what candidates have shared about interviews for a specific company and role.</Typography>
-            </Box>
+            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} gap={2} sx={{ mb: 3 }}><Box><Typography component="h1" variant="h4" fontWeight={800}>Company interview insights</Typography><Typography color="text.secondary" sx={{ mt: .75 }}>See what candidates have shared about interviews for a specific company and role.</Typography></Box><Button component={RouterLink} to="/saved-experiences" variant="outlined">Saved insights</Button></Stack>
             <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 } }}>
                 <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }}>
                     <TextField fullWidth size="small" label="Company" value={expCompany} onChange={(e) => setExpCompany(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") fetchExperiences(); }} />

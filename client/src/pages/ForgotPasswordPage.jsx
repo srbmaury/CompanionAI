@@ -19,9 +19,9 @@ const ForgotPasswordPage = () => {
         setError("");
         try {
             const r = await forgotPassword(email, captchaToken);
-            setMessage(r?.message || "If the email exists, a reset link has been sent");
+            setMessage(r?.message || "If the email exists, a reset link has been sent.");
         } catch (e) {
-            setError(e?.response?.data?.message || "Something went wrong");
+            setError(e?.response?.data?.message || "We couldn’t request a reset link. Try again.");
         } finally {
             setSubmitting(false);
         }
@@ -31,8 +31,8 @@ const ForgotPasswordPage = () => {
         <Box sx={{ display: "flex", justifyContent: "center", py: 6, px: 2 }}>
             <Card sx={{ maxWidth: 520, width: "100%" }}>
                 <CardContent sx={{ p: { xs: 3, sm: 5 } }}>
-                    <Typography variant="h5" fontWeight={700} gutterBottom>
-                        Forgot Password
+                    <Typography component="h1" variant="h5" fontWeight={700} gutterBottom>
+                        Forgot your password?
                     </Typography>
                     <Typography color="text.secondary" sx={{ mb: 3 }}>
                         Enter your registered email. We’ll send you a reset link if the account exists and is verified.
@@ -48,7 +48,7 @@ const ForgotPasswordPage = () => {
                             />
                             <Captcha onVerify={(t) => setCaptchaToken(t)} onExpire={() => setCaptchaToken("")} />
                             <Button type="submit" variant="contained" disabled={submitting}>
-                                {submitting ? "Sending..." : "Send reset link"}
+                                {submitting ? "Sending…" : "Send reset link"}
                             </Button>
                             {message && <Alert severity="info">{message}</Alert>}
                             {error && <Alert severity="error">{error}</Alert>}

@@ -42,6 +42,95 @@ test("login survives a browser reload through refresh-token restoration", async 
     await expect(page.getByRole("heading", { name: /Ready for the next one, Test/ })).toBeVisible();
 });
 
+test("login returns the user to the protected screen they requested", async ({ page }) => {
+    let authenticated = false;
+    await page.route("**/api/auth/refresh", (route) => authenticated ? json(route, { token: "restored-access-token" }) : json(route, { message: "Unauthenticated" }, 401));
+    await page.route("**/api/auth/login", (route) => { authenticated = true; return json(route, { token: "access-token" }); });
+    await page.route("**/api/auth/profile", (route) => json(route, { _id: "user-1", name: "Test User", email: "test@example.com", role: "user", plan: "free" }));
+    await page.route("**/api/billing/entitlements", (route) => json(route, { plan: "free", limits: { interviews: 3, resumeReviews: 3, assessments: 2 }, planLimits: {}, prices: {}, billingAvailable: {} }));
+
+    await page.goto("/pricing");
+    await expect(page).toHaveURL(/\/login$/);
+    await page.getByLabel("Email").fill("test@example.com");
+    await page.locator("input#password").fill("StrongPass1!");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page).toHaveURL(/\/pricing$/);
+    await expect(page.getByRole("heading", { name: "Choose the capacity you need" })).toBeVisible();
+});
+
+test("practice and hiring stay separate while profile keeps advanced settings collapsed", async ({ page }) => {
+    await mockSignedIn(page);
+    await page.route("**/api/assessments/overview**", (route) => json(route, { summary: {}, assessments: [], candidates: [], totalPages: 1 }));
+    await page.route("**/api/assessments?**", (route) => json(route, { items: [], totalPages: 1 }));
+
+    await page.goto("/profile");
+    await expect(page.getByRole("heading", { name: "Profile & settings" })).toBeVisible();
+    await expect(page.getByText("Your workspace", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Plan & billing" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Security", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Primary goal")).not.toBeVisible();
+    await page.getByRole("button", { name: /Practice preferences/ }).click();
+    await expect(page.getByLabel("Primary goal")).toBeVisible();
+
+    if ((page.viewportSize()?.width || 0) >= 900) {
+        await expect(page.getByRole("link", { name: "Resume review" })).toHaveAttribute("href", "/resume-review");
+        await expect(page.getByRole("link", { name: "Progress" })).toHaveAttribute("href", "/progress");
+        await expect(page.getByRole("link", { name: "Company insights" })).toHaveAttribute("href", "/experiences");
+    } else {
+        await page.getByRole("button", { name: "Open navigation" }).click();
+        await expect(page.getByRole("menuitem", { name: "Resume review" })).toBeVisible();
+        await expect(page.getByRole("menuitem", { name: "Company insights" })).toBeVisible();
+        await page.keyboard.press("Escape");
+    }
+
+    await page.getByRole("button", { name: "Switch workspace" }).click();
+    await page.getByRole("menuitem", { name: /Hiring/ }).click();
+    await expect(page).toHaveURL(/\/assessments$/);
+    await expect(page.getByRole("heading", { name: "Hiring overview" })).toBeVisible();
+    if ((page.viewportSize()?.width || 0) >= 900) {
+        await page.getByRole("button", { name: "Candidate pipeline", exact: true }).click();
+    } else {
+        await page.getByRole("button", { name: "Open navigation" }).click();
+        await page.getByRole("menuitem", { name: "Candidate pipeline" }).click();
+    }
+    await expect(page).toHaveURL(/\/assessments#candidate-pipeline$/);
+    await expect(page.getByRole("heading", { name: "Candidate pipeline" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Hiring overview" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Your assessments" })).toHaveCount(0);
+
+    if ((page.viewportSize()?.width || 0) >= 900) {
+        await page.getByRole("button", { name: "Assessments", exact: true }).click();
+    } else {
+        await page.getByRole("button", { name: "Open navigation" }).click();
+        await page.getByRole("menuitem", { name: "Assessments", exact: true }).click();
+    }
+    await expect(page).toHaveURL(/\/assessments#assessment-list$/);
+    await expect(page.getByRole("heading", { name: "Your assessments" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Candidate pipeline" })).toHaveCount(0);
+    if ((page.viewportSize()?.width || 0) >= 900) {
+        await page.getByRole("button", { name: "New assessment" }).click();
+    } else {
+        await page.getByRole("button", { name: "Open navigation" }).click();
+        await page.getByRole("menuitem", { name: "New assessment" }).click();
+    }
+    await expect(page).toHaveURL(/\/assessments\?create=1$/);
+    await expect(page.getByRole("heading", { name: "Create assessment", exact: true })).toBeVisible();
+});
+
+test("practice sub-features remain reachable after navigation cleanup", async ({ page }) => {
+    await mockSignedIn(page);
+    await page.route("**/api/resumes**", (route) => json(route, []));
+    await page.route("**/api/experiences/saved**", (route) => json(route, { items: [], totalPages: 1 }));
+
+    await page.goto("/resume-review");
+    await expect(page.getByRole("link", { name: "Resume library" })).toHaveAttribute("href", "/resumes");
+    await expect(page.getByRole("link", { name: "Past reviews" })).toHaveAttribute("href", "/resume-reviews");
+    await expect(page.getByRole("link", { name: "Find best match" })).toHaveAttribute("href", "/resume-match");
+
+    await page.goto("/experiences");
+    await expect(page.getByRole("link", { name: "Saved insights" })).toHaveAttribute("href", "/saved-experiences");
+});
+
 test("recruiter can review and filter the cross-interview candidate pipeline", async ({ page }) => {
     await mockSignedIn(page);
     await page.route("**/api/assessments/overview**", (route) => json(route, {
@@ -74,7 +163,7 @@ test("recruiter can publish a hybrid assessment with all candidate experiences",
     });
 
     await page.goto("/assessments?create=1");
-    await page.getByLabel("Candidate test name").fill("Hybrid engineering assessment");
+    await page.getByLabel("Assessment name").fill("Hybrid engineering assessment");
     await page.getByLabel("Company (optional)").fill("CompanionAI");
     await page.getByRole("textbox", { name: "Job role" }).fill("Senior Software Engineer");
     await page.getByLabel("Job description and success criteria").fill("Evaluate communication, production coding, system design, scalability, reliability, testing, and security judgment.");
@@ -118,7 +207,7 @@ test("candidate completes an assessment without seeing private feedback", async 
     await page.route("**/api/assessments/public/share-1/attempts/attempt-1/submit", (route) => json(route, { received: true }));
 
     await page.goto("/assessment/share-1");
-    await expect(page.getByText("Scores and feedback are not shown to candidates.")).toBeVisible();
+    await expect(page.getByText("Scores and private feedback are not shown to candidates.")).toBeVisible();
     await page.getByLabel("Full name").fill("Asha Candidate");
     await page.getByLabel("Email address").fill("asha@example.com");
     await page.getByRole("checkbox").check();
@@ -218,4 +307,58 @@ test("candidate stays on the question when saving fails", async ({ page }) => {
     await expect(page.getByText("Temporary save failure")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Describe your rollback strategy." })).toBeVisible();
     await expect(answer).toHaveValue("I use health gates, canaries, and a tested rollback command.");
+});
+
+test("supporting authenticated screens render without overflow", async ({ page }) => {
+    test.setTimeout(60000);
+    await mockSignedIn(page, { _id: "admin-1", name: "Admin User", email: "admin@example.com", role: "admin", plan: "scale" });
+    await page.route("**/api/events", (route) => json(route, { recorded: true }, 201));
+    await page.route("**/api/resumes**", (route) => json(route, []));
+    await page.route("**/api/resumes/reviews**", (route) => json(route, { items: [], totalPages: 1 }));
+    await page.route("**/api/experiences/saved**", (route) => json(route, { items: [], totalPages: 1 }));
+    await page.route("**/api/interviews/analytics/progress**", (route) => json(route, { total: 0, completed: 0, averageScore: 0, improvement: 0, recentScores: [], skills: [] }));
+    await page.route("**/api/billing/entitlements**", (route) => json(route, { plan: "scale", limits: { interviews: 1000, resumeReviews: 1000, assessments: 500 }, planLimits: {}, prices: {}, billingAvailable: {} }));
+    await page.route("**/api/assessments/overview**", (route) => json(route, { summary: {}, assessments: [], candidates: [], totalPages: 1 }));
+    await page.route("**/api/assessments?**", (route) => json(route, { items: [], totalPages: 1 }));
+    await page.route("**/api/admin/overview**", (route) => json(route, { users: 0, activeSubscriptions: 0, openFeedback: 0, assessments: 0 }));
+    await page.route("**/api/admin/feedback**", (route) => json(route, { items: [], totalPages: 1 }));
+    await page.route("**/api/admin/audit**", (route) => json(route, { items: [], totalPages: 1 }));
+
+    const screens = [
+        ["/profile", "Profile & settings"],
+        ["/progress", "Your progress"],
+        ["/resumes", "Resumes"],
+        ["/resume-review", "AI resume review"],
+        ["/resume-reviews", "Resume review history"],
+        ["/resume-match", "Find your best resume for a job"],
+        ["/experiences", "Company interview insights"],
+        ["/saved-experiences", "Saved company insights"],
+        ["/pricing", "Choose the capacity you need"],
+        ["/assessments", "Candidate assessments"],
+        ["/admin/feedback", "Product feedback"],
+        ["/admin/audit", "Audit activity"],
+    ];
+    for (const [path, heading] of screens) {
+        await page.goto(path);
+        await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    }
+});
+
+test("public account and legal screens have clear page titles without overflow", async ({ page }) => {
+    await mockSignedOut(page);
+    const screens = [
+        ["/login", "Sign in to CompanionAI"],
+        ["/register", "Create your CompanionAI account"],
+        ["/forgot-password", "Forgot your password?"],
+        ["/reset-password", "Reset your password"],
+        ["/verify-email", "Verify your email"],
+        ["/privacy", "Privacy notice"],
+        ["/terms", "Terms of use"],
+    ];
+    for (const [path, heading] of screens) {
+        await page.goto(path);
+        await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    }
 });

@@ -4,6 +4,7 @@ import { ArrowForwardRounded, AssignmentTurnedInRounded, AutoAwesome, Descriptio
 import { Box, Button, Chip, Container, Grid, Paper, Stack, Typography } from "@mui/material";
 import { AuthContext } from "../context/AuthContext";
 import SiteFooter from "../components/SiteFooter";
+import { setWorkspacePreference } from "../utils/workspacePreference";
 
 const features = [
     { icon: <WorkOutline />, title: "Built for your target role", body: "Turn any job description and resume into a realistic, multi-round interview plan." },
@@ -14,8 +15,11 @@ const features = [
 
 export default function LandingPage() {
     const { user } = useContext(AuthContext);
-    const primaryPath = user ? "/dashboard" : "/register";
-    const hiringPath = user ? "/assessments" : "/register";
+    const primaryPath = user ? "/dashboard" : "/register?workspace=practice";
+    const hiringPath = user ? "/assessments" : "/register?workspace=hiring";
+    const rememberWorkspace = (workspace) => {
+        if (!user) setWorkspacePreference(workspace);
+    };
 
     return (
         <Box component="section" sx={{ overflow: "hidden" }}>
@@ -37,10 +41,10 @@ export default function LandingPage() {
                                     Practice realistic interviews for your next role—or create structured candidate assessments, track every submission, and review consistent reports.
                                 </Typography>
                                 <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} width={{ xs: "100%", sm: "auto" }}>
-                                    <Button component={RouterLink} to={primaryPath} variant="contained" size="large" sx={{ px: 3.5, py: 1.4 }}>
+                                    <Button component={RouterLink} to={primaryPath} onClick={() => rememberWorkspace("practice")} variant="contained" size="large" sx={{ px: 3.5, py: 1.4 }}>
                                         {user ? "Open practice workspace" : "Practice interviews"}
                                     </Button>
-                                    <Button component={RouterLink} to={hiringPath} variant="outlined" size="large" sx={{ px: 3.5, py: 1.4 }}>
+                                    <Button component={RouterLink} to={hiringPath} onClick={() => rememberWorkspace("hiring")} variant="outlined" size="large" sx={{ px: 3.5, py: 1.4 }}>
                                         Assess candidates
                                     </Button>
                                 </Stack>
@@ -114,7 +118,7 @@ export default function LandingPage() {
                 <Paper sx={{ p: { xs: 4, md: 7 }, borderRadius: 5, color: "white", background: "linear-gradient(135deg,#4438b8,#7165ed 58%,#8f85ff)" }}>
                     <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", md: "center" }} spacing={3}>
                         <Box><Typography variant="h3" fontWeight={850} letterSpacing="-.04em">Make interviews useful for everyone involved.</Typography><Typography sx={{ color: "rgba(255,255,255,.78)", mt: 1.5, fontSize: "1.05rem" }}>Practice for your next role or run your first structured candidate screen.</Typography></Box>
-                        <Stack direction={{ xs: "column", sm: "row" }} gap={1}><Button component={RouterLink} to={primaryPath} variant="contained" size="large" endIcon={<ArrowForwardRounded />} sx={{ bgcolor: "white", color: "#4438b8", px: 3, flexShrink: 0, "&:hover": { bgcolor: "#f4f2ff" } }}>Practice</Button><Button component={RouterLink} to={hiringPath} variant="outlined" size="large" sx={{ borderColor: "rgba(255,255,255,.65)", color: "white", px: 3 }}>Hire</Button></Stack>
+                        <Stack direction={{ xs: "column", sm: "row" }} gap={1}><Button component={RouterLink} to={primaryPath} onClick={() => rememberWorkspace("practice")} variant="contained" size="large" endIcon={<ArrowForwardRounded />} sx={{ bgcolor: "white", color: "#4438b8", px: 3, flexShrink: 0, "&:hover": { bgcolor: "#f4f2ff" } }}>Practice</Button><Button component={RouterLink} to={hiringPath} onClick={() => rememberWorkspace("hiring")} variant="outlined" size="large" sx={{ borderColor: "rgba(255,255,255,.65)", color: "white", px: 3 }}>Hire</Button></Stack>
                     </Stack>
                 </Paper>
             </Container>

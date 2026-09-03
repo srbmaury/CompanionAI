@@ -2,6 +2,7 @@
 import { createContext, useCallback, useEffect, useState } from "react";
 
 import api, { clearAccessToken, setAccessToken, silentRefresh } from "../api/axios";
+import { adoptGuestWorkspacePreference, clearWorkspacePreference } from "../utils/workspacePreference";
 
 export const AuthContext = createContext();
 
@@ -12,9 +13,12 @@ export const AuthProvider = ({ children }) => {
     const fetchProfile = useCallback(async () => {
         try {
             const { data } = await api.get(`/auth/profile`);
+            adoptGuestWorkspacePreference(data?._id);
             setUser(data);
+            return data;
         } catch {
             setUser(null);
+            return null;
         }
     }, []);
 
@@ -35,7 +39,7 @@ export const AuthProvider = ({ children }) => {
         if (captchaToken) payload.captchaToken = captchaToken;
         const { data } = await api.post(`/auth/login`, payload);
         if (data?.token) setAccessToken(data.token);
-        await fetchProfile();
+        return fetchProfile();
     };
 
     const register = async (name, email, password, captchaToken) => {
@@ -48,7 +52,7 @@ export const AuthProvider = ({ children }) => {
     const googleLogin = async (idToken) => {
         const { data } = await api.post(`/auth/google`, { idToken });
         if (data?.token) setAccessToken(data.token);
-        await fetchProfile();
+        return fetchProfile();
     };
 
     const resendVerification = async (email) => {
@@ -85,6 +89,7 @@ export const AuthProvider = ({ children }) => {
 
     const deleteAccount = async ({ confirmation, password }) => {
         const { data } = await api.delete(`/auth/profile`, { data: { confirmation, password } });
+        clearWorkspacePreference(user?._id);
         clearAccessToken();
         setUser(null);
         return data;
