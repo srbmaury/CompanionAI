@@ -1,0 +1,67 @@
+name: Fix monetization E2E contracts
+
+on:
+  push:
+    branches: [hiring-organizations]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore member API contract and clean shared membership
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          controller = Path('server/src/controllers/organizationController.js')
+          text = controller.read_text()
+          old = '''        return res.status(201).json({
+                      membership: {
+                          _id: membership._id,
+                          user: membership.user,
+                          role: membership.role,
+                          status: membership.status,
+                          joinedAt: membership.joinedAt,
+                      },
+                  });'''
+          new = '''        return res.status(201).json({
+                      member: {
+                          _id: membership._id,
+                          user: membership.user,
+                          role: membership.role,
+                          status: membership.status,
+                          joinedAt: membership.joinedAt,
+                      },
+                  });'''
+          if old not in text:
+              raise SystemExit('Expected addMember response contract not found')
+          controller.write_text(text.replace(old, new, 1))
+
+          test = Path('server/src/test/e2e/happyFlows.test.js')
+          text = test.read_text()
+          old = '''        await OrganizationMembership.create({ organization: hiringOrganization.body.organization._id, user: otherUser._id, role: "reviewer", status: "active" });
+                  const otherAcmeAuth = { ...otherAuth, "X-Organization-Id": hiringOrganization.body.organization._id };
+                  const sharedHiringEntitlements = await agent.get("/api/billing/hiring/entitlements").set(otherAcmeAuth).expect(200);
+                  expect(sharedHiringEntitlements.body).toMatchObject({ plan: "trial", used: { candidateInterviews: 1 } });'''
+          new = '''        const sharedMembership = await OrganizationMembership.create({ organization: hiringOrganization.body.organization._id, user: otherUser._id, role: "reviewer", status: "active" });
+                  const otherAcmeAuth = { ...otherAuth, "X-Organization-Id": hiringOrganization.body.organization._id };
+                  const sharedHiringEntitlements = await agent.get("/api/billing/hiring/entitlements").set(otherAcmeAuth).expect(200);
+                  expect(sharedHiringEntitlements.body).toMatchObject({ plan: "trial", used: { candidateInterviews: 1 } });
+                  await OrganizationMembership.updateOne({ _id: sharedMembership._id }, { $set: { status: "disabled" } });'''
+          if old not in text:
+              raise SystemExit('Expected shared Hiring usage block not found')
+          test.write_text(text.replace(old, new, 1))
+          PY
+          git diff --check
+      - name: Commit fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server/src/controllers/organizationController.js server/src/test/e2e/happyFlows.test.js
+          git commit -m "Fix organization monetization E2E contracts"
+          git push origin HEAD:hiring-organizations
