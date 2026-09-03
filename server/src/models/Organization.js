@@ -1,5 +1,17 @@
 import mongoose from "mongoose";
 
+const subscriptionStatuses = [
+    "inactive",
+    "incomplete",
+    "incomplete_expired",
+    "trialing",
+    "active",
+    "past_due",
+    "canceled",
+    "unpaid",
+    "paused",
+];
+
 const organizationSchema = new mongoose.Schema(
     {
         name: {
@@ -15,21 +27,46 @@ const organizationSchema = new mongoose.Schema(
             required: true,
             index: true,
         },
-        billing: {
-            plan: { type: String, enum: ["trial", "starter", "growth", "enterprise"], default: "trial" },
-            subscriptionStatus: { type: String, enum: ["inactive", "incomplete", "incomplete_expired", "trialing", "active", "past_due", "canceled", "unpaid", "paused"], default: "inactive" },
-            provider: { type: String, enum: ["none", "stripe"], default: "none" },
-            stripeCustomerId: { type: String, default: "" },
-            stripeSubscriptionId: { type: String, default: "" },
-            currentPeriodEnd: { type: Date, default: null },
-            trialCreditsUsed: { type: Number, min: 0, default: 0 },
+        hiringPlan: {
+            type: String,
+            enum: ["trial", "starter", "growth", "enterprise"],
+            default: "trial",
+            index: true,
+        },
+        hiringSubscriptionStatus: {
+            type: String,
+            enum: subscriptionStatuses,
+            default: "inactive",
+        },
+        hiringTrialEligible: {
+            type: Boolean,
+            default: true,
+        },
+        hiringBillingProvider: {
+            type: String,
+            enum: ["none", "stripe"],
+            default: "none",
+            select: false,
+        },
+        hiringBillingCustomerId: {
+            type: String,
+            default: "",
+            select: false,
+        },
+        hiringBillingSubscriptionId: {
+            type: String,
+            default: "",
+            select: false,
+        },
+        hiringCurrentPeriodEnd: {
+            type: Date,
+            default: null,
         },
     },
     { timestamps: true }
 );
 
 organizationSchema.index({ createdBy: 1, createdAt: -1 });
-organizationSchema.index({ "billing.stripeCustomerId": 1 }, { sparse: true });
-organizationSchema.index({ "billing.stripeSubscriptionId": 1 }, { sparse: true });
+organizationSchema.index({ hiringBillingCustomerId: 1 }, { sparse: true });
 
 export default mongoose.model("Organization", organizationSchema);

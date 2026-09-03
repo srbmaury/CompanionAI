@@ -39,7 +39,7 @@ const DashboardPage = () => {
         trackEvent("dashboard_viewed");
         api.get("/interviews/analytics/progress").then(({ data }) => setProgress(data || {})).catch(() => {});
         api.get("/recommendations").then(({ data }) => setRecommendations(data?.actions || [])).catch(() => {});
-        api.get("/billing/entitlements").then(({ data }) => setEntitlements(data || null)).catch(() => {});
+        api.get("/billing/practice/entitlements").then(({ data }) => setEntitlements(data || null)).catch(() => {});
         api.get("/resumes", { params: { page: 1, limit: 1 } }).then(({ data }) => setResumeCount(Array.isArray(data) ? data.length : Number(data?.total) || 0)).catch(() => {});
     }, [user]);
 
@@ -101,7 +101,7 @@ const DashboardPage = () => {
             {recommendations.length > 0 && <Box mb={4}><Typography component="h2" variant="h5" fontWeight={750} mb={2}>Recommended next steps</Typography><Grid container spacing={2}>{recommendations.map((item, index) => <Grid size={{ xs: 12, md: index === 0 ? 6 : 3 }} key={item.id}><Card variant="outlined" sx={{ height: "100%", borderColor: index === 0 ? "primary.light" : undefined }}><CardActionArea onClick={() => navigate(item.href)} sx={{ height: "100%" }}><CardContent><Typography component="h3" variant={index === 0 ? "h6" : "body1"} fontWeight={750}>{item.title}</Typography><Typography variant="body2" color="text.secondary" mt={1}>{item.reason || "Based on your saved goal and latest practice."}</Typography><ArrowForward color="primary" sx={{ mt: 2 }} /></CardContent></CardActionArea></Card></Grid>)}</Grid></Box>}
 
             {entitlements && <Alert severity={entitlements.plan === "pro" ? "success" : "info"} sx={{ mb: 3 }} action={entitlements.plan === "free" ? <Button color="inherit" size="small" onClick={() => navigate("/pricing")}>View Pro</Button> : <Button color="inherit" size="small" onClick={() => navigate("/pricing")}>Manage</Button>}>
-                <strong>{entitlements.plan === "pro" ? "Pro" : entitlements.plan === "scale" ? "Scale" : "Free"} plan:</strong> {entitlements.used.interviews} of {entitlements.limits.interviews} practice interviews and {entitlements.used.resumeReviews} of {entitlements.limits.resumeReviews} resume reviews used in {entitlements.period}. Hiring assessment usage is available in the Hiring workspace.
+                <strong>{entitlements.plan === "pro" ? "Practice Pro" : "Practice Free"}:</strong> {entitlements.used.interviews} of {entitlements.limits.interviews} practice interviews and {entitlements.used.resumeReviews} of {entitlements.limits.resumeReviews} resume reviews used in {entitlements.period}. Hiring capacity is billed separately to each organization.
             </Alert>}
 
             {!loading && interviews.length > 0 && <Grid container spacing={2.5} mb={4}>{[

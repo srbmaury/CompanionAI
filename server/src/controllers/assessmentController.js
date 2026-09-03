@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import Assessment from "../models/Assessment.js";
 import CandidateAttempt from "../models/CandidateAttempt.js";
+import { reserveCandidateInterview, releaseOrganizationUsage } from "../services/organizationUsage.js";
 import { generateQuestionsForRound, improveAssessmentQuestion } from "../utils/generateQuestions.js";
 import { generateFollowUp } from "../utils/generateQuestions/followUp.js";
 import metrics from "../metrics/index.js";
@@ -271,6 +272,8 @@ export const previewAssessment = async (req, res, next) => {
 };
 
 export const startCandidateAttempt = async (req, res, next) => {
+    let usageReservation = null;
+    let attemptSaved = false;
     try {
         const assessment = await findPublicAssessment(req.params.shareToken);
         if (!assessment) { observeCandidateAction("start", "unavailable", null); return res.status(404).json({ message: "Assessment unavailable" }); }
@@ -278,7 +281,18 @@ export const startCandidateAttempt = async (req, res, next) => {
         const activeInvitation = assessment.invitations?.find((item) => item.email === candidateEmail && item.status !== "revoked");
         if (assessment.inviteOnly && !activeInvitation) return res.status(403).json({ message: "This assessment is invitation-only. Use the email address that was invited." });
         const existing = await CandidateAttempt.findOne({ assessment: assessment._id, candidateEmail });
-        if (existing) { observeCandidateAction("start", "duplicate", assessment); return res.status(409).json({ message: existing.status === "submitted" ? "This email has already submitted an attempt" : "An attempt for this email is already in progress. Continue from the browser where it was started or contact the interviewer." }); }
+        if (existing) { observeCandidateAction("start", "duplicate", assessment); return res.status(409).json({ message: existing.status === "submitted" ? "This email has already submitted an attempt" : "An attempt for this email is already in progress. Continue from the browser where it was started or contact the recruiting team." }); }
+
+        const usage = await reserveCandidateInterview(assessment.organization);
+        if (!usage.ok) {
+            observeCandidateAction("start", "capacity", assessment);
+            return res.status(429).json({
+                message: "This assessment is temporarily unavailable because the hiring team has reached its candidate interview capacity. Contact the recruiting team if you need help.",
+                code: "HIRING_CAPACITY_REACHED",
+            });
+        }
+        usageReservation = usage.reservation;
+
         const rawToken = crypto.randomBytes(32).toString("base64url");
         const rounds = assessment.rounds.map((round) => ({ name: round.name, description: round.description, deliveryMode: round.deliveryMode || "conversational", questions: round.questions.map((question) => ({ text: question.text, weight: question.weight, competencies: question.competencies, knockout: question.knockout })) }));
         const attempt = new CandidateAttempt({ assessment: assessment._id, candidateEmail });
@@ -287,10 +301,17 @@ export const startCandidateAttempt = async (req, res, next) => {
         const invitation = activeInvitation;
         if (invitation) invitation.status = "started";
         await attempt.save();
-        if (invitation) await assessment.save();
+        attemptSaved = true;
+        if (invitation) {
+            try { await assessment.save(); } catch (error) { console.warn("Could not update invitation start status", error?.message || error); }
+        }
         observeCandidateAction("start", "success", assessment);
         return res.status(201).json({ attemptToken: rawToken, attempt: publicAttempt(attempt) });
-    } catch (error) { observeCandidateAction("start", "failure", null); return next(error); }
+    } catch (error) {
+        if (usageReservation && !attemptSaved) await releaseOrganizationUsage(usageReservation);
+        observeCandidateAction("start", "failure", null);
+        return next(error);
+    }
 };
 
 export const recordIntegrityEvent = async (req, res, next) => {

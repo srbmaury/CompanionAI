@@ -6,11 +6,25 @@ const mockSignedOut = async (page) => {
     await page.route("**/api/auth/refresh", (route) => json(route, { message: "Unauthenticated" }, 401));
 };
 
-const mockSignedIn = async (page, user = { _id: "user-1", name: "Recruiter One", email: "recruiter@example.com", role: "user", plan: "free" }, organizationRole = "owner") => {
+const mockSignedIn = async (page, user = { _id: "user-1", name: "Recruiter One", email: "recruiter@example.com", role: "user", practicePlan: "free" }, organizationRole = "owner") => {
     await page.route("**/api/auth/refresh", (route) => json(route, { token: "test-access-token" }));
     await page.route("**/api/auth/profile", (route) => json(route, user));
     await page.route("**/api/organizations", (route) => json(route, {
         organizations: [{ _id: "org-1", name: "Acme Hiring", role: organizationRole, memberCount: 1 }],
+    }));
+    await page.route("**/api/billing/hiring/entitlements", (route) => json(route, {
+        product: "hiring",
+        organization: { _id: "org-1", name: "Acme Hiring" },
+        plan: "trial",
+        subscriptionStatus: "inactive",
+        period: "lifetime",
+        periodType: "lifetime",
+        limits: { candidateInterviews: 5 },
+        used: { candidateInterviews: 1 },
+        planLimits: { trial: { candidateInterviews: 5 }, starter: { candidateInterviews: 25 }, growth: { candidateInterviews: 100 }, enterprise: { candidateInterviews: 100000 } },
+        prices: {},
+        billingAvailable: {},
+        canManageBilling: ["owner", "admin"].includes(organizationRole),
     }));
 };
 
@@ -32,7 +46,7 @@ test("login survives a browser reload through refresh-token restoration", async 
         authenticated = true;
         return json(route, { token: "initial-access-token" });
     });
-    await page.route("**/api/auth/profile", (route) => json(route, { _id: "user-1", name: "Test User", email: "test@example.com", role: "user", plan: "free" }));
+    await page.route("**/api/auth/profile", (route) => json(route, { _id: "user-1", name: "Test User", email: "test@example.com", role: "user", practicePlan: "free" }));
 
     await page.goto("/login");
     await page.getByLabel("Email").fill("test@example.com");
@@ -49,8 +63,8 @@ test("login returns the user to the protected screen they requested", async ({ p
     let authenticated = false;
     await page.route("**/api/auth/refresh", (route) => authenticated ? json(route, { token: "restored-access-token" }) : json(route, { message: "Unauthenticated" }, 401));
     await page.route("**/api/auth/login", (route) => { authenticated = true; return json(route, { token: "access-token" }); });
-    await page.route("**/api/auth/profile", (route) => json(route, { _id: "user-1", name: "Test User", email: "test@example.com", role: "user", plan: "free" }));
-    await page.route("**/api/billing/entitlements", (route) => json(route, { plan: "free", limits: { interviews: 3, resumeReviews: 3, assessments: 2 }, planLimits: {}, prices: {}, billingAvailable: {} }));
+    await page.route("**/api/auth/profile", (route) => json(route, { _id: "user-1", name: "Test User", email: "test@example.com", role: "user", practicePlan: "free" }));
+    await page.route("**/api/billing/practice/entitlements", (route) => json(route, { plan: "free", limits: { interviews: 3, resumeReviews: 3 }, used: { interviews: 0, resumeReviews: 0 }, planLimits: {}, prices: {}, billingAvailable: {} }));
 
     await page.goto("/pricing");
     await expect(page).toHaveURL(/\/login$/);
@@ -58,7 +72,7 @@ test("login returns the user to the protected screen they requested", async ({ p
     await page.locator("input#password").fill("StrongPass1!");
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page).toHaveURL(/\/pricing$/);
-    await expect(page.getByRole("heading", { name: "Choose the capacity you need" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Choose your Practice plan" })).toBeVisible();
 });
 
 test("practice and hiring stay separate while profile keeps advanced settings collapsed", async ({ page }) => {
@@ -344,7 +358,7 @@ test("supporting authenticated screens render without overflow", async ({ page }
     await page.route("**/api/resumes/reviews**", (route) => json(route, { items: [], totalPages: 1 }));
     await page.route("**/api/experiences/saved**", (route) => json(route, { items: [], totalPages: 1 }));
     await page.route("**/api/interviews/analytics/progress**", (route) => json(route, { total: 0, completed: 0, averageScore: 0, improvement: 0, recentScores: [], skills: [] }));
-    await page.route("**/api/billing/entitlements**", (route) => json(route, { plan: "scale", limits: { interviews: 1000, resumeReviews: 1000, assessments: 500 }, planLimits: {}, prices: {}, billingAvailable: {} }));
+    await page.route("**/api/billing/practice/entitlements**", (route) => json(route, { plan: "pro", limits: { interviews: 100, resumeReviews: 100 }, used: { interviews: 0, resumeReviews: 0 }, planLimits: {}, prices: {}, billingAvailable: {} }));
     await page.route("**/api/assessments/overview**", (route) => json(route, { summary: {}, assessments: [], candidates: [], totalPages: 1 }));
     await page.route("**/api/assessments?**", (route) => json(route, { items: [], totalPages: 1 }));
     await page.route("**/api/admin/overview**", (route) => json(route, { users: 0, activeSubscriptions: 0, openFeedback: 0, assessments: 0 }));

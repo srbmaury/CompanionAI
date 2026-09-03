@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo, useState } from "react";
-import { Alert, Box, Button, Chip, Container, Divider, FormControl, InputLabel, MenuItem, Paper, Select, Stack, TextField, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, Container, Divider, FormControl, InputLabel, LinearProgress, MenuItem, Paper, Select, Stack, TextField, Typography } from "@mui/material";
 import api from "../api/axios";
 import { OrganizationContext } from "../context/OrganizationContext";
 
@@ -22,6 +22,9 @@ export default function HiringTeamPage() {
     const [role, setRole] = useState("recruiter");
     const [organizationName, setOrganizationName] = useState("");
     const [adding, setAdding] = useState(false);
+    const [billing, setBilling] = useState(null);
+    const [billingLoading, setBillingLoading] = useState(false);
+    const [billingActionLoading, setBillingActionLoading] = useState(false);
     const canManage = ["owner", "admin"].includes(currentRole);
 
     const loadMembers = async () => {
@@ -41,6 +44,15 @@ export default function HiringTeamPage() {
     useEffect(() => {
         loadMembers();
     }, [activeOrganization?._id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (!activeOrganization?._id) return;
+        setBillingLoading(true);
+        api.get("/billing/hiring/entitlements")
+            .then(({ data }) => setBilling(data))
+            .catch((err) => setError(err?.response?.data?.message || "Could not load Hiring plan"))
+            .finally(() => setBillingLoading(false));
+    }, [activeOrganization?._id]);
 
     const memberCountLabel = useMemo(() => `${members.length} active member${members.length === 1 ? "" : "s"}`, [members.length]);
 
@@ -93,6 +105,29 @@ export default function HiringTeamPage() {
         }
     };
 
+    const billingRedirect = async (endpoint, body) => {
+        try {
+            setBillingActionLoading(true);
+            setError("");
+            const { data } = await api.post(endpoint, body);
+            if (!data?.url) throw new Error("Missing billing URL");
+            window.location.assign(data.url);
+        } catch (err) {
+            setError(err?.response?.data?.message || "Could not open Hiring billing");
+            setBillingActionLoading(false);
+        }
+    };
+
+    const formatPrice = (plan) => {
+        const price = billing?.prices?.[plan];
+        if (!price) return null;
+        const amount = new Intl.NumberFormat(undefined, { style: "currency", currency: price.currency.toUpperCase() }).format(price.unitAmount / 100);
+        const interval = price.intervalCount > 1 ? `${price.intervalCount} ${price.interval}s` : price.interval;
+        return `${amount} / ${interval}`;
+    };
+
+    const planLabel = (plan) => ({ none: "No plan", trial: "Trial", starter: "Starter", growth: "Growth", enterprise: "Enterprise" }[plan] || plan);
+
     const createAnotherOrganization = async (event) => {
         event.preventDefault();
         if (organizationName.trim().length < 2) return;
@@ -110,8 +145,8 @@ export default function HiringTeamPage() {
             <Stack spacing={4}>
                 <Box>
                     <Typography variant="overline" color="primary.main" fontWeight={850}>Hiring</Typography>
-                    <Typography component="h1" variant="h3" fontWeight={850} letterSpacing="-.035em">Team & organization</Typography>
-                    <Typography color="text.secondary" mt={1}>Manage who can create assessments, review candidates, and administer your hiring workspace.</Typography>
+                    <Typography component="h1" variant="h3" fontWeight={850} letterSpacing="-.035em">Organization settings</Typography>
+                    <Typography color="text.secondary" mt={1}>Manage your team, shared candidate-interview capacity, and organization billing.</Typography>
                 </Box>
 
                 {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
@@ -182,6 +217,31 @@ export default function HiringTeamPage() {
                         </Stack>
                     </Paper>
                 )}
+
+
+                <Paper variant="outlined" sx={{ p: 3, borderRadius: 4 }}>
+                    <Typography variant="h5" fontWeight={800}>Plan & billing</Typography>
+                    <Typography color="text.secondary" mt={.5}>Hiring billing belongs to {activeOrganization?.name}. Every member uses the same organization capacity; personal Practice plans do not affect it.</Typography>
+                    {billingLoading ? <Typography color="text.secondary" mt={2}>Loading Hiring usage…</Typography> : billing && <Stack spacing={2.5} mt={2.5}>
+                        <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" gap={2} alignItems={{ md: "center" }}>
+                            <Box>
+                                <Stack direction="row" spacing={1} alignItems="center"><Typography variant="h6" fontWeight={800}>{planLabel(billing.plan)} Hiring</Typography><Chip size="small" label={billing.periodType === "lifetime" ? "Lifetime trial credits" : "Monthly capacity"} /></Stack>
+                                <Typography variant="body2" color="text.secondary" mt={.5}>{billing.used.candidateInterviews} of {billing.limits.candidateInterviews} candidate interviews used{billing.periodType === "month" ? ` in ${billing.period}` : ""}.</Typography>
+                            </Box>
+                            {billing.canManageBilling && ["starter", "growth", "enterprise"].includes(billing.plan) && <Button variant="outlined" disabled={billingActionLoading} onClick={() => billingRedirect("/billing/hiring/portal-session")}>Manage billing</Button>}
+                        </Stack>
+                        <LinearProgress variant="determinate" value={billing.limits.candidateInterviews > 0 ? Math.min(100, (billing.used.candidateInterviews / billing.limits.candidateInterviews) * 100) : 100} sx={{ height: 8, borderRadius: 99 }} />
+                        <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+                            {["starter", "growth"].map((plan) => {
+                                const limit = billing.planLimits?.[plan]?.candidateInterviews;
+                                const current = billing.plan === plan;
+                                return <Paper key={plan} variant="outlined" sx={{ p: 2, flex: 1, borderColor: current ? "primary.main" : "divider" }}><Typography fontWeight={800}>{planLabel(plan)}</Typography><Typography variant="h6" mt={.5}>{limit} candidate interviews / month</Typography>{formatPrice(plan) && <Typography color="text.secondary">{formatPrice(plan)}</Typography>}<Button sx={{ mt: 1.5 }} fullWidth variant={plan === "growth" ? "contained" : "outlined"} disabled={!billing.canManageBilling || current || billingActionLoading || !billing.billingAvailable?.[plan]} onClick={() => billingRedirect("/billing/hiring/checkout-session", { plan })}>{current ? "Current plan" : billing.billingAvailable?.[plan] ? `Choose ${planLabel(plan)}` : "Checkout not configured"}</Button></Paper>;
+                            })}
+                            <Paper variant="outlined" sx={{ p: 2, flex: 1 }}><Typography fontWeight={800}>Enterprise</Typography><Typography variant="h6" mt={.5}>Custom capacity</Typography><Typography color="text.secondary">Custom contracts, SSO/API and retention controls can be added when enterprise demand is validated.</Typography><Button sx={{ mt: 1.5 }} fullWidth variant="outlined" disabled>Contact sales</Button></Paper>
+                        </Stack>
+                        {!billing.canManageBilling && <Alert severity="info">Only organization Owners and Admins can change Hiring billing. Your role can still see shared usage.</Alert>}
+                    </Stack>}
+                </Paper>
 
                 <Paper component="form" variant="outlined" sx={{ p: 3, borderRadius: 4 }} onSubmit={createAnotherOrganization}>
                     <Typography variant="h5" fontWeight={800}>Create another organization</Typography>

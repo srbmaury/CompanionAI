@@ -5,7 +5,7 @@ import validate from "../middleware/validate.js";
 import { z } from "zod";
 import audit from "../middleware/audit.js";
 import quotas from "../middleware/quotas.js";
-import usageLimit from "../middleware/usageLimit.js";
+import practiceUsageLimit from "../middleware/practiceUsageLimit.js";
 
 const router = express.Router();
 
@@ -99,7 +99,7 @@ router.post(
         maxPerWindow: Number(process.env.QUOTA_INTERVIEW_CREATE_PER_HOUR || 30),
     }),
     validate(CreateInterviewSchema),
-    usageLimit("interviews", "interviewsPerMonth"),
+    practiceUsageLimit("interviews", "interviewsPerMonth"),
     audit("interview.create", { entityType: "Interview" }),
     createInterview
 );

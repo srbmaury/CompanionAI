@@ -9,13 +9,16 @@ import ResumeReview from "../../models/ResumeReview.js";
 import SavedExperience from "../../models/SavedExperience.js";
 import ProductFeedback from "../../models/ProductFeedback.js";
 import BillingEvent from "../../models/BillingEvent.js";
-import UsageCounter from "../../models/UsageCounter.js";
+import PracticeUsageCounter from "../../models/PracticeUsageCounter.js";
 import ReminderDelivery from "../../models/ReminderDelivery.js";
 import ProductEvent from "../../models/ProductEvent.js";
 import RefreshToken from "../../models/RefreshToken.js";
 import Assessment from "../../models/Assessment.js";
 import CandidateAttempt from "../../models/CandidateAttempt.js";
-import { currentMonth, PLAN_LIMITS } from "../../services/entitlements.js";
+import OrganizationUsageCounter from "../../models/OrganizationUsageCounter.js";
+import OrganizationMembership from "../../models/OrganizationMembership.js";
+import { currentMonth, PRACTICE_PLAN_LIMITS } from "../../services/practiceEntitlements.js";
+import { HIRING_PLAN_LIMITS } from "../../services/hiringEntitlements.js";
 import { deliverDuePracticeReminders } from "../../services/practiceReminders.js";
 import Stripe from "stripe";
 import Question from "../../models/Question.js";
@@ -94,9 +97,19 @@ describe("Launch-critical full product journey E2E", () => {
             .set(auth).set("origin", origin).set("referer", `${origin}/`)
             .send({ name: "Acme Hiring" }).expect(201);
         auth["X-Organization-Id"] = hiringOrganization.body.organization._id;
+        await User.updateOne({ _id: login.body.user?._id || u._id }, { $set: { practicePlan: "pro", practiceSubscriptionStatus: "active" } });
+        const hiringTrialEntitlements = await agent.get("/api/billing/hiring/entitlements").set(auth).expect(200);
+        expect(hiringTrialEntitlements.body).toMatchObject({ plan: "trial", limits: { candidateInterviews: HIRING_PLAN_LIMITS.trial.candidateInterviews } });
+        const personalPracticeEntitlements = await agent.get("/api/billing/practice/entitlements").set(auth).expect(200);
+        expect(personalPracticeEntitlements.body.plan).toBe("pro");
+        await User.updateOne({ _id: login.body.user?._id || u._id }, { $set: { practicePlan: "free", practiceSubscriptionStatus: "inactive" } });
 
         // Create minimal resume directly via model (avoids Cloudinary)
         const me = await User.findOne({ email: "t@example.com" });
+        const secondOrganization = await agent.post("/api/organizations").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ name: "Second Hiring Org" }).expect(201);
+        const secondOrgAuth = { ...auth, "X-Organization-Id": secondOrganization.body.organization._id };
+        const secondOrgEntitlements = await agent.get("/api/billing/hiring/entitlements").set(secondOrgAuth).expect(200);
+        expect(secondOrgEntitlements.body).toMatchObject({ plan: "none", limits: { candidateInterviews: 0 } });
         const resumeDoc = await Resume.create({
             user: me._id,
             fileUrl: "http://localhost/resumes/test.pdf",
@@ -236,7 +249,7 @@ describe("Launch-critical full product journey E2E", () => {
         expect(profile.body.resetPasswordToken).toBeUndefined();
         expect(profile.body.verificationToken).toBeUndefined();
         expect(profile.body.tokenVersion).toBeUndefined();
-        expect(profile.body.plan).toBe("free");
+        expect(profile.body.practicePlan).toBe("free");
         const updatedPlan = await agent.put("/api/auth/profile").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ practiceGoal: "switch-role", targetRole: "Backend Engineer", weeklyPracticeTarget: 4, reminderEnabled: true, reminderDay: "monday", reminderTime: "19:00", reminderTimezone: "Asia/Kolkata" }).expect(200);
         expect(updatedPlan.body.user.targetRole).toBe("Backend Engineer");
         if (updatedPlan.body.token) auth.Authorization = `Bearer ${updatedPlan.body.token}`;
@@ -265,11 +278,10 @@ describe("Launch-critical full product journey E2E", () => {
         const recommendations = await agent.get("/api/recommendations").set(auth).expect(200);
         expect(recommendations.body.goal).toBe("switch-role");
         expect(recommendations.body.actions).toHaveLength(3);
-        const entitlements = await agent.get("/api/billing/entitlements").set(auth).expect(200);
+        const entitlements = await agent.get("/api/billing/practice/entitlements").set(auth).expect(200);
         expect(entitlements.body.plan).toBe("free");
         expect(entitlements.body.used.interviews).toBe(1);
         expect(entitlements.body.limits.interviews).toBeGreaterThan(0);
-        expect(entitlements.body.limits.assessments).toBe(PLAN_LIMITS.free.assessmentsPerMonth);
 
         // Assessment links expose only candidate-safe fields; attempts require their opaque secret,
         // duplicate emails cannot overwrite answers, and reports remain owner-only.
@@ -330,6 +342,12 @@ describe("Launch-critical full product journey E2E", () => {
         expect(startedAttempt.body.attempt.candidateEmail).toBeUndefined();
         expect(startedAttempt.body.attempt.overallScore).toBeUndefined();
         expect(startedAttempt.body.attempt.rounds[0].deliveryMode).toBe("conversational");
+        const orgUsage = await OrganizationUsageCounter.findOne({ organization: hiringOrganization.body.organization._id, metric: "candidateInterviews", period: "lifetime" }).lean();
+        expect(orgUsage).toMatchObject({ used: 1 });
+        await OrganizationMembership.create({ organization: hiringOrganization.body.organization._id, user: otherUser._id, role: "reviewer", status: "active" });
+        const otherAcmeAuth = { ...otherAuth, "X-Organization-Id": hiringOrganization.body.organization._id };
+        const sharedHiringEntitlements = await agent.get("/api/billing/hiring/entitlements").set(otherAcmeAuth).expect(200);
+        expect(sharedHiringEntitlements.body).toMatchObject({ plan: "trial", used: { candidateInterviews: 1 } });
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/integrity-events`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({ type: "tab_hidden", metadata: { question: 1 } }).expect(201);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/integrity-events`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({ type: "face_missing", metadata: { durationSeconds: 10 } }).expect(201);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/integrity-events`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({ type: "face_restored", metadata: { durationSeconds: 12 } }).expect(201);
@@ -380,10 +398,10 @@ describe("Launch-critical full product journey E2E", () => {
         expect(funnelMetric.values.find((value) => value.labels.action === "start" && value.labels.outcome === "success" && value.labels.followups === "disabled")?.value).toBeGreaterThanOrEqual(1);
         expect(funnelMetric.values.find((value) => value.labels.action === "answer" && value.labels.outcome === "unauthorized")?.value).toBeGreaterThanOrEqual(1);
 
-        await UsageCounter.updateOne({ user: me._id, metric: "interviews", period: currentMonth() }, { $set: { used: PLAN_LIMITS.free.interviewsPerMonth } }, { upsert: true });
+        await PracticeUsageCounter.updateOne({ user: me._id, metric: "interviews", period: currentMonth() }, { $set: { used: PRACTICE_PLAN_LIMITS.free.interviewsPerMonth } }, { upsert: true });
         const limited = await agent.post("/api/interviews").set(auth).set("origin", origin).set("referer", `${origin}/`).send({ resumeId, company: "Limit Test", jobRole: "Engineer", jobDescription: "Validate plan enforcement", rounds: [{ roundName: "Screen", description: "A valid screening round" }] }).expect(429);
-        expect(limited.body).toMatchObject({ code: "PLAN_LIMIT_REACHED", metric: "interviews", limit: PLAN_LIMITS.free.interviewsPerMonth });
-        expect(await UsageCounter.findOne({ user: me._id, metric: "interviews", period: currentMonth() }).lean()).toMatchObject({ used: PLAN_LIMITS.free.interviewsPerMonth });
+        expect(limited.body).toMatchObject({ code: "PRACTICE_LIMIT_REACHED", metric: "interviews", limit: PRACTICE_PLAN_LIMITS.free.interviewsPerMonth });
+        expect(await PracticeUsageCounter.findOne({ user: me._id, metric: "interviews", period: currentMonth() }).lean()).toMatchObject({ used: PRACTICE_PLAN_LIMITS.free.interviewsPerMonth });
         await agent
             .post(`/api/questions/${interviewId}/rounds/${firstRoundId}/prepare`)
             .set(otherAuth)

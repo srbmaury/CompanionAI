@@ -1,6 +1,7 @@
 import Organization from "../models/Organization.js";
 import OrganizationMembership from "../models/OrganizationMembership.js";
 import User from "../models/User.js";
+import { activeHiringPlan } from "../services/hiringEntitlements.js";
 
 const activeMembership = (organizationId, userId) => OrganizationMembership.findOne({
     organization: organizationId,
@@ -13,6 +14,8 @@ const organizationView = (membership, memberCount = 0) => ({
     name: membership.organization.name,
     role: membership.role,
     memberCount,
+    hiringPlan: activeHiringPlan(membership.organization),
+    hiringSubscriptionStatus: membership.organization.hiringSubscriptionStatus,
     createdAt: membership.organization.createdAt,
 });
 
@@ -51,9 +54,11 @@ export const listOrganizations = async (req, res, next) => {
 
 export const createOrganization = async (req, res, next) => {
     try {
+        const existingCreatedOrganizations = await Organization.countDocuments({ createdBy: req.user._id });
         const organization = await Organization.create({
             name: req.body.name,
             createdBy: req.user._id,
+            hiringTrialEligible: existingCreatedOrganizations === 0,
         });
         const membership = await OrganizationMembership.create({
             organization: organization._id,

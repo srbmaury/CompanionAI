@@ -1,22 +1,80 @@
 import BillingEvent from "../models/BillingEvent.js";
 import User from "../models/User.js";
+import Organization from "../models/Organization.js";
 import { getStripe } from "../config/stripe.js";
+import { getConfiguredPriceId } from "../services/billingCatalog.js";
 import metrics from "../metrics/index.js";
 
 const activeStatuses = new Set(["active", "trialing"]);
-const subscriptionPlan = (subscription) => {
-    const priceId = subscription.items?.data?.[0]?.price?.id;
-    if (priceId && priceId === process.env.STRIPE_SCALE_PRICE_ID) return "scale";
-    if (priceId && priceId === process.env.STRIPE_PRO_PRICE_ID) return "pro";
-    return ["pro", "scale"].includes(subscription.metadata?.plan) ? subscription.metadata.plan : "pro";
+
+const priceIdOf = (subscription) => subscription.items?.data?.[0]?.price?.id || "";
+
+const practicePlanFromSubscription = (subscription) => {
+    const priceId = priceIdOf(subscription);
+    if (priceId && priceId === getConfiguredPriceId("practice", "pro")) return "pro";
+    return subscription.metadata?.plan === "pro" ? "pro" : "pro";
 };
-const syncSubscription = async (subscription) => {
+
+const hiringPlanFromSubscription = (subscription) => {
+    const priceId = priceIdOf(subscription);
+    if (priceId && priceId === getConfiguredPriceId("hiring", "starter")) return "starter";
+    if (priceId && priceId === getConfiguredPriceId("hiring", "growth")) return "growth";
+    return ["starter", "growth", "enterprise"].includes(subscription.metadata?.plan)
+        ? subscription.metadata.plan
+        : "starter";
+};
+
+const currentPeriodEnd = (subscription) => subscription.current_period_end
+    ? new Date(subscription.current_period_end * 1000)
+    : null;
+
+const syncPracticeSubscription = async (subscription) => {
     const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id;
     const userId = subscription.metadata?.userId;
-    const filter = userId ? { _id: userId } : { billingCustomerId: customerId };
+    const filter = userId ? { _id: userId } : { practiceBillingCustomerId: customerId };
     if (!userId && !customerId) return;
-    await User.updateOne(filter, { $set: { billingProvider: "stripe", billingCustomerId: customerId || "", billingSubscriptionId: subscription.id, subscriptionStatus: subscription.status, plan: activeStatuses.has(subscription.status) ? subscriptionPlan(subscription) : "free" } });
+    await User.updateOne(filter, {
+        $set: {
+            practiceBillingProvider: "stripe",
+            practiceBillingCustomerId: customerId || "",
+            practiceBillingSubscriptionId: subscription.id,
+            practiceSubscriptionStatus: subscription.status,
+            practicePlan: practicePlanFromSubscription(subscription),
+            practiceCurrentPeriodEnd: currentPeriodEnd(subscription),
+        },
+    });
+};
+
+const syncHiringSubscription = async (subscription) => {
+    const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id;
+    const organizationId = subscription.metadata?.organizationId;
+    const filter = organizationId ? { _id: organizationId } : { hiringBillingCustomerId: customerId };
+    if (!organizationId && !customerId) return;
+    const update = {
+        hiringBillingProvider: "stripe",
+        hiringBillingCustomerId: customerId || "",
+        hiringBillingSubscriptionId: subscription.id,
+        hiringSubscriptionStatus: subscription.status,
+        hiringPlan: hiringPlanFromSubscription(subscription),
+        hiringCurrentPeriodEnd: currentPeriodEnd(subscription),
+    };
+    if (activeStatuses.has(subscription.status)) update.hiringTrialEligible = false;
+    await Organization.updateOne(filter, { $set: update });
+};
+
+const syncSubscription = async (subscription) => {
+    const product = subscription.metadata?.billingProduct;
+    if (product === "practice") await syncPracticeSubscription(subscription);
+    else if (product === "hiring") await syncHiringSubscription(subscription);
+    else throw new Error("Subscription is missing billingProduct metadata");
     metrics.billingSubscriptionTransitionsTotal.labels(subscription.status || "unknown").inc();
+};
+
+const syncInvoiceSubscription = async (invoice) => {
+    if (!invoice.subscription) return;
+    const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription.id;
+    if (!subscriptionId) return;
+    await syncSubscription(await getStripe().subscriptions.retrieve(subscriptionId));
 };
 
 export const stripeWebhook = async (req, res) => {
@@ -46,20 +104,40 @@ export const stripeWebhook = async (req, res) => {
     try {
         if (event.type === "checkout.session.completed") {
             const session = event.data.object;
-            const userId = session.client_reference_id || session.metadata?.userId;
-            await User.updateOne({ _id: userId }, { $set: { billingProvider: "stripe", billingCustomerId: session.customer || "", billingSubscriptionId: session.subscription || "" } });
-            if (session.subscription) await syncSubscription(await getStripe().subscriptions.retrieve(session.subscription));
+            const product = session.metadata?.billingProduct;
+            if (product === "practice") {
+                const userId = session.client_reference_id || session.metadata?.userId;
+                await User.updateOne({ _id: userId }, { $set: {
+                    practiceBillingProvider: "stripe",
+                    practiceBillingCustomerId: session.customer || "",
+                    practiceBillingSubscriptionId: session.subscription || "",
+                } });
+            } else if (product === "hiring") {
+                const organizationId = session.metadata?.organizationId || session.client_reference_id;
+                await Organization.updateOne({ _id: organizationId }, { $set: {
+                    hiringBillingProvider: "stripe",
+                    hiringBillingCustomerId: session.customer || "",
+                    hiringBillingSubscriptionId: session.subscription || "",
+                } });
+            } else {
+                throw new Error("Checkout session is missing billingProduct metadata");
+            }
+            if (session.subscription) {
+                const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription.id;
+                await syncSubscription(await getStripe().subscriptions.retrieve(subscriptionId));
+            }
         } else if (["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) {
             await syncSubscription(event.data.object);
-        } else if (event.type === "invoice.payment_failed") {
-            const invoice = event.data.object;
-            await User.updateOne({ billingCustomerId: invoice.customer }, { $set: { subscriptionStatus: "past_due", plan: "free" } });
-        } else if (event.type === "invoice.payment_succeeded") {
-            const invoice = event.data.object;
-            if (invoice.subscription) await syncSubscription(await getStripe().subscriptions.retrieve(invoice.subscription));
+        } else if (["invoice.payment_failed", "invoice.payment_succeeded"].includes(event.type)) {
+            await syncInvoiceSubscription(event.data.object);
         } else if (["charge.dispute.created", "charge.refunded"].includes(event.type)) {
             const charge = event.data.object;
-            if (charge.customer) await User.updateOne({ billingCustomerId: charge.customer }, { $set: { subscriptionStatus: "past_due", plan: "free" } });
+            if (charge.customer) {
+                await Promise.all([
+                    User.updateOne({ practiceBillingCustomerId: charge.customer }, { $set: { practiceSubscriptionStatus: "past_due" } }),
+                    Organization.updateOne({ hiringBillingCustomerId: charge.customer }, { $set: { hiringSubscriptionStatus: "past_due", hiringTrialEligible: false } }),
+                ]);
+            }
         }
         metrics.billingWebhooksTotal.labels(event.type, "success").inc();
         metrics.billingWebhookDurationSeconds.labels(event.type, "success").observe(Number(process.hrtime.bigint() - startedAt) / 1e9);

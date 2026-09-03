@@ -17,7 +17,7 @@ import audit from "../middleware/audit.js";
 import validate from "../middleware/validate.js";
 import { z } from "zod";
 import { ObjectIdString } from "../validation/commonSchemas.js";
-import usageLimit from "../middleware/usageLimit.js";
+import practiceUsageLimit from "../middleware/practiceUsageLimit.js";
 import quotas from "../middleware/quotas.js";
 
 const router = express.Router();
@@ -191,7 +191,7 @@ router.post(
     protect,
     validate(z.object({ id: ObjectIdString }), "params"),
     validate(z.object({ role: z.string().optional(), jobDescription: z.string().optional() })),
-    usageLimit("resumeReviews", "resumeReviewsPerMonth"),
+    practiceUsageLimit("resumeReviews", "resumeReviewsPerMonth"),
     audit("resume.review", { entityType: "Resume", getEntityId: (req) => req.params.id }),
     reviewResume
 );

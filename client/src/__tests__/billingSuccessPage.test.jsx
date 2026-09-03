@@ -1,38 +1,24 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import api from "../api/axios";
 import BillingSuccessPage from "../pages/BillingSuccessPage";
-import { AuthContext } from "../context/AuthContext";
-import { setWorkspacePreference } from "../utils/workspacePreference";
 
 vi.mock("../api/axios", () => ({ default: { get: vi.fn() } }));
 
 describe("BillingSuccessPage", () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        const values = new Map();
-        vi.stubGlobal("localStorage", {
-            clear: () => values.clear(),
-            getItem: (key) => values.get(key) ?? null,
-            removeItem: (key) => values.delete(key),
-            setItem: (key, value) => values.set(key, String(value)),
-        });
+    it("recognizes Hiring Growth checkout for the selected organization", async () => {
+        api.get.mockResolvedValue({ data: { plan: "growth" } });
+        render(<MemoryRouter initialEntries={["/billing/success?product=hiring&organizationId=org-1"]}><BillingSuccessPage /></MemoryRouter>);
+        expect(await screen.findByText("Growth Hiring is active for this organization.")).toBeTruthy();
+        expect(screen.getByRole("link", { name: "Continue to Hiring" }).getAttribute("href")).toBe("/hiring/team");
+        expect(api.get).toHaveBeenCalledWith("/billing/hiring/entitlements", { headers: { "X-Organization-Id": "org-1" } });
     });
-    afterEach(() => vi.unstubAllGlobals());
 
-    it("recognizes a Scale checkout and returns recruiters to Hiring", async () => {
-        const user = { _id: "recruiter-1" };
-        setWorkspacePreference("hiring", user._id);
-        api.get.mockResolvedValue({ data: { plan: "scale" } });
-
-        render(
-            <AuthContext.Provider value={{ user }}>
-                <MemoryRouter><BillingSuccessPage /></MemoryRouter>
-            </AuthContext.Provider>
-        );
-
-        expect(await screen.findByText("Scale is active on your account.")).toBeTruthy();
-        expect(screen.getByRole("link", { name: "Continue to Hiring" }).getAttribute("href")).toBe("/assessments");
+    it("recognizes personal Practice Pro checkout", async () => {
+        api.get.mockResolvedValue({ data: { plan: "pro" } });
+        render(<MemoryRouter initialEntries={["/billing/success?product=practice"]}><BillingSuccessPage /></MemoryRouter>);
+        expect(await screen.findByText("Practice Pro is active on your account.")).toBeTruthy();
+        expect(screen.getByRole("link", { name: "Continue to Practice" }).getAttribute("href")).toBe("/dashboard");
     });
 });

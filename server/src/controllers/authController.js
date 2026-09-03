@@ -16,7 +16,7 @@ import RefreshToken from "../models/RefreshToken.js";
 import ResumeReview from "../models/ResumeReview.js";
 import SavedExperience from "../models/SavedExperience.js";
 import ProductFeedback from "../models/ProductFeedback.js";
-import UsageCounter from "../models/UsageCounter.js";
+import PracticeUsageCounter from "../models/PracticeUsageCounter.js";
 import ReminderDelivery from "../models/ReminderDelivery.js";
 import ProductEvent from "../models/ProductEvent.js";
 import Assessment from "../models/Assessment.js";
@@ -47,7 +47,7 @@ const clearRefreshCookie = (res) => {
 };
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-const safeUserFields = "_id name email role provider preferredProgrammingLanguage practiceGoal targetRole weeklyPracticeTarget reminderEnabled reminderDay reminderTime reminderTimezone plan subscriptionStatus isVerified";
+const safeUserFields = "_id name email role provider preferredProgrammingLanguage practiceGoal targetRole weeklyPracticeTarget reminderEnabled reminderDay reminderTime reminderTimezone practicePlan practiceSubscriptionStatus isVerified";
 
 // Register
 export const registerUser = async (req, res, next) => {
@@ -342,6 +342,9 @@ export const deleteAccount = async (req, res, next) => {
         if (user.provider === "local" && (!password || !await user.matchPassword(password))) {
             return res.status(400).json({ message: "Current password is incorrect" });
         }
+        if (["active", "trialing"].includes(user.practiceSubscriptionStatus)) {
+            return res.status(409).json({ message: "Cancel your active Practice subscription before deleting your account" });
+        }
 
         const interviews = await Interview.find({ user: user._id }).select("rounds.round").lean();
         const roundIds = interviews.flatMap((item) => (item.rounds || []).map((entry) => entry.round));
@@ -354,6 +357,12 @@ export const deleteAccount = async (req, res, next) => {
         const privateQuestionIds = questionIds.filter((id) => !sharedSet.has(String(id)));
         const ownedMemberships = await OrganizationMembership.find({ user: user._id, role: "owner", status: "active" }).select("organization").lean();
         const ownedOrganizationIds = ownedMemberships.map((membership) => membership.organization);
+        const ownedOrganizations = ownedOrganizationIds.length
+            ? await Organization.find({ _id: { $in: ownedOrganizationIds } }).select("_id hiringSubscriptionStatus").lean()
+            : [];
+        if (ownedOrganizations.some((organization) => ["active", "trialing"].includes(organization.hiringSubscriptionStatus))) {
+            return res.status(409).json({ message: "Cancel Hiring billing or transfer organization ownership before deleting your account" });
+        }
         for (const organizationId of ownedOrganizationIds) {
             const activeMembers = await OrganizationMembership.countDocuments({ organization: organizationId, status: "active" });
             if (activeMembers > 1) {
@@ -373,7 +382,7 @@ export const deleteAccount = async (req, res, next) => {
             ResumeReview.deleteMany({ user: user._id }),
             SavedExperience.deleteMany({ user: user._id }),
             ProductFeedback.deleteMany({ user: user._id }),
-            UsageCounter.deleteMany({ user: user._id }),
+            PracticeUsageCounter.deleteMany({ user: user._id }),
             ReminderDelivery.deleteMany({ user: user._id }),
             ProductEvent.deleteMany({ user: user._id }),
             CandidateAttempt.deleteMany({ assessment: { $in: assessmentIds } }),
