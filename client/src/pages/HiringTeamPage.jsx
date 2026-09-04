@@ -1,5 +1,5 @@
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link as RouterLink, Navigate } from "react-router-dom";
 import { Alert, Box, Button, Chip, Container, Divider, FormControl, InputLabel, LinearProgress, MenuItem, Paper, Select, Stack, TextField, Typography } from "@mui/material";
 import api from "../api/axios";
 import { OrganizationContext } from "../context/OrganizationContext";
@@ -149,7 +149,8 @@ export default function HiringTeamPage() {
                 <Box>
                     <Typography variant="overline" color="primary.main" fontWeight={850}>Hiring</Typography>
                     <Typography component="h1" variant="h3" fontWeight={850} letterSpacing="-.035em">Organization settings</Typography>
-                    <Typography color="text.secondary" mt={1}>Manage your team, shared candidate-interview capacity, and organization billing.</Typography>
+                    <Typography color="text.secondary" mt={1}>Manage your team, shared candidate-interview capacity, organization billing, and enterprise access.</Typography>
+                    <Button component={RouterLink} to="/hiring/sso" variant="outlined" sx={{ mt: 2 }}>Configure work SSO</Button>
                 </Box>
 
                 {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
@@ -242,7 +243,7 @@ export default function HiringTeamPage() {
                                 const checkoutAvailable = billing.billingAvailable?.[plan] && !needsBillingPortal;
                                 return <Paper key={plan} variant="outlined" sx={{ p: 2, flex: 1, borderColor: current ? "primary.main" : "divider" }}><Typography fontWeight={800}>{planLabel(plan)}</Typography><Typography variant="h6" mt={.5}>{limit} candidate interviews / month</Typography>{formatPrice(plan) && <Typography color="text.secondary">{formatPrice(plan)}</Typography>}<Button sx={{ mt: 1.5 }} fullWidth variant={plan === "growth" ? "contained" : "outlined"} disabled={!billing.canManageBilling || current || billingActionLoading || !checkoutAvailable} onClick={() => billingRedirect("/billing/hiring/checkout-session", { plan })}>{current ? "Current plan" : needsBillingPortal ? "Resolve existing billing" : billing.billingAvailable?.[plan] ? `Choose ${planLabel(plan)}` : "Checkout not configured"}</Button></Paper>;
                             })}
-                            <Paper variant="outlined" sx={{ p: 2, flex: 1 }}><Typography fontWeight={800}>Enterprise</Typography><Typography variant="h6" mt={.5}>Custom capacity</Typography><Typography color="text.secondary">Custom contracts, SSO/API and retention controls can be added when enterprise demand is validated.</Typography><Button sx={{ mt: 1.5 }} fullWidth variant="outlined" disabled>Contact sales</Button></Paper>
+                            <Paper variant="outlined" sx={{ p: 2, flex: 1 }}><Typography fontWeight={800}>Enterprise</Typography><Typography variant="h6" mt={.5}>Custom capacity</Typography><Typography color="text.secondary">Custom capacity, OIDC work SSO, API access, and retention controls for enterprise hiring teams.</Typography><Button sx={{ mt: 1.5 }} fullWidth variant="outlined" disabled>Contact sales</Button></Paper>
                         </Stack>
                         {!billing.canManageBilling && <Alert severity="info">Only organization Owners and Admins can change Hiring billing. Your role can still see shared usage.</Alert>}
                     </Stack>}

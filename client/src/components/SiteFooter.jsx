@@ -8,6 +8,7 @@ export default function SiteFooter() {
                 <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={2}>
                     <Typography variant="body2" color="text.secondary">© {new Date().getFullYear()} CompanionAI</Typography>
                     <Stack direction="row" spacing={3}>
+                        <Link component={RouterLink} to="/docs" color="text.secondary">Docs</Link>
                         <Link component={RouterLink} to="/privacy" color="text.secondary">Privacy</Link>
                         <Link component={RouterLink} to="/terms" color="text.secondary">Terms</Link>
                         <Link href="mailto:support@companionai.app" color="text.secondary">Contact</Link>

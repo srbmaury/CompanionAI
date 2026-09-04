@@ -39,6 +39,7 @@ import assessmentRoutes from "./routes/assessmentRoutes.js";
 import emailWebhookRoutes from "./routes/emailWebhookRoutes.js";
 import jobPostRoutes from "./routes/jobPostRoutes.js";
 import organizationRoutes from "./routes/organizationRoutes.js";
+import ssoRoutes from "./routes/ssoRoutes.js";
 
 const app = express();
 
@@ -118,7 +119,7 @@ app.use(cors(corsOptions));
 // Prevent caching of auth endpoints (tokens, sensitive responses)
 app.use((req, res, next) => {
     try {
-        if (req.path.startsWith("/api/auth") || req.path.startsWith("/api/assessments")) {
+        if (req.path.startsWith("/api/auth") || req.path.startsWith("/api/sso") || req.path.startsWith("/api/assessments")) {
             res.setHeader("Cache-Control", "no-store");
         }
     } catch {}
@@ -291,6 +292,7 @@ app.use("/api/billing", billingRoutes);
 app.use("/api/recommendations", recommendationRoutes);
 app.use("/api/events", productEventRoutes);
 app.use("/api/organizations", organizationRoutes);
+app.use("/api/sso", ssoRoutes);
 app.use("/api/assessments", assessmentRoutes);
 
 // Health endpoints

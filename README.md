@@ -5,7 +5,7 @@ AI-assisted interview practice and candidate screening: candidates can build rol
 See [TESTING.md](TESTING.md) for the short test-command reference.
 
 ## Key features
-- Authentication: email verification, Google Sign-In, rotating access/refresh tokens, logout, password reset, and account deletion
+- Authentication: email verification, Google Sign-In, organization OIDC work SSO, rotating access/refresh tokens, logout, password reset, and account deletion
 - Resumes: upload to Cloudinary, type/size validation, tags/notes, search/sort, PDF inline preview
 - Resume reviews: saved AI reviews with paginated history
 - Resume matching: rank every owned resume against a JD with explainable keyword coverage and evidence, without consuming AI-review credits
@@ -59,6 +59,7 @@ cd server && npm i && cd ../client && npm i
   - Local minimum: `MONGO_URI`, `JWT_SECRET`, `CLIENT_ORIGIN`, Cloudinary credentials, and `OPENAI_API_KEY` or `GEMINI_API_KEY`
   - Brevo API access is required for verification, password reset, and reminders
   - Stripe requires `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRACTICE_PRO_PRICE_ID`, `STRIPE_HIRING_STARTER_PRICE_ID`, and `STRIPE_HIRING_GROWTH_PRICE_ID`
+  - Organization OIDC SSO requires a stable `SSO_ENCRYPTION_KEY` (32+ random characters); production enablement is gated to Enterprise Hiring
   - Production startup fails fast if Redis, metrics protection, CAPTCHA, or enabled feature dependencies are missing
   - Full list and sane defaults live in `server/.env.example`
 ```bash

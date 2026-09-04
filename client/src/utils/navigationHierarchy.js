@@ -7,6 +7,8 @@ const ROOT_PATHS = new Set([
     "/reset-password",
     "/privacy",
     "/terms",
+    "/docs",
+    "/sso/callback",
     "/dashboard",
     "/resume-review",
     "/progress",
@@ -17,6 +19,7 @@ const ROOT_PATHS = new Set([
     "/admin/feedback",
     "/admin/audit",
     "/hiring/team",
+    "/hiring/sso",
 ]);
 
 export const isGlobalNavigationRoot = ({ pathname, search = "" }) => {

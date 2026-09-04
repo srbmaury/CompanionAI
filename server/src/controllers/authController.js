@@ -113,7 +113,7 @@ export const loginUser = async (req, res, next) => {
         }
         if (user.provider !== "local") {
             await recordLoginFailure((email || "").toLowerCase());
-            return res.status(400).json({ message: "Use Google Sign-In for this account" });
+            return res.status(400).json({ message: user.provider === "sso" ? "Use work SSO for this account" : "Use Google Sign-In for this account" });
         }
         if (!(await user.matchPassword(password))) {
             await recordLoginFailure((email || "").toLowerCase());
@@ -287,7 +287,7 @@ export const updateProfile = async (req, res, next) => {
 
         if (newPassword) {
             if (user.provider !== "local") {
-                return res.status(400).json({ message: "Password change not available for Google accounts" });
+                return res.status(400).json({ message: "Password changes are only available for email/password accounts" });
             }
             if (!currentPassword) {
                 return res.status(400).json({ message: "Current password is required" });
@@ -416,6 +416,7 @@ export const forgotPassword = async (req, res, next) => {
         const user = await User.findOne({ email });
         if (!user) return res.json({ message: "If the email exists, a reset link has been sent" });
         if (!user.isVerified) return res.json({ message: "If the email exists, a reset link has been sent" });
+        if (user.provider !== "local") return res.json({ message: "If the email exists, a reset link has been sent" });
 
         const token = crypto.randomBytes(32).toString("hex");
         user.resetPasswordToken = crypto.createHash("sha256").update(token).digest("hex");
@@ -458,7 +459,7 @@ export const resetPassword = async (req, res, next) => {
             return res.status(400).json({ message: "Token expired" });
         }
         if (user.provider !== "local") {
-            return res.status(400).json({ message: "Password reset not available for Google accounts" });
+            return res.status(400).json({ message: "Password reset is only available for email/password accounts" });
         }
         user.password = newPassword;
         user.resetPasswordToken = undefined;
