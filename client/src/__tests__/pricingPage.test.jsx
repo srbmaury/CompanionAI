@@ -9,24 +9,32 @@ vi.mock("../utils/analytics", () => ({ trackEvent: vi.fn() }));
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
-describe("pricing plans", () => {
-    it("shows Free, Pro, and the high-capacity Scale plan from server limits", async () => {
+describe("Practice pricing", () => {
+    it("shows only personal Free and Pro plans from Practice entitlements", async () => {
         get.mockResolvedValue({ data: {
+            product: "practice",
             plan: "free",
-            limits: { interviews: 3, resumeReviews: 3, assessments: 2 },
+            subscriptionStatus: "inactive",
+            limits: { interviews: 3, resumeReviews: 3 },
+            used: { interviews: 0, resumeReviews: 0 },
             planLimits: {
-                free: { interviews: 3, resumeReviews: 3, assessments: 2 },
-                pro: { interviews: 100, resumeReviews: 100, assessments: 50 },
-                scale: { interviews: 1000, resumeReviews: 1000, assessments: 500 },
+                free: { interviews: 3, resumeReviews: 3 },
+                pro: { interviews: 100, resumeReviews: 100 },
             },
-            prices: { pro: { unitAmount: 100, currency: "usd", interval: "month", intervalCount: 1 }, scale: { unitAmount: 500, currency: "usd", interval: "month", intervalCount: 1 } },
-            billingAvailable: { pro: true, scale: true },
+            prices: { pro: { unitAmount: 1000, currency: "usd", interval: "month", intervalCount: 1 } },
+            billingAvailable: { pro: true },
         } });
+
         render(<MemoryRouter><PricingPage /></MemoryRouter>);
-        expect(await screen.findByRole("heading", { name: "Scale" })).toBeTruthy();
-        expect(screen.getByText("1000 practice interviews each month")).toBeTruthy();
-        expect(screen.getByText("1000 resume reviews each month")).toBeTruthy();
-        expect(screen.getByText("500 candidate assessments each month")).toBeTruthy();
-        expect(screen.getByRole("button", { name: "Choose Scale" })).toBeTruthy();
+
+        expect(await screen.findByRole("heading", { name: "Choose your Practice plan" })).toBeTruthy();
+        expect(screen.getByRole("heading", { name: "Free" })).toBeTruthy();
+        expect(screen.getByRole("heading", { name: "Pro" })).toBeTruthy();
+        expect(screen.queryByRole("heading", { name: "Scale" })).toBeNull();
+        expect(screen.getByText("100 practice interviews each month")).toBeTruthy();
+        expect(screen.getByText("100 resume reviews each month")).toBeTruthy();
+        expect(screen.queryByText(/candidate assessments each month/i)).toBeNull();
+        expect(screen.getByRole("button", { name: "Choose Pro" })).toBeTruthy();
+        expect(get).toHaveBeenCalledWith("/billing/practice/entitlements");
     });
 });

@@ -1,29 +1,27 @@
 # React + Vite
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This client is the CompanionAI React/Vite application.
 
-Currently, two official plugins are available:
+## Client configuration
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Create a `.env` file in `client/` with the values your environment needs:
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
-
-## CAPTCHA configuration
-
-Create a `.env` file in `client/` with:
-
-```
+```env
 VITE_API_BASE_URL=/api
+# Canonical production origin used to generate sitemap.xml and robots.txt.
+# Example: https://www.companionai.example
+VITE_PUBLIC_ORIGIN=
+
 VITE_CAPTCHA_PROVIDER=turnstile
 VITE_TURNSTILE_SITE_KEY=<your_turnstile_site_key>
 # If using reCAPTCHA instead:
 # VITE_CAPTCHA_PROVIDER=recaptcha
 # VITE_RECAPTCHA_SITE_KEY=<your_recaptcha_site_key>
+
 VITE_GOOGLE_CLIENT_ID=<your_google_oauth_client_id>
 VITE_ACCOUNT_DATA_EXPORT_ENABLED=false
 ```
 
-On the server, set `CAPTCHA_ENABLED=true` and `CAPTCHA_SECRET` and optionally enable `CAPTCHA_LOGIN_ENABLED` and `CAPTCHA_REGISTER_ENABLED`.
+`VITE_PUBLIC_ORIGIN` should be the public canonical origin with no path component. When it is set for a production build, Vite emits `sitemap.xml` and `robots.txt` for the public landing, documentation, privacy, and terms routes. Protected Practice/Hiring routes are intentionally excluded from the sitemap and disallowed in `robots.txt`.
+
+On the server, set `CAPTCHA_ENABLED=true` and `CAPTCHA_SECRET` and enable the login/register CAPTCHA gates in production.

@@ -1,6 +1,15 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
+const ssoIdentitySchema = new mongoose.Schema(
+    {
+        organization: { type: mongoose.Schema.Types.ObjectId, ref: "Organization", required: true },
+        issuer: { type: String, required: true, trim: true, maxlength: 500 },
+        subject: { type: String, required: true, trim: true, maxlength: 500 },
+    },
+    { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
     {
         name: {
@@ -21,12 +30,13 @@ const userSchema = new mongoose.Schema(
         },
         provider: {
             type: String,
-            enum: ["local", "google"],
+            enum: ["local", "google", "sso"],
             default: "local",
         },
         googleId: {
             type: String,
         },
+        ssoIdentities: { type: [ssoIdentitySchema], default: [] },
         isVerified: {
             type: Boolean,
             default: false,
@@ -101,11 +111,14 @@ const userSchema = new mongoose.Schema(
             default: "UTC",
         },
         lastReminderKey: { type: String, default: "", select: false },
-        plan: { type: String, enum: ["free", "pro", "scale"], default: "free", index: true },
-        subscriptionStatus: { type: String, enum: ["inactive", "incomplete", "incomplete_expired", "trialing", "active", "past_due", "canceled", "unpaid", "paused"], default: "inactive" },
-        billingProvider: { type: String, enum: ["none", "stripe"], default: "none", select: false },
-        billingCustomerId: { type: String, default: "", select: false },
-        billingSubscriptionId: { type: String, default: "", select: false },
+        practicePlan: { type: String, enum: ["free", "pro"], default: "free", index: true },
+        practiceSubscriptionStatus: { type: String, enum: ["inactive", "incomplete", "incomplete_expired", "trialing", "active", "past_due", "canceled", "unpaid", "paused"], default: "inactive" },
+        practiceBillingProvider: { type: String, enum: ["none", "stripe"], default: "none", select: false },
+        practiceBillingCustomerId: { type: String, default: "", select: false },
+        practiceBillingSubscriptionId: { type: String, default: "", select: false },
+        practiceCurrentPeriodEnd: { type: Date, default: null },
+        // Trial eligibility is user-level anti-abuse state only. Hiring billing and usage remain organization-owned.
+        hiringTrialClaimed: { type: Boolean, default: false, select: false },
         tokenVersion: {
             type: Number,
             default: 0,
@@ -113,6 +126,8 @@ const userSchema = new mongoose.Schema(
     },
     { timestamps: true }
 );
+
+userSchema.index({ "ssoIdentities.organization": 1, "ssoIdentities.issuer": 1, "ssoIdentities.subject": 1 });
 
 // Encrypt password before save
 userSchema.pre("save", async function (next) {

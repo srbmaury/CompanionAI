@@ -10,8 +10,8 @@ const schema = z.object({ event: z.enum(["dashboard_viewed", "pricing_viewed", "
 
 router.post("/", protect, validate(schema), async (req, res, next) => {
     try {
-        await ProductEvent.create({ user: req.user._id, event: req.body.event, path: req.body.path || req.path, plan: req.user.plan || "free" });
-        metrics.productEventsTotal.labels(req.body.event, req.user.plan || "free").inc();
+        await ProductEvent.create({ user: req.user._id, event: req.body.event, path: req.body.path || req.path, plan: req.user.practicePlan || "free" });
+        metrics.productEventsTotal.labels(req.body.event, req.user.practicePlan || "free").inc();
         return res.status(202).json({ accepted: true });
     } catch (error) { return next(error); }
 });

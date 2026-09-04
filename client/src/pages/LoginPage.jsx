@@ -22,17 +22,18 @@ import {
 } from "@mui/material";
 
 // Icons
-import { Login as LoginIcon, Visibility, VisibilityOff } from "@mui/icons-material";
+import { BusinessRounded, Login as LoginIcon, Visibility, VisibilityOff } from "@mui/icons-material";
 
 const LoginPage = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { login, googleLogin, resendVerification } = useContext(AuthContext);
+    const { login, googleLogin, startSsoLogin, resendVerification } = useContext(AuthContext);
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [ssoSubmitting, setSsoSubmitting] = useState(false);
     const [captchaToken, setCaptchaToken] = useState("");
     const [gsiReady, setGsiReady] = useState(false);
     const googleDivRef = useRef(null);
@@ -81,6 +82,25 @@ const LoginPage = () => {
             }
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const handleSso = async () => {
+        const trimmedEmail = email.trim();
+        if (!trimmedEmail) {
+            setErrors((current) => ({ ...current, email: "Enter your work email to use SSO" }));
+            return;
+        }
+        setApiError("");
+        setSsoSubmitting(true);
+        try {
+            const result = await startSsoLogin(trimmedEmail);
+            if (!result?.authorizationUrl) throw new Error("Missing SSO authorization URL");
+            setWorkspacePreference("hiring");
+            window.location.assign(result.authorizationUrl);
+        } catch (err) {
+            setApiError(err?.response?.data?.message || "Work SSO is not configured for this email.");
+            setSsoSubmitting(false);
         }
     };
 
@@ -155,11 +175,11 @@ const LoginPage = () => {
                             </FormControl>
                             {errors.password === "Email not verified" && <Stack spacing={1}><Typography variant="body2" color="text.secondary">Didn’t receive the verification email?</Typography><Button size="small" variant="text" onClick={async () => { try { const r = await resendVerification(email); setErrors((p) => ({ ...p, password: r?.message || "Verification email sent" })); } catch (e) { console.error(e); } }}>Resend verification</Button></Stack>}
                             <Captcha onVerify={(t) => setCaptchaToken(t)} onExpire={() => setCaptchaToken("")} />
-                            <Button type="submit" variant="contained" size="large" startIcon={<LoginIcon />} disabled={submitting} sx={{ py: 1.25, borderRadius: 2, textTransform: "none", fontWeight: 700 }}>{submitting ? "Signing in..." : "Sign in"}</Button>
+                            <Button type="submit" variant="contained" size="large" startIcon={<LoginIcon />} disabled={submitting || ssoSubmitting} sx={{ py: 1.25, borderRadius: 2, textTransform: "none", fontWeight: 700 }}>{submitting ? "Signing in..." : "Sign in"}</Button>
                         </Stack>
                     </Box>
                     <Divider sx={{ my: { xs: 3, md: 2 } }}><Typography variant="caption" color="text.secondary">OR CONTINUE WITH</Typography></Divider>
-                    <Stack spacing={2} alignItems="center"><div ref={googleDivRef} /><Typography variant="caption" color="text.secondary" align="center">Google sign-in may not display in embedded browsers. If the Google window is blank, open CompanionAI in Chrome or Safari, or use email and password.</Typography></Stack>
+                    <Stack spacing={2} alignItems="center"><div ref={googleDivRef} /><Button fullWidth variant="outlined" size="large" startIcon={<BusinessRounded />} disabled={ssoSubmitting || submitting} onClick={handleSso}>{ssoSubmitting ? "Opening your identity provider…" : "Continue with work SSO"}</Button><Typography variant="caption" color="text.secondary" align="center">Work SSO uses the company email entered above. Google sign-in may not display in embedded browsers; use Chrome or Safari if needed.</Typography></Stack>
                     <Typography align="center" color="text.secondary">Don’t have an account? <Link component={RouterLink} to={registerPath} underline="hover">Register</Link></Typography>
         </AuthShell>
     );

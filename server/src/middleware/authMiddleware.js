@@ -12,7 +12,7 @@ const protect = async (req, res, next) => {
         }
         const token = authHeader.slice(7).trim();
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id).select("_id name email role provider preferredProgrammingLanguage practiceGoal targetRole weeklyPracticeTarget reminderEnabled reminderDay reminderTime reminderTimezone plan subscriptionStatus tokenVersion isVerified +billingCustomerId");
+        const user = await User.findById(decoded.id).select("_id name email role provider preferredProgrammingLanguage practiceGoal targetRole weeklyPracticeTarget reminderEnabled reminderDay reminderTime reminderTimezone practicePlan practiceSubscriptionStatus tokenVersion isVerified +practiceBillingCustomerId");
         if (!user) { metrics.authorizationDeniedTotal.labels("user_missing", normalizeRoute(req)).inc(); return res.status(401).json({ message: "User not found" }); }
         // Enforce max 1 session by comparing tokenVersion if present in token
         if (decoded.tokenVersion != null && user.tokenVersion !== decoded.tokenVersion) {

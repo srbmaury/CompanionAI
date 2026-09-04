@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import mongoose from "mongoose";
 import User from "../models/User.js";
 import { bumpTokenVersion, signAccessToken, issueRefreshToken, validateRefreshToken, revokeAllRefreshTokens } from "../utils/tokens.js";
 import { OAuth2Client } from "google-auth-library";
@@ -16,11 +17,13 @@ import RefreshToken from "../models/RefreshToken.js";
 import ResumeReview from "../models/ResumeReview.js";
 import SavedExperience from "../models/SavedExperience.js";
 import ProductFeedback from "../models/ProductFeedback.js";
-import UsageCounter from "../models/UsageCounter.js";
+import PracticeUsageCounter from "../models/PracticeUsageCounter.js";
 import ReminderDelivery from "../models/ReminderDelivery.js";
 import ProductEvent from "../models/ProductEvent.js";
 import Assessment from "../models/Assessment.js";
 import CandidateAttempt from "../models/CandidateAttempt.js";
+import Organization from "../models/Organization.js";
+import OrganizationMembership from "../models/OrganizationMembership.js";
 import cloudinary from "../config/cloudinaryConfig.js";
 
 const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7);
@@ -45,7 +48,7 @@ const clearRefreshCookie = (res) => {
 };
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-const safeUserFields = "_id name email role provider preferredProgrammingLanguage practiceGoal targetRole weeklyPracticeTarget reminderEnabled reminderDay reminderTime reminderTimezone plan subscriptionStatus isVerified";
+const safeUserFields = "_id name email role provider preferredProgrammingLanguage practiceGoal targetRole weeklyPracticeTarget reminderEnabled reminderDay reminderTime reminderTimezone practicePlan practiceSubscriptionStatus isVerified";
 
 // Register
 export const registerUser = async (req, res, next) => {
@@ -110,7 +113,7 @@ export const loginUser = async (req, res, next) => {
         }
         if (user.provider !== "local") {
             await recordLoginFailure((email || "").toLowerCase());
-            return res.status(400).json({ message: "Use Google Sign-In for this account" });
+            return res.status(400).json({ message: user.provider === "sso" ? "Use work SSO for this account" : "Use Google Sign-In for this account" });
         }
         if (!(await user.matchPassword(password))) {
             await recordLoginFailure((email || "").toLowerCase());
@@ -284,7 +287,7 @@ export const updateProfile = async (req, res, next) => {
 
         if (newPassword) {
             if (user.provider !== "local") {
-                return res.status(400).json({ message: "Password change not available for Google accounts" });
+                return res.status(400).json({ message: "Password changes are only available for email/password accounts" });
             }
             if (!currentPassword) {
                 return res.status(400).json({ message: "Current password is required" });
@@ -296,9 +299,6 @@ export const updateProfile = async (req, res, next) => {
             user.password = newPassword;
         }
 
-        if (typeof preferredLanguage === "string" && preferredLanguage.trim()) {
-            user.preferredLanguage = preferredLanguage.trim();
-        }
         if (typeof preferredProgrammingLanguage === "string" && preferredProgrammingLanguage.trim()) {
             user.preferredProgrammingLanguage = preferredProgrammingLanguage.trim();
         }
@@ -340,6 +340,9 @@ export const deleteAccount = async (req, res, next) => {
         if (user.provider === "local" && (!password || !await user.matchPassword(password))) {
             return res.status(400).json({ message: "Current password is incorrect" });
         }
+        if (["active", "trialing"].includes(user.practiceSubscriptionStatus)) {
+            return res.status(409).json({ message: "Cancel your active Practice subscription before deleting your account" });
+        }
 
         const interviews = await Interview.find({ user: user._id }).select("rounds.round").lean();
         const roundIds = interviews.flatMap((item) => (item.rounds || []).map((entry) => entry.round));
@@ -350,26 +353,49 @@ export const deleteAccount = async (req, res, next) => {
         const sharedQuestionIds = await Round.distinct("questions.question", { _id: { $nin: roundIds }, "questions.question": { $in: questionIds } });
         const sharedSet = new Set(sharedQuestionIds.map(String));
         const privateQuestionIds = questionIds.filter((id) => !sharedSet.has(String(id)));
-        const assessmentIds = await Assessment.distinct("_id", { owner: user._id });
+        const ownedMemberships = await OrganizationMembership.find({ user: user._id, role: "owner", status: "active" }).select("organization").lean();
+        const ownedOrganizationIds = ownedMemberships.map((membership) => membership.organization);
+        const ownedOrganizations = ownedOrganizationIds.length
+            ? await Organization.find({ _id: { $in: ownedOrganizationIds } }).select("_id hiringSubscriptionStatus").lean()
+            : [];
+        if (ownedOrganizations.some((organization) => ["active", "trialing"].includes(organization.hiringSubscriptionStatus))) {
+            return res.status(409).json({ message: "Cancel Hiring billing or transfer organization ownership before deleting your account" });
+        }
+        for (const organizationId of ownedOrganizationIds) {
+            const activeMembers = await OrganizationMembership.countDocuments({ organization: organizationId, status: "active" });
+            if (activeMembers > 1) {
+                return res.status(409).json({ message: "Transfer ownership of your hiring organization before deleting your account" });
+            }
+        }
+        const assessmentIds = ownedOrganizationIds.length
+            ? await Assessment.distinct("_id", { organization: { $in: ownedOrganizationIds } })
+            : [];
 
-        await Promise.all([
-            Feedback.deleteMany({ $or: [{ user: user._id }, { _id: { $in: feedbackIds } }] }),
-            Question.deleteMany({ _id: { $in: privateQuestionIds } }),
-            Round.deleteMany({ _id: { $in: roundIds } }),
-            Interview.deleteMany({ user: user._id }),
-            Resume.deleteMany({ user: user._id }),
-            ResumeReview.deleteMany({ user: user._id }),
-            SavedExperience.deleteMany({ user: user._id }),
-            ProductFeedback.deleteMany({ user: user._id }),
-            UsageCounter.deleteMany({ user: user._id }),
-            ReminderDelivery.deleteMany({ user: user._id }),
-            ProductEvent.deleteMany({ user: user._id }),
-            CandidateAttempt.deleteMany({ assessment: { $in: assessmentIds } }),
-            Assessment.deleteMany({ owner: user._id }),
-            RefreshToken.deleteMany({ user: user._id }),
-            AuditLog.deleteMany({ user: user._id }),
-        ]);
-        await User.deleteOne({ _id: user._id });
+        const session = await mongoose.startSession();
+        try {
+            await session.withTransaction(async () => {
+                await Feedback.deleteMany({ $or: [{ user: user._id }, { _id: { $in: feedbackIds } }] }, { session });
+                await Question.deleteMany({ _id: { $in: privateQuestionIds } }, { session });
+                await Round.deleteMany({ _id: { $in: roundIds } }, { session });
+                await Interview.deleteMany({ user: user._id }, { session });
+                await Resume.deleteMany({ user: user._id }, { session });
+                await ResumeReview.deleteMany({ user: user._id }, { session });
+                await SavedExperience.deleteMany({ user: user._id }, { session });
+                await ProductFeedback.deleteMany({ user: user._id }, { session });
+                await PracticeUsageCounter.deleteMany({ user: user._id }, { session });
+                await ReminderDelivery.deleteMany({ user: user._id }, { session });
+                await ProductEvent.deleteMany({ user: user._id }, { session });
+                await CandidateAttempt.deleteMany({ assessment: { $in: assessmentIds } }, { session });
+                await Assessment.deleteMany({ organization: { $in: ownedOrganizationIds } }, { session });
+                await OrganizationMembership.deleteMany({ $or: [{ user: user._id }, { organization: { $in: ownedOrganizationIds } }] }, { session });
+                await Organization.deleteMany({ _id: { $in: ownedOrganizationIds } }, { session });
+                await RefreshToken.deleteMany({ user: user._id }, { session });
+                await AuditLog.deleteMany({ user: user._id }, { session });
+                await User.deleteOne({ _id: user._id }, { session });
+            });
+        } finally {
+            await session.endSession();
+        }
         clearRefreshCookie(res);
 
         const publicIds = resumes.map((resume) => resume.publicId).filter(Boolean);
@@ -390,6 +416,7 @@ export const forgotPassword = async (req, res, next) => {
         const user = await User.findOne({ email });
         if (!user) return res.json({ message: "If the email exists, a reset link has been sent" });
         if (!user.isVerified) return res.json({ message: "If the email exists, a reset link has been sent" });
+        if (user.provider !== "local") return res.json({ message: "If the email exists, a reset link has been sent" });
 
         const token = crypto.randomBytes(32).toString("hex");
         user.resetPasswordToken = crypto.createHash("sha256").update(token).digest("hex");
@@ -432,7 +459,7 @@ export const resetPassword = async (req, res, next) => {
             return res.status(400).json({ message: "Token expired" });
         }
         if (user.provider !== "local") {
-            return res.status(400).json({ message: "Password reset not available for Google accounts" });
+            return res.status(400).json({ message: "Password reset is only available for email/password accounts" });
         }
         user.password = newPassword;
         user.resetPasswordToken = undefined;

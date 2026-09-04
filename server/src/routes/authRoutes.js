@@ -45,8 +45,6 @@ import ResumeReview from "../models/ResumeReview.js";
 import SavedExperience from "../models/SavedExperience.js";
 import ProductFeedback from "../models/ProductFeedback.js";
 import ProductEvent from "../models/ProductEvent.js";
-import Assessment from "../models/Assessment.js";
-import CandidateAttempt from "../models/CandidateAttempt.js";
 import requireFeature from "../middleware/featureFlags.js";
 import audit from "../middleware/audit.js";
 
@@ -285,8 +283,8 @@ router.post("/refresh", refreshAccessToken);
 // Protected
 router.post("/logout", protect, logoutUser);
 router.get("/profile", protect, (req, res) => {
-    const { _id, name, email, role, provider, preferredProgrammingLanguage, practiceGoal, targetRole, weeklyPracticeTarget, reminderEnabled, reminderDay, reminderTime, reminderTimezone, plan, subscriptionStatus, isVerified } = req.user;
-    res.json({ _id, name, email, role, provider, preferredProgrammingLanguage, practiceGoal, targetRole, weeklyPracticeTarget, reminderEnabled, reminderDay, reminderTime, reminderTimezone, plan, subscriptionStatus, isVerified });
+    const { _id, name, email, role, provider, preferredProgrammingLanguage, practiceGoal, targetRole, weeklyPracticeTarget, reminderEnabled, reminderDay, reminderTime, reminderTimezone, practicePlan, practiceSubscriptionStatus, isVerified } = req.user;
+    res.json({ _id, name, email, role, provider, preferredProgrammingLanguage, practiceGoal, targetRole, weeklyPracticeTarget, reminderEnabled, reminderDay, reminderTime, reminderTimezone, practicePlan, practiceSubscriptionStatus, isVerified });
 });
 router.put("/profile", protect, validate(UpdateProfileSchema), audit("account.profile_update", { entityType: "User", getEntityId: (req) => req.user._id, pickBody: (body) => ({ nameChanged: body.name !== undefined, passwordChanged: Boolean(body.newPassword), goalChanged: body.practiceGoal !== undefined || body.targetRole !== undefined, reminderChanged: ["reminderEnabled", "reminderDay", "reminderTime", "reminderTimezone"].some((key) => body[key] !== undefined) }) }), updateProfile);
 router.post("/reminders/test", protect, audit("account.reminder_test", { entityType: "User", getEntityId: (req) => req.user._id }), async (req, res, next) => {
@@ -304,9 +302,8 @@ router.get("/reminders/deliveries", protect, async (req, res, next) => {
 router.get("/export", protect, requireFeature("ACCOUNT_DATA_EXPORT_ENABLED"), async (req, res, next) => {
     try {
         const userId = req.user._id;
-        const assessmentIds = await Assessment.distinct("_id", { owner: userId });
-        const [profile, interviews, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents, assessments, candidateAttempts] = await Promise.all([
-            User.findById(userId).select("name email role provider preferredProgrammingLanguage practiceGoal targetRole weeklyPracticeTarget reminderEnabled reminderDay reminderTime reminderTimezone plan subscriptionStatus isVerified createdAt updatedAt").lean(),
+        const [profile, interviews, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents] = await Promise.all([
+            User.findById(userId).select("name email role provider preferredProgrammingLanguage practiceGoal targetRole weeklyPracticeTarget reminderEnabled reminderDay reminderTime reminderTimezone practicePlan practiceSubscriptionStatus isVerified createdAt updatedAt").lean(),
             Interview.find({ user: userId }).lean(),
             Resume.find({ user: userId }).select("-cloudinaryUrl -secureUrl").lean(),
             ResumeReview.find({ user: userId }).lean(),
@@ -314,11 +311,9 @@ router.get("/export", protect, requireFeature("ACCOUNT_DATA_EXPORT_ENABLED"), as
             ProductFeedback.find({ user: userId }).lean(),
             ReminderDelivery.find({ user: userId }).lean(),
             ProductEvent.find({ user: userId }).lean(),
-            Assessment.find({ owner: userId }).lean(),
-            CandidateAttempt.find({ assessment: { $in: assessmentIds } }).lean(),
         ]);
         res.setHeader("Content-Disposition", `attachment; filename="companionai-export-${new Date().toISOString().slice(0, 10)}.json"`);
-        return res.json({ exportedAt: new Date().toISOString(), profile, interviews, assessments, candidateAttempts, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents });
+        return res.json({ exportedAt: new Date().toISOString(), profile, interviews, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents });
     } catch (error) { return next(error); }
 });
 router.delete(

@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 
 // API / Context
 import api from "../api/axios";
+import { AuthContext } from "../context/AuthContext";
 import { useResumes } from "../hooks/useResumes";
 import { trackEvent } from "../utils/analytics";
 
@@ -58,6 +59,7 @@ const INTERVIEW_PRESETS = [
 
 const CreateInterviewPage = () => {
     const { getResumes, deleteResume, uploadResume } = useResumes();
+    const { user } = useContext(AuthContext);
     const navigate = useNavigate();
     const notify = useNotify();
 
@@ -67,6 +69,11 @@ const CreateInterviewPage = () => {
         jobDescription: "",
         resumeId: "",
     });
+
+    useEffect(() => {
+        if (!user?.targetRole) return;
+        setFormData((current) => current.jobRole ? current : { ...current, jobRole: user.targetRole });
+    }, [user?.targetRole]);
 
     const [resumes, setResumes] = useState([]);
     const [uploading, setUploading] = useState(false);

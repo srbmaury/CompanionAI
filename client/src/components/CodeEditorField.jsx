@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
     TextField,
     Stack,
@@ -15,6 +15,7 @@ import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import api from "../api/axios";
+import { AuthContext } from "../context/AuthContext";
 import { storage, storageKeys } from "../utils/interviewStorage";
 
 // Monaco is several megabytes. Keep it out of the network path until the user
@@ -30,6 +31,8 @@ const languages = [
 
 const CodeEditorField = ({ value, onChange, onFocus, minRows = 6, outlinedInputSx, onModeChange, draftKey, suggestCode = false, executionEndpoint = "/run-code", executionHeaders = {}, skipAuthRedirect = false, canRun = true }) => {
     const muiTheme = useTheme();
+    const authContext = useContext(AuthContext);
+    const preferredProgrammingLanguage = authContext?.user?.preferredProgrammingLanguage;
     const [useEditor, setUseEditor] = useState(() => Boolean(suggestCode));
     const [language, setLanguage] = useState("cpp");
     const [stdin, setStdin] = useState("");
@@ -66,13 +69,14 @@ const CodeEditorField = ({ value, onChange, onFocus, minRows = 6, outlinedInputS
     }, [draftKey, useEditor, language, stdin]);
 
     useEffect(() => {
-        try {
-            const preferred = localStorage.getItem("preferredProgrammingLanguage");
-            if (preferred && ["javascript", "python", "cpp", "java"].includes(preferred)) {
-                setLanguage(preferred);
-            }
-        } catch { /* ignore */ }
-    }, []);
+        if (draftKey) {
+            const saved = storage.get(storageKeys.codeEditor(draftKey));
+            if (saved?.language && languages.some((item) => item.value === saved.language)) return;
+        }
+        if (preferredProgrammingLanguage && languages.some((item) => item.value === preferredProgrammingLanguage)) {
+            setLanguage(preferredProgrammingLanguage);
+        }
+    }, [draftKey, preferredProgrammingLanguage]);
 
     // Theme-derived colors for fullscreen mode
     const isLightTheme = editorTheme === "vs-light";
