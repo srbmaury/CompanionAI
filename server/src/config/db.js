@@ -6,31 +6,40 @@ let poolMetricsBound = false;
 const bindPoolMetrics = (mongoClient) => {
     if (!mongoClient || poolMetricsBound || typeof mongoClient.on !== "function") return;
     poolMetricsBound = true;
-    productionMetrics.mongoPoolConnections.labels("checked_out").set(0);
-    productionMetrics.mongoPoolWaitQueue.set(0);
+    let checkedOut = 0;
+    let waiting = 0;
+
+    const syncPoolGauges = () => {
+        productionMetrics.mongoPoolConnections.labels("checked_out").set(Math.max(0, checkedOut));
+        productionMetrics.mongoPoolWaitQueue.set(Math.max(0, waiting));
+    };
+    syncPoolGauges();
 
     mongoClient.on("connectionCheckOutStarted", () => {
-        productionMetrics.mongoPoolWaitQueue.inc();
+        waiting += 1;
+        syncPoolGauges();
     });
     mongoClient.on("connectionCheckedOut", () => {
-        productionMetrics.mongoPoolWaitQueue.dec();
-        productionMetrics.mongoPoolConnections.labels("checked_out").inc();
+        waiting = Math.max(0, waiting - 1);
+        checkedOut += 1;
+        syncPoolGauges();
     });
     mongoClient.on("connectionCheckOutFailed", () => {
-        productionMetrics.mongoPoolWaitQueue.dec();
+        waiting = Math.max(0, waiting - 1);
         productionMetrics.mongoPoolCheckoutFailuresTotal.inc();
+        syncPoolGauges();
     });
     mongoClient.on("connectionCheckedIn", () => {
-        productionMetrics.mongoPoolConnections.labels("checked_out").dec();
+        checkedOut = Math.max(0, checkedOut - 1);
+        syncPoolGauges();
     });
-    mongoClient.on("connectionPoolCleared", () => {
-        productionMetrics.mongoPoolWaitQueue.set(0);
-        productionMetrics.mongoPoolConnections.labels("checked_out").set(0);
-    });
-    mongoClient.on("topologyClosed", () => {
-        productionMetrics.mongoPoolWaitQueue.set(0);
-        productionMetrics.mongoPoolConnections.labels("checked_out").set(0);
-    });
+    const resetPoolGauges = () => {
+        waiting = 0;
+        checkedOut = 0;
+        syncPoolGauges();
+    };
+    mongoClient.on("connectionPoolCleared", resetPoolGauges);
+    mongoClient.on("topologyClosed", resetPoolGauges);
 };
 
 const connectDB = async () => {
