@@ -101,7 +101,6 @@ export default function ProductHeader({ surface = "practice" }) {
         setNotificationAnchor(null);
     }, [location.pathname, location.search, location.hash]);
 
-    const isActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`);
     const hasHiringOrganization = Boolean(activeOrganization?._id);
     const hiringHome = hasHiringOrganization ? hiringHomeForRole(currentRole) : "/hire/team";
     const home = user ? (surface === "hiring" ? hiringHome : config.appHome) : config.publicHome;

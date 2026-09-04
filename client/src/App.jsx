@@ -45,7 +45,6 @@ const SsoCallbackPage = lazy(() => import("./pages/SsoCallbackPage.jsx"));
 const SsoSettingsPage = lazy(() => import("./pages/SsoSettingsPage.jsx"));
 const PublicDocsPage = lazy(() => import("./pages/PublicDocsPage.jsx"));
 const OidcSsoDocsPage = lazy(() => import("./pages/OidcSsoDocsPage.jsx"));
-const PublicUseCasePage = lazy(() => import("./pages/PublicUseCasePage.jsx"));
 
 const PageLoader = () => (
     <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }} role="status" aria-label="Loading page">
