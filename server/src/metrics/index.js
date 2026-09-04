@@ -63,6 +63,13 @@ export const aiRequestDurationSeconds = new client.Histogram({ name: "ai_request
 export const aiTokensTotal = new client.Counter({ name: "ai_tokens_total", help: "AI tokens reported by providers", labelNames: ["provider", "model", "type"] });
 export const aiFallbacksTotal = new client.Counter({ name: "ai_fallbacks_total", help: "AI provider fallbacks", labelNames: ["from", "to"] });
 export const aiInvalidResponsesTotal = new client.Counter({ name: "ai_invalid_responses_total", help: "AI responses that were empty or invalid", labelNames: ["provider", "model"] });
+export const aiPurposeRequestsTotal = new client.Counter({ name: "ai_purpose_requests_total", help: "AI requests by stable product purpose and prompt bundle", labelNames: ["provider", "model", "purpose", "promptVersion", "outcome"] });
+export const adaptiveInterviewEventsTotal = new client.Counter({ name: "adaptive_interview_events_total", help: "Adaptive interviewer state transitions", labelNames: ["event", "action"] });
+export const adaptiveDifficultyTransitionsTotal = new client.Counter({ name: "adaptive_difficulty_transitions_total", help: "Adaptive interviewer difficulty changes", labelNames: ["from", "to"] });
+export const adaptiveFallbackQuestionsTotal = new client.Counter({ name: "adaptive_fallback_questions_total", help: "Adaptive questions served from deterministic or grounded fallback paths" });
+export const adaptiveFollowUpsTotal = new client.Counter({ name: "adaptive_followups_total", help: "Follow-up probes asked inside adaptive Practice rounds" });
+export const adaptiveRoundQuestions = new client.Histogram({ name: "adaptive_round_questions", help: "Completed base-question count for adaptive Practice rounds", buckets: [1, 2, 3, 4, 5, 6, 8, 10] });
+export const adaptiveRoundCoverage = new client.Histogram({ name: "adaptive_round_coverage_percent", help: "Final weighted competency coverage for adaptive Practice rounds", buckets: [25, 40, 55, 70, 80, 90, 95, 100] });
 export const reminderDeliveriesTotal = new client.Counter({ name: "reminder_deliveries_total", help: "Reminder delivery outcomes", labelNames: ["outcome"] });
 export const reminderDeliveryDurationSeconds = new client.Histogram({ name: "reminder_delivery_duration_seconds", help: "Reminder email delivery duration", labelNames: ["outcome"], buckets: [0.1, 0.25, 0.5, 1, 2, 5, 10, 30] });
 export const reminderDeliveryLagSeconds = new client.Histogram({ name: "reminder_delivery_lag_seconds", help: "Delay between scheduled and delivered reminder", buckets: [1, 30, 60, 300, 900, 3600, 21600, 86400] });
@@ -116,6 +123,13 @@ export default {
     aiTokensTotal,
     aiFallbacksTotal,
     aiInvalidResponsesTotal,
+    aiPurposeRequestsTotal,
+    adaptiveInterviewEventsTotal,
+    adaptiveDifficultyTransitionsTotal,
+    adaptiveFallbackQuestionsTotal,
+    adaptiveFollowUpsTotal,
+    adaptiveRoundQuestions,
+    adaptiveRoundCoverage,
     reminderDeliveriesTotal,
     reminderDeliveryDurationSeconds,
     reminderDeliveryLagSeconds,

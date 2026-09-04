@@ -32,6 +32,7 @@ const PricingPage = lazy(() => import("./pages/PricingPage.jsx"));
 const BillingSuccessPage = lazy(() => import("./pages/BillingSuccessPage.jsx"));
 const AdminFeedbackPage = lazy(() => import("./pages/AdminFeedbackPage.jsx"));
 const AdminAuditPage = lazy(() => import("./pages/AdminAuditPage.jsx"));
+const AdminCalibrationPage = lazy(() => import("./pages/AdminCalibrationPage.jsx"));
 const AssessmentsPage = lazy(() => import("./pages/AssessmentsPage.jsx"));
 const AssessmentReportPage = lazy(() => import("./pages/AssessmentReportPage.jsx"));
 const CandidateAssessmentPage = lazy(() => import("./pages/CandidateAssessmentPage.jsx"));
@@ -123,6 +124,7 @@ function App() {
                 <Route path="/billing/success" element={<ProtectedRoute><BillingSuccessPage /></ProtectedRoute>} />
                 <Route path="/admin/feedback" element={<ProtectedRoute><AdminRoute><AdminFeedbackPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/admin/audit" element={<ProtectedRoute><AdminRoute><AdminAuditPage /></AdminRoute></ProtectedRoute>} />
+                <Route path="/admin/calibration" element={<ProtectedRoute><AdminRoute><AdminCalibrationPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/assessments" element={<HiringRoute><AssessmentsPage /></HiringRoute>} />
                 <Route path="/assessments/:assessmentId" element={<HiringRoute><AssessmentReportPage /></HiringRoute>} />
                 <Route path="/assessments/:assessmentId/preview" element={<HiringRoute><AssessmentPreviewPage /></HiringRoute>} />

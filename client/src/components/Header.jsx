@@ -181,6 +181,7 @@ export default function Header() {
                                     {workspace === "practice" && <MenuItem component={RouterLink} to="/pricing" onClick={() => setProfileAnchor(null)}>Practice plans & billing</MenuItem>}
                                     {workspace === "hiring" && canManageOrganization && <MenuItem component={RouterLink} to="/hiring/team" onClick={() => setProfileAnchor(null)}>Team & Hiring billing</MenuItem>}
                                     {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/audit" onClick={() => setProfileAnchor(null)}>Audit activity</MenuItem>}
+                                    {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/calibration" onClick={() => setProfileAnchor(null)}>AI calibration</MenuItem>}
                                     <MenuItem onClick={() => { setProfileAnchor(null); setFeedbackOpen(true); }}><RateReviewOutlined fontSize="small" sx={{ mr: 1.5 }} />Share feedback</MenuItem>
                                     <MenuItem onClick={toggle}>{mode === "dark" ? <LightMode fontSize="small" sx={{ mr: 1.5 }} /> : <DarkMode fontSize="small" sx={{ mr: 1.5 }} />}{mode === "dark" ? "Light theme" : "Dark theme"}</MenuItem>
                                     <MenuItem onClick={handleLogout}><LogoutRounded fontSize="small" sx={{ mr: 1.5 }} />Log out</MenuItem>
@@ -207,6 +208,7 @@ export default function Header() {
                                 {workspace === "hiring" && canManageOrganization && <MenuItem component={RouterLink} to="/hiring/team" onClick={close}>Team & Hiring billing</MenuItem>}
                                 {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/feedback" onClick={close}>Feedback inbox</MenuItem>}
                                 {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/audit" onClick={close}>Audit activity</MenuItem>}
+                                {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/calibration" onClick={close}>AI calibration</MenuItem>}
                                 {notifications.length > 0 && <Divider />}
                                 {notifications.slice(0, 3).map((item) => <MenuItem key={item.id} onClick={() => { markNotificationRead(item.id); close(); }} sx={{ whiteSpace: "normal", maxWidth: 320 }}><ListItemText primary={item.message} secondary={notificationTime(item.at)} primaryTypographyProps={{ variant: "body2", fontWeight: item.read ? 500 : 750 }} /></MenuItem>)}
                                 <MenuItem onClick={() => { close(); setFeedbackOpen(true); }}>Share feedback</MenuItem>
