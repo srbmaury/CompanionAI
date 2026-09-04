@@ -8,6 +8,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import AdminRoute from "./components/AdminRoute";
 import GuestOnlyRoute from "./components/GuestOnlyRoute";
 import HiringOrganizationGate from "./components/HiringOrganizationGate";
+import SearchIndexPolicy from "./components/SearchIndexPolicy";
 
 const CreateInterviewPage = lazy(() => import("./pages/CreateInterviewPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
@@ -76,6 +77,7 @@ function App() {
     };
     return (
         <div className="min-h-screen">
+            <SearchIndexPolicy />
             <a
                 href="#main-content"
                 onFocus={() => setShowSkip(true)}
