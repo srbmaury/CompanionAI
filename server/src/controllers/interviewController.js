@@ -23,20 +23,22 @@ export const createInterview = async (req, res, next) => {
             session.endSession();
             return res.status(404).json({ message: "Resume not found" });
         }
-        // Create rounds first
         const roundDocs = await Round.insertMany(
             rounds.map((r) => ({
                 name: r.roundName,
                 description: r.description,
                 deliveryMode: r.deliveryMode === "online-assessment" ? "online-assessment" : "conversational",
                 questionLimit: Math.min(Math.max(Number(r.questionLimit) || 8, 1), 20),
+                skills: Array.isArray(r.skills) ? r.skills.slice(0, 6) : [],
+                rationale: (r.rationale || "").toString().slice(0, 300),
+                recommended: r.recommended !== false,
+                adaptiveState: { enabled: false },
                 questions: [],
             })),
             { session }
         );
 
         if (roundDocs.length > 1) {
-
             for (let i = 0; i < roundDocs.length - 1; i++) {
                 ops.push({
                     updateOne: {
@@ -47,22 +49,18 @@ export const createInterview = async (req, res, next) => {
             }
         }
 
-        if (ops.length > 0) {
-            await Round.bulkWrite(ops, { session });
-        }
+        if (ops.length > 0) await Round.bulkWrite(ops, { session });
 
         const interview = await Interview.create(
-            [
-                {
-                    user: req.user._id,
-                    resume: resumeId || null,
-                    company: companyName,
-                    jobRole,
-                    jobDescription,
-                    grounding,
-                    rounds: roundDocs.map((r) => ({ round: r._id })),
-                },
-            ],
+            [{
+                user: req.user._id,
+                resume: resumeId || null,
+                company: companyName,
+                jobRole,
+                jobDescription,
+                grounding,
+                rounds: roundDocs.map((r) => ({ round: r._id })),
+            }],
             { session }
         );
 
@@ -81,15 +79,9 @@ export const getInterviews = async (req, res, next) => {
     try {
         const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
         const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 100);
-
-        // Total count for current user
         const filter = { user: req.user._id };
         const total = await Interview.countDocuments(filter);
-
-        // If no pagination requested explicitly and small result set, maintain backward-compatible array response
         const paginationRequested = typeof req.query.page !== "undefined" || typeof req.query.limit !== "undefined";
-
-        // Fetch paginated items sorted by newest first
         const itemsRaw = await Interview.find(filter)
             .sort({ createdAt: -1 })
             .skip((page - 1) * limit)
@@ -100,19 +92,15 @@ export const getInterviews = async (req, res, next) => {
         const items = (itemsRaw || []).map((it) => {
             try {
                 const rounds = Array.isArray(it?.rounds) ? it.rounds : [];
-                const total = rounds.length;
+                const totalRounds = rounds.length;
                 const completed = rounds.reduce((acc, r) => acc + (r?.round?.status === "completed" ? 1 : 0), 0);
-                const isCompleted = total > 0 && completed === total;
-                return { ...it, roundsCompleted: completed, roundsTotal: total, isCompleted };
+                return { ...it, roundsCompleted: completed, roundsTotal: totalRounds, isCompleted: totalRounds > 0 && completed === totalRounds };
             } catch {
                 return { ...it, roundsCompleted: 0, roundsTotal: 0, isCompleted: false };
             }
         });
 
-        if (!paginationRequested && total <= limit) {
-            return res.status(200).json(items);
-        }
-
+        if (!paginationRequested && total <= limit) return res.status(200).json(items);
         const totalPages = Math.max(Math.ceil(total / limit), 1);
         return res.status(200).json({ items, total, page, limit, totalPages });
     } catch (error) {
@@ -124,7 +112,7 @@ export const getProgressSummary = async (req, res, next) => {
     try {
         const interviews = await Interview.find({ user: req.user._id })
             .sort({ createdAt: 1 })
-            .populate({ path: "rounds.round", select: "name status questions", populate: { path: "questions.feedback", select: "score" } })
+            .populate({ path: "rounds.round", select: "name status adaptiveState questions", populate: { path: "questions.feedback", select: "score competencies" } })
             .lean();
         const scored = [];
         const skillScores = new Map();
@@ -134,10 +122,23 @@ export const getProgressSummary = async (req, res, next) => {
             if (rounds.length && rounds.every((round) => round.status === "completed")) completed += 1;
             const scores = rounds.flatMap((round) => (round.questions || []).map((item) => Number(item.feedback?.score)).filter(Number.isFinite));
             for (const round of rounds) {
-                const values = (round.questions || []).map((item) => Number(item.feedback?.score)).filter(Number.isFinite);
-                if (!values.length) continue;
-                const name = (round.name || "General").toString();
-                skillScores.set(name, [...(skillScores.get(name) || []), ...values]);
+                let addedCompetencyEvidence = false;
+                for (const item of round.questions || []) {
+                    for (const competency of item?.feedback?.competencies || []) {
+                        const value = Number(competency?.score);
+                        const name = (competency?.name || "").toString().trim();
+                        if (!name || !Number.isFinite(value)) continue;
+                        skillScores.set(name, [...(skillScores.get(name) || []), value]);
+                        addedCompetencyEvidence = true;
+                    }
+                }
+                if (!addedCompetencyEvidence) {
+                    const values = (round.questions || []).map((item) => Number(item.feedback?.score)).filter(Number.isFinite);
+                    if (values.length) {
+                        const name = (round.name || "General").toString();
+                        skillScores.set(name, [...(skillScores.get(name) || []), ...values]);
+                    }
+                }
             }
             if (scores.length) scored.push({ date: interview.createdAt, score: Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 });
         }
@@ -146,7 +147,9 @@ export const getProgressSummary = async (req, res, next) => {
         const improvement = recent.length > 1 ? Math.round((recent.at(-1).score - recent[0].score) * 10) / 10 : 0;
         const skills = [...skillScores.entries()].map(([name, values]) => ({ name, score: Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10, answers: values.length })).sort((a, b) => a.score - b.score);
         return res.json({ total: interviews.length, completed, averageScore, improvement, recent, skills, focusArea: skills[0] || null });
-    } catch (error) { return next(error instanceof Error ? error : new Error(String(error))); }
+    } catch (error) {
+        return next(error instanceof Error ? error : new Error(String(error)));
+    }
 };
 
 export const getInterview = async (req, res, next) => {
@@ -160,35 +163,28 @@ export const getInterview = async (req, res, next) => {
                     { path: "questions.feedback", model: "Feedback" },
                 ],
             })
-            .populate("resume"); // optional if you want resume info
+            .populate("resume");
         if (!interview) return res.status(404).json({ message: "Interview not found" });
 
-        // Compute overallScore: average of round averages (per-question feedback scores)
         try {
             const rounds = Array.isArray(interview?.rounds) ? interview.rounds : [];
             const roundAverages = [];
             for (const r of rounds) {
                 const qItems = Array.isArray(r?.round?.questions) ? r.round.questions : [];
-                const scores = qItems
-                    .map((it) => Number(it?.feedback?.score))
-                    .filter((n) => Number.isFinite(n));
-                if (scores.length > 0) {
-                    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-                    roundAverages.push(avg);
-                }
+                const scores = qItems.map((it) => Number(it?.feedback?.score)).filter((n) => Number.isFinite(n));
+                if (scores.length > 0) roundAverages.push(scores.reduce((a, b) => a + b, 0) / scores.length);
             }
             const overall = roundAverages.length
                 ? Math.round((roundAverages.reduce((a, b) => a + b, 0) / roundAverages.length) * 10) / 10
                 : 0;
-            // Attach to response without persisting
             const obj = interview.toObject();
             obj.overallScore = overall;
             return res.json(obj);
-        } catch (_e) {
+        } catch {
             return res.json(interview);
         }
     } catch (err) {
         console.error(err);
-        res.status(500).json({ message: "Server error" });
+        return next(err instanceof Error ? err : new Error(String(err)));
     }
 };
