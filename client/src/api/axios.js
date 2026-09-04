@@ -30,8 +30,9 @@ export const shouldAttachOrganization = (url = "") => {
     const isAssessmentApi = path === "/assessments" || path.startsWith("/assessments/");
     const isCandidateApi = path === "/assessments/public" || path.startsWith("/assessments/public/");
     const isHiringBillingApi = path === "/billing/hiring" || path.startsWith("/billing/hiring/");
+    const isProtectedSsoSettingsApi = path === "/sso/settings" || path.startsWith("/sso/settings/");
 
-    return (isAssessmentApi && !isCandidateApi) || isHiringBillingApi;
+    return (isAssessmentApi && !isCandidateApi) || isHiringBillingApi || isProtectedSsoSettingsApi;
 };
 
 const api = axios.create({
