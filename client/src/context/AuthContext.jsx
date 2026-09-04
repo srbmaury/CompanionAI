@@ -55,6 +55,17 @@ export const AuthProvider = ({ children }) => {
         return fetchProfile();
     };
 
+    const startSsoLogin = async (email) => {
+        const { data } = await api.post(`/sso/start`, { email }, { skipAuthRedirect: true });
+        return data;
+    };
+
+    const completeSsoLogin = useCallback(async (exchangeCode) => {
+        const { data } = await api.post(`/sso/exchange`, { exchangeCode }, { skipAuthRedirect: true });
+        if (data?.token) setAccessToken(data.token);
+        return fetchProfile();
+    }, [fetchProfile]);
+
     const resendVerification = async (email) => {
         const { data } = await api.post(`/auth/resend-verification`, { email });
         return data;
@@ -103,6 +114,8 @@ export const AuthProvider = ({ children }) => {
                 login,
                 register,
                 googleLogin,
+                startSsoLogin,
+                completeSsoLogin,
                 resendVerification,
                 forgotPassword,
                 resetPassword,
