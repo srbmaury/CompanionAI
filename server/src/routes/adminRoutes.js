@@ -12,6 +12,7 @@ import ReminderDelivery from "../models/ReminderDelivery.js";
 import RefreshToken from "../models/RefreshToken.js";
 import audit from "../middleware/audit.js";
 import { ObjectIdString } from "../validation/commonSchemas.js";
+import { getCalibrationSnapshot } from "../services/calibrationAnalytics.js";
 
 const router = express.Router();
 
@@ -43,6 +44,18 @@ router.get("/overview", protect, requireRole("admin"), async (_req, res, next) =
         return res.json({ users, verifiedUsers, activeSessions, interviews, completedInterviews, newFeedback, failedReminders, events: Object.fromEntries(events.map((item) => [item._id, item.count])), period: "last_30_days" });
     } catch (error) { return next(error); }
 });
+
+router.get(
+    "/calibration",
+    protect,
+    requireRole("admin"),
+    validate(z.object({ limit: z.coerce.number().int().min(50).max(2000).optional() }), "query"),
+    async (req, res, next) => {
+        try {
+            return res.json(await getCalibrationSnapshot({ limit: req.query.limit }));
+        } catch (error) { return next(error); }
+    }
+);
 
 router.get(
     "/audit",

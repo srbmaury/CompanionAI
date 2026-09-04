@@ -5,6 +5,29 @@ import metrics from "../../metrics/index.js";
 
 dotenv.config();
 
+export const ADAPTIVE_PROMPT_BUNDLE_VERSION = "adaptive-2026-09-v1";
+export const FEEDBACK_PROMPT_BUNDLE_VERSION = "feedback-2026-09-v1";
+
+const classifyPromptPurpose = (prompt) => {
+    const text = (prompt || "").toString().toLowerCase();
+    if (text.startsWith("design the evidence plan for one adaptive technical interview round")) return "adaptive_plan";
+    if (text.startsWith("evaluate one completed technical interview question")) return "adaptive_evaluation";
+    if (text.startsWith("generate exactly one next question for an adaptive technical interview")) return "adaptive_question";
+    if (text.startsWith("you are conducting a realistic") && text.includes("follow-up")) return "adaptive_followup";
+    if (text.startsWith("you are a rigorous, evidence-based technical interviewer")) return "feedback_evaluation";
+    return "other";
+};
+
+const promptVersionForPurpose = (purpose) => {
+    if (purpose.startsWith("adaptive_")) return ADAPTIVE_PROMPT_BUNDLE_VERSION;
+    if (purpose === "feedback_evaluation") return FEEDBACK_PROMPT_BUNDLE_VERSION;
+    return "unversioned";
+};
+
+const observePurpose = (provider, model, purpose, promptVersion, outcome) => {
+    try { metrics.aiPurposeRequestsTotal.labels(provider, model, purpose, promptVersion, outcome).inc(); } catch {}
+};
+
 // Module-level singletons — created once, reused across all requests
 let _openaiClient = null;
 let _geminiClient = null;
@@ -64,6 +87,8 @@ const coerceToRawJSON = (input) => {
 
 export const generateJSON = async (prompt) => {
     const trimmed = (prompt || "").toString().slice(0, 16000);
+    const purpose = classifyPromptPurpose(trimmed);
+    const promptVersion = promptVersionForPurpose(purpose);
     const aiTimeoutMs = Math.min(
         Math.max(parseInt(process.env.AI_REQUEST_TIMEOUT_MS || "20000", 10) || 20000, 2000),
         120000
@@ -94,6 +119,7 @@ export const generateJSON = async (prompt) => {
         const normalized = coerceToRawJSON(text);
         if (normalized || (text && text.trim())) {
             metrics.aiRequestsTotal.labels("openai", openAiModel, "success").inc();
+            observePurpose("openai", openAiModel, purpose, promptVersion, "success");
             metrics.aiRequestDurationSeconds.labels("openai", openAiModel, "success").observe(Number(process.hrtime.bigint() - openAiStartedAt) / 1e9);
             return normalized || text.trim();
         }
@@ -101,6 +127,7 @@ export const generateJSON = async (prompt) => {
         throw new Error("Empty OpenAI response");
     } catch (_e) {
         metrics.aiRequestsTotal.labels("openai", openAiModel, "failure").inc();
+        observePurpose("openai", openAiModel, purpose, promptVersion, "failure");
         metrics.aiRequestDurationSeconds.labels("openai", openAiModel, "failure").observe(Number(process.hrtime.bigint() - openAiStartedAt) / 1e9);
         metrics.aiFallbacksTotal.labels("openai", "gemini").inc();
         console.warn("[AI][OpenAI] request failed:", _e?.message || _e);
@@ -122,10 +149,12 @@ export const generateJSON = async (prompt) => {
                 throw new Error("Empty Gemini response");
             }
             metrics.aiRequestsTotal.labels("gemini", geminiModel, "success").inc();
+            observePurpose("gemini", geminiModel, purpose, promptVersion, "success");
             metrics.aiRequestDurationSeconds.labels("gemini", geminiModel, "success").observe(Number(process.hrtime.bigint() - geminiStartedAt) / 1e9);
             return normalized || text;
         } catch (fallbackErr) {
             metrics.aiRequestsTotal.labels("gemini", geminiModel, "failure").inc();
+            observePurpose("gemini", geminiModel, purpose, promptVersion, "failure");
             metrics.aiRequestDurationSeconds.labels("gemini", geminiModel, "failure").observe(Number(process.hrtime.bigint() - geminiStartedAt) / 1e9);
             console.warn("[AI][Gemini] request failed:", fallbackErr?.message || fallbackErr);
             return "";

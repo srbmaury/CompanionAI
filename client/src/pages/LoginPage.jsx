@@ -4,8 +4,8 @@ import { AuthContext } from "../context/AuthContext";
 import Captcha from "../components/Captcha";
 import AuthShell from "../components/AuthShell";
 import { getWorkspaceHome, getWorkspacePreference, setWorkspacePreference } from "../utils/workspacePreference";
+import { productRegisterPath, surfaceForPath, workspaceForSurface } from "../utils/productRoutes";
 
-// MUI components
 import {
     Alert,
     Box,
@@ -21,7 +21,6 @@ import {
     Typography,
 } from "@mui/material";
 
-// Icons
 import { BusinessRounded, Login as LoginIcon, Visibility, VisibilityOff } from "@mui/icons-material";
 
 const LoginPage = () => {
@@ -42,10 +41,16 @@ const LoginPage = () => {
     const [apiError, setApiError] = useState("");
     const requested = location.state?.from;
     const workspaceParam = new URLSearchParams(location.search).get("workspace");
-    const requestedWorkspace = ["practice", "hiring"].includes(workspaceParam) ? workspaceParam : null;
+    const routeWorkspace = workspaceForSurface(surfaceForPath(location.pathname));
+    const requestedWorkspace = ["practice", "hiring"].includes(workspaceParam) ? workspaceParam : routeWorkspace;
+    const authSurface = requestedWorkspace || "combined";
+    const productName = requestedWorkspace === "hiring" ? "CompanionAI Hire" : requestedWorkspace === "practice" ? "CompanionAI Practice" : "CompanionAI";
+    const showWorkSso = requestedWorkspace !== "practice";
+
     useEffect(() => {
         if (requestedWorkspace) setWorkspacePreference(requestedWorkspace);
     }, [requestedWorkspace]);
+
     const requestedDestination = requested?.pathname
         ? `${requested.pathname}${requested.search || ""}${requested.hash || ""}`
         : null;
@@ -54,7 +59,7 @@ const LoginPage = () => {
             requestedWorkspace || getWorkspacePreference(authenticatedUser?._id) || "practice"
         )
     ), [requestedDestination, requestedWorkspace]);
-    const registerPath = requestedWorkspace ? `/register?workspace=${requestedWorkspace}` : "/register";
+    const registerPath = productRegisterPath(requestedWorkspace);
 
     const validate = () => {
         const next = { email: "", password: "" };
@@ -161,26 +166,35 @@ const LoginPage = () => {
     }, [authenticatedDestinationFor, gsiReady, navigate]);
 
     return (
-        <AuthShell eyebrow="Welcome back" title="Sign in to CompanionAI" subtitle="Continue in your Practice or Hiring workspace.">
-                    <Box component="form" noValidate onSubmit={handleSubmit}>
-                        <Stack spacing={{ xs: 2.25, md: 1.5 }}>
-                            {apiError && <Alert severity="error" onClose={() => setApiError("")}>{apiError}</Alert>}
-                            <FormControl fullWidth>
-                                <TextField id="email" label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="name@example.com" autoComplete="email" error={!!errors.email} helperText={errors.email || undefined} size="medium" />
-                            </FormControl>
-                            <FormControl fullWidth>
-                                <TextField id="password" label="Password" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••" autoComplete="current-password" error={!!errors.password} size="medium" InputProps={{ endAdornment: <InputAdornment position="end"><IconButton aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((s) => !s)} edge="end">{showPassword ? <VisibilityOff /> : <Visibility />}</IconButton></InputAdornment> }} />
-                                {errors.password && <FormHelperText error>{errors.password}</FormHelperText>}
-                                <Typography variant="body2" align="right" sx={{ mt: 1 }}><Link component={RouterLink} to="/forgot-password" underline="hover">Forgot password?</Link></Typography>
-                            </FormControl>
-                            {errors.password === "Email not verified" && <Stack spacing={1}><Typography variant="body2" color="text.secondary">Didn’t receive the verification email?</Typography><Button size="small" variant="text" onClick={async () => { try { const r = await resendVerification(email); setErrors((p) => ({ ...p, password: r?.message || "Verification email sent" })); } catch (e) { console.error(e); } }}>Resend verification</Button></Stack>}
-                            <Captcha onVerify={(t) => setCaptchaToken(t)} onExpire={() => setCaptchaToken("")} />
-                            <Button type="submit" variant="contained" size="large" startIcon={<LoginIcon />} disabled={submitting || ssoSubmitting} sx={{ py: 1.25, borderRadius: 2, textTransform: "none", fontWeight: 700 }}>{submitting ? "Signing in..." : "Sign in"}</Button>
-                        </Stack>
-                    </Box>
-                    <Divider sx={{ my: { xs: 3, md: 2 } }}><Typography variant="caption" color="text.secondary">OR CONTINUE WITH</Typography></Divider>
-                    <Stack spacing={2} alignItems="center"><div ref={googleDivRef} /><Button fullWidth variant="outlined" size="large" startIcon={<BusinessRounded />} disabled={ssoSubmitting || submitting} onClick={handleSso}>{ssoSubmitting ? "Opening your identity provider…" : "Continue with work SSO"}</Button><Typography variant="caption" color="text.secondary" align="center">Work SSO uses the company email entered above. Google sign-in may not display in embedded browsers; use Chrome or Safari if needed.</Typography></Stack>
-                    <Typography align="center" color="text.secondary">Don’t have an account? <Link component={RouterLink} to={registerPath} underline="hover">Register</Link></Typography>
+        <AuthShell
+            surface={authSurface}
+            eyebrow="Welcome back"
+            title={`Sign in to ${productName}`}
+            subtitle={requestedWorkspace === "hiring" ? "Continue to your organization’s assessments, candidate evidence, and hiring reports." : requestedWorkspace === "practice" ? "Continue your private interview preparation and progress." : "Choose the product you were using and continue where you left off."}
+        >
+            <Box component="form" noValidate onSubmit={handleSubmit}>
+                <Stack spacing={{ xs: 2.25, md: 1.5 }}>
+                    {apiError && <Alert severity="error" onClose={() => setApiError("")}>{apiError}</Alert>}
+                    <FormControl fullWidth>
+                        <TextField id="email" label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="name@example.com" autoComplete="email" error={!!errors.email} helperText={errors.email || undefined} size="medium" />
+                    </FormControl>
+                    <FormControl fullWidth>
+                        <TextField id="password" label="Password" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••" autoComplete="current-password" error={!!errors.password} size="medium" InputProps={{ endAdornment: <InputAdornment position="end"><IconButton aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((s) => !s)} edge="end">{showPassword ? <VisibilityOff /> : <Visibility />}</IconButton></InputAdornment> }} />
+                        {errors.password && <FormHelperText error>{errors.password}</FormHelperText>}
+                        <Typography variant="body2" align="right" sx={{ mt: 1 }}><Link component={RouterLink} to="/forgot-password" underline="hover">Forgot password?</Link></Typography>
+                    </FormControl>
+                    {errors.password === "Email not verified" && <Stack spacing={1}><Typography variant="body2" color="text.secondary">Didn’t receive the verification email?</Typography><Button size="small" variant="text" onClick={async () => { try { const r = await resendVerification(email); setErrors((p) => ({ ...p, password: r?.message || "Verification email sent" })); } catch (e) { console.error(e); } }}>Resend verification</Button></Stack>}
+                    <Captcha onVerify={(t) => setCaptchaToken(t)} onExpire={() => setCaptchaToken("")} />
+                    <Button type="submit" variant="contained" size="large" startIcon={<LoginIcon />} disabled={submitting || ssoSubmitting} sx={{ py: 1.25, borderRadius: 2, textTransform: "none", fontWeight: 700 }}>{submitting ? "Signing in..." : "Sign in"}</Button>
+                </Stack>
+            </Box>
+            <Divider sx={{ my: { xs: 3, md: 2 } }}><Typography variant="caption" color="text.secondary">OR CONTINUE WITH</Typography></Divider>
+            <Stack spacing={2} alignItems="center">
+                <div ref={googleDivRef} />
+                {showWorkSso && <Button fullWidth variant="outlined" size="large" startIcon={<BusinessRounded />} disabled={ssoSubmitting || submitting} onClick={handleSso}>{ssoSubmitting ? "Opening your identity provider…" : "Continue with work SSO"}</Button>}
+                <Typography variant="caption" color="text.secondary" align="center">{showWorkSso ? "Work SSO is available for CompanionAI Hire organizations. " : ""}Google sign-in may not display in embedded browsers; use Chrome or Safari if needed.</Typography>
+            </Stack>
+            <Typography align="center" color="text.secondary">Don’t have an account? <Link component={RouterLink} to={registerPath} underline="hover">Register</Link></Typography>
         </AuthShell>
     );
 };

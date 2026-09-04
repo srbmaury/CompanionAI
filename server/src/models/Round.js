@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import AdaptiveInterviewTrace from "./AdaptiveInterviewTrace.js";
+import metrics from "../metrics/index.js";
 
 const followUpSchema = new mongoose.Schema({
     question: { type: String, required: true, maxlength: 1000 },
@@ -58,6 +60,8 @@ const policyDecisionSchema = new mongoose.Schema({
 
 const adaptiveStateSchema = new mongoose.Schema({
     enabled: { type: Boolean, default: false },
+    engineVersion: { type: String, maxlength: 80, default: "adaptive-v1" },
+    promptVersion: { type: String, maxlength: 80, default: "adaptive-2026-09-v1" },
     minQuestions: { type: Number, min: 1, max: 20, default: 2 },
     maxQuestions: { type: Number, min: 1, max: 20, default: 5 },
     currentDifficulty: { type: Number, min: 1, max: 5, default: 3 },
@@ -128,6 +132,118 @@ const roundSchema = new mongoose.Schema({
         quickEvaluation: { type: quickEvaluationSchema, default: undefined },
         feedback: { type: mongoose.Schema.Types.ObjectId, ref: "Feedback" },
     }],
+});
+
+
+const coverageOf = (state) => {
+    const competencies = Array.isArray(state?.competencies) ? state.competencies : [];
+    if (!competencies.length) return 0;
+    let weighted = 0;
+    let total = 0;
+    for (const item of competencies) {
+        const weight = Math.max(0.1, Number(item?.weight) || 1);
+        const confidence = Math.max(0, Math.min(1, Number(item?.confidence) || 0));
+        weighted += weight * Math.min(1, confidence / 0.72);
+        total += weight;
+    }
+    return total ? weighted / total : 0;
+};
+
+const averageConfidenceOf = (state) => {
+    const competencies = Array.isArray(state?.competencies) ? state.competencies : [];
+    if (!competencies.length) return 0;
+    return competencies.reduce((sum, item) => sum + Math.max(0, Math.min(1, Number(item?.confidence) || 0)), 0) / competencies.length;
+};
+
+const followUpCountOf = (questions) => (questions || []).reduce((sum, item) => sum + (Array.isArray(item?.followUps) ? item.followUps.length : 0), 0);
+const comparableDecision = (state) => JSON.stringify({
+    action: state?.lastDecision?.action || "",
+    targetCompetency: state?.lastDecision?.targetCompetency || "",
+    difficulty: Number(state?.lastDecision?.difficulty) || 0,
+    reason: state?.lastDecision?.reason || "",
+});
+
+roundSchema.pre("save", async function captureAdaptivePrevious() {
+    if (!this.adaptiveState?.enabled) return;
+    if (!this.isNew && !this.isModified("adaptiveState") && !this.isModified("questions") && !this.isModified("status")) return;
+    if (this.isNew) {
+        this.$locals.adaptivePrevious = null;
+        return;
+    }
+    this.$locals.adaptivePrevious = await this.constructor.findById(this._id)
+        .select("adaptiveState status questions.sourceType questions.sourceClaim questions.followUps")
+        .lean();
+});
+
+roundSchema.post("save", async function recordAdaptiveTrace(doc) {
+    if (!doc.adaptiveState?.enabled) return;
+    const previous = this.$locals?.adaptivePrevious || null;
+    const beforeState = previous?.adaptiveState || {};
+    const afterState = doc.adaptiveState || {};
+    const beforeQuestions = previous?.questions || [];
+    const afterQuestions = doc.questions || [];
+    const beforeFollowUps = followUpCountOf(beforeQuestions);
+    const afterFollowUps = followUpCountOf(afterQuestions);
+    const beforeAsked = Number(beforeState?.questionsAsked) || 0;
+    const afterAsked = Number(afterState?.questionsAsked) || 0;
+    const beforeDifficulty = Number(beforeState?.currentDifficulty) || Number(afterState?.currentDifficulty) || 3;
+    const afterDifficulty = Number(afterState?.currentDifficulty) || beforeDifficulty;
+    const statusChanged = previous?.status !== doc.status;
+    const meaningful = !previous
+        || beforeQuestions.length !== afterQuestions.length
+        || beforeFollowUps !== afterFollowUps
+        || beforeAsked !== afterAsked
+        || beforeDifficulty !== afterDifficulty
+        || statusChanged
+        || comparableDecision(beforeState) !== comparableDecision(afterState);
+    if (!meaningful) return;
+
+    let eventType = "policy_updated";
+    if (!previous || !beforeState?.enabled) eventType = "initialized";
+    else if (doc.status === "completed" && previous.status !== "completed") eventType = "completed";
+    else if (afterQuestions.length > beforeQuestions.length) eventType = "question_selected";
+    else if (afterAsked > beforeAsked) eventType = "evidence_evaluated";
+    else if (afterFollowUps > beforeFollowUps) eventType = "follow_up";
+
+    const lastQuestion = afterQuestions[afterQuestions.length - 1] || {};
+    const action = afterState?.lastDecision?.action || "";
+    const coverageBefore = coverageOf(beforeState);
+    const coverageAfter = coverageOf(afterState);
+    const trace = {
+        round: doc._id,
+        eventType,
+        action,
+        targetCompetency: afterState?.lastDecision?.targetCompetency || "",
+        sourceType: lastQuestion?.sourceType || "",
+        usedResumeClaim: Boolean(lastQuestion?.sourceClaim) || lastQuestion?.sourceType === "resume-claim",
+        fallbackUsed: lastQuestion?.sourceType === "fallback",
+        questionCount: afterQuestions.length,
+        questionsAsked: afterAsked,
+        followUpCount: afterFollowUps,
+        difficultyFrom: beforeDifficulty,
+        difficultyTo: afterDifficulty,
+        coverageBefore,
+        coverageAfter,
+        averageConfidenceBefore: averageConfidenceOf(beforeState),
+        averageConfidenceAfter: averageConfidenceOf(afterState),
+        engineVersion: afterState?.engineVersion || "adaptive-v1",
+        promptVersion: afterState?.promptVersion || "adaptive-2026-09-v1",
+        reason: afterState?.lastDecision?.reason || afterState?.completedReason || "",
+    };
+
+    try {
+        await AdaptiveInterviewTrace.create(trace);
+        metrics.adaptiveInterviewEventsTotal.labels(eventType, action || "none").inc();
+        if (beforeDifficulty !== afterDifficulty) metrics.adaptiveDifficultyTransitionsTotal.labels(String(beforeDifficulty), String(afterDifficulty)).inc();
+        if (trace.fallbackUsed && eventType === "question_selected") metrics.adaptiveFallbackQuestionsTotal.inc();
+        if (afterFollowUps > beforeFollowUps) metrics.adaptiveFollowUpsTotal.inc(afterFollowUps - beforeFollowUps);
+        if (eventType === "completed") {
+            metrics.adaptiveRoundQuestions.observe(afterAsked || afterQuestions.length);
+            metrics.adaptiveRoundCoverage.observe(Math.round(coverageAfter * 1000) / 10);
+        }
+    } catch (error) {
+        console.warn("adaptive trace persistence failed", error?.message || error);
+    }
 });
 
 const Round = mongoose.model("Round", roundSchema);

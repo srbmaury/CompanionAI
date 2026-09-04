@@ -1,5 +1,5 @@
 import CandidateAttempt from "../../models/CandidateAttempt.js";
-import { generateFeedbackForAnswer } from "../../utils/generateFeedback.js";
+import { FEEDBACK_ENGINE_VERSION, FEEDBACK_PROMPT_VERSION, generateFeedbackForAnswer } from "../../utils/generateFeedback.js";
 import metrics from "../../metrics/index.js";
 import Assessment from "../../models/Assessment.js";
 import { summarizeSystemDesignDiagram } from "../../utils/systemDesignDiagram.js";
@@ -27,7 +27,16 @@ export default async function candidateAssessmentProcessor(job) {
             round.score = roundScores.length ? Math.round((roundScores.reduce((a, b) => a + b, 0) / roundScores.length) * 10) / 10 : 0;
         }
         attempt.overallScore = totalWeight ? Math.round((weightedTotal / totalWeight) * 10) / 10 : 0;
-        attempt.status = "submitted"; attempt.submittedAt = new Date(); attempt.evaluationError = ""; await attempt.save();
+        attempt.status = "submitted";
+        attempt.submittedAt = new Date();
+        attempt.evaluationError = "";
+        attempt.evaluationMetadata = {
+            engineVersion: FEEDBACK_ENGINE_VERSION,
+            promptVersion: FEEDBACK_PROMPT_VERSION,
+            questionCount: completed,
+            completedAt: attempt.submittedAt,
+        };
+        await attempt.save();
         await Assessment.updateOne({ _id: attempt.assessment, "invitations.email": attempt.candidateEmail }, { $set: { "invitations.$.status": "completed" } });
         try { metrics.candidateAssessmentCompletionDurationSeconds.observe(Math.max((attempt.submittedAt.getTime() - attempt.startedAt.getTime()) / 1000, 0)); } catch {}
         return { submitted: true, score: attempt.overallScore };

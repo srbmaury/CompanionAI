@@ -71,4 +71,4 @@ export const canManageHiringMember = (actorRole, targetRole) => {
 };
 
 export const hiringHomeForRole = (role) =>
-    role === HIRING_ROLES.REVIEWER ? "/assessments#candidate-pipeline" : "/assessments";
+    role === HIRING_ROLES.REVIEWER ? "/hire/assessments#candidate-pipeline" : "/hire/assessments";

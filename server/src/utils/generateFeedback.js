@@ -1,5 +1,8 @@
 import { generateJSON } from "./generateQuestions/aiClient.js";
 
+export const FEEDBACK_PROMPT_VERSION = "feedback-2026-09-v1";
+export const FEEDBACK_ENGINE_VERSION = "hiring-evaluator-v1";
+
 const clamp = (value, min, max) => Math.min(Math.max(Number(value) || min, min), max);
 const clean = (value, max) => (value || "").toString().replace(/\s+/g, " ").trim().slice(0, max);
 const strings = (value, maxItems = 5, maxLength = 300) => Array.isArray(value)

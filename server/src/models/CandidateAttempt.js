@@ -24,6 +24,13 @@ const attemptRoundSchema = new mongoose.Schema({
     score: { type: Number, min: 0, max: 10 },
 }, { _id: true });
 
+const evaluationMetadataSchema = new mongoose.Schema({
+    engineVersion: { type: String, maxlength: 80, default: "" },
+    promptVersion: { type: String, maxlength: 80, default: "" },
+    questionCount: { type: Number, min: 0, default: 0 },
+    completedAt: Date,
+}, { _id: false });
+
 const candidateAttemptSchema = new mongoose.Schema({
     assessment: { type: mongoose.Schema.Types.ObjectId, ref: "Assessment", required: true, index: true },
     candidateName: { type: String, required: true, maxlength: 120 },
@@ -35,6 +42,7 @@ const candidateAttemptSchema = new mongoose.Schema({
     submittedAt: Date,
     evaluationStartedAt: Date,
     evaluationError: { type: String, maxlength: 500, default: "" },
+    evaluationMetadata: { type: evaluationMetadataSchema, default: undefined },
     rounds: [attemptRoundSchema],
     overallScore: { type: Number, min: 0, max: 10 },
     reviewerScore: { type: Number, min: 0, max: 10 },

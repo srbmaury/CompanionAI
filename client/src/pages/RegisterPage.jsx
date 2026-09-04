@@ -1,9 +1,10 @@
 import { useContext, useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams, Link as RouterLink } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams, Link as RouterLink } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import Captcha from "../components/Captcha";
 import AuthShell from "../components/AuthShell";
 import { getWorkspaceHome, getWorkspacePreference, setWorkspacePreference } from "../utils/workspacePreference";
+import { productLoginPath, surfaceForPath, workspaceForSurface } from "../utils/productRoutes";
 
 import {
     Box,
@@ -24,13 +25,18 @@ import { PersonAddAlt1 as PersonAddIcon, Visibility, VisibilityOff } from "@mui/
 const RegisterPage = () => {
     const { register, googleLogin, resendVerification } = useContext(AuthContext);
     const navigate = useNavigate();
+    const location = useLocation();
     const [params] = useSearchParams();
     const workspaceParam = params.get("workspace");
-    const requestedWorkspace = ["practice", "hiring"].includes(workspaceParam) ? workspaceParam : null;
+    const routeWorkspace = workspaceForSurface(surfaceForPath(location.pathname));
+    const requestedWorkspace = ["practice", "hiring"].includes(workspaceParam) ? workspaceParam : routeWorkspace;
+    const authSurface = requestedWorkspace || "combined";
+    const productName = requestedWorkspace === "hiring" ? "CompanionAI Hire" : requestedWorkspace === "practice" ? "CompanionAI Practice" : "CompanionAI";
+
     useEffect(() => {
         if (requestedWorkspace) setWorkspacePreference(requestedWorkspace);
     }, [requestedWorkspace]);
-    const loginPath = requestedWorkspace ? `/login?workspace=${requestedWorkspace}` : "/login";
+    const loginPath = productLoginPath(requestedWorkspace);
 
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
@@ -140,7 +146,12 @@ const RegisterPage = () => {
     }, [acceptedTerms, gsiReady, googleLogin, navigate, requestedWorkspace]);
 
     return (
-        <AuthShell eyebrow="Get started" title="Create your CompanionAI account" subtitle="Choose Practice or Hiring after sign-up, and switch whenever you need.">
+        <AuthShell
+            surface={authSurface}
+            eyebrow="Get started"
+            title={`Create your ${productName} account`}
+            subtitle={requestedWorkspace === "hiring" ? "Start an organization-owned hiring workspace for assessments, candidates, reports, and team access." : requestedWorkspace === "practice" ? "Create your private interview-preparation workspace and start practicing against your target role." : "Create one account, then use the Practice or Hire product you need."}
+        >
             <Box component="form" noValidate onSubmit={handleSubmit}>
                 <Stack spacing={{ xs: 2.25, md: 1.35 }}>
                     {successMsg && <Typography color="success.main">{successMsg}</Typography>}
@@ -159,7 +170,7 @@ const RegisterPage = () => {
                     </FormControl>
                     <Captcha onVerify={(t) => setCaptchaToken(t)} onExpire={() => setCaptchaToken("")} />
                     <FormControlLabel control={<Checkbox checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} />} label={<Typography variant="body2">I agree to the <Link component={RouterLink} to="/terms">Terms</Link> and acknowledge the <Link component={RouterLink} to="/privacy">Privacy Notice</Link>.</Typography>} />
-                    <Button type="submit" variant="contained" size="large" startIcon={<PersonAddIcon />} disabled={submitting || !acceptedTerms} sx={{ py: 1.25, borderRadius: 2, textTransform: "none", fontWeight: 700 }}>{submitting ? "Creating account..." : "Create account"}</Button>
+                    <Button type="submit" variant="contained" size="large" startIcon={<PersonAddIcon />} disabled={submitting || !acceptedTerms} sx={{ py: 1.25, borderRadius: 2, textTransform: "none", fontWeight: 700 }}>{submitting ? "Creating account..." : requestedWorkspace === "hiring" ? "Create hiring account" : requestedWorkspace === "practice" ? "Create practice account" : "Create account"}</Button>
                     {acceptedTerms && <Stack spacing={2} alignItems="center"><div ref={googleDivRef} /><Typography variant="caption" color="text.secondary" align="center">Google sign-up may not display in embedded browsers. If the Google window is blank, open CompanionAI in Chrome or Safari, or create your account with email.</Typography></Stack>}
                     {submittedEmail && <Stack spacing={1} alignItems="center"><Typography variant="body2" color="text.secondary">Didn’t get the email? Check spam or resend.</Typography><Button variant="text" onClick={async () => { try { const r = await resendVerification(submittedEmail); setSuccessMsg(r?.message || "Verification email re-sent"); } catch (e) { console.warn("Resend verification failed", e); } }}>Resend verification</Button><Button component={RouterLink} to={loginPath} size="small">Continue to sign in</Button></Stack>}
                 </Stack>
