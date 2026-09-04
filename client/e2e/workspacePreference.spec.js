@@ -6,7 +6,7 @@ const json = (route, body, status = 200) => route.fulfill({
     body: JSON.stringify(body),
 });
 
-test("workspace preference stays scoped to the authenticated account", async ({ page }) => {
+test("product preference stays scoped to the authenticated account", async ({ page }) => {
     let currentUser = {
         _id: "user-a",
         name: "User A",
@@ -17,23 +17,13 @@ test("workspace preference stays scoped to the authenticated account", async ({ 
 
     await page.route("**/api/auth/refresh", (route) => json(route, { token: "test-access-token" }));
     await page.route("**/api/auth/profile", (route) => json(route, currentUser));
-    await page.route("**/api/organizations", (route) => json(route, {
+    await page.route("**/api/organizations**", (route) => json(route, {
         organizations: [{ _id: `org-${currentUser._id}`, name: `${currentUser.name} Hiring`, role: "owner", memberCount: 1 }],
     }));
-    await page.route("**/api/assessments/overview**", (route) => json(route, {
-        summary: {},
-        assessments: [],
-        candidates: [],
-        totalPages: 1,
-    }));
-    await page.route("**/api/assessments?**", (route) => json(route, { items: [], totalPages: 1 }));
     await page.route("**/api/events", (route) => json(route, { accepted: true }, 202));
 
-    await page.goto("/privacy");
-    await page.getByRole("button", { name: "Switch workspace" }).click();
-    await page.getByRole("menuitem", { name: /Hiring/ }).click();
-    await expect(page).toHaveURL(/\/assessments$/);
-
+    await page.goto("/hire");
+    await expect(page.getByText("CompanionAI", { exact: true })).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem("companionai:workspace:user:user-a"))).toBe("hiring");
 
     currentUser = {
@@ -45,10 +35,8 @@ test("workspace preference stays scoped to the authenticated account", async ({ 
     };
 
     // A full navigation restores the session as the second account.
-    await page.goto("/privacy");
-    await page.getByRole("button", { name: "Switch workspace" }).click();
-    await page.getByRole("menuitem", { name: /Practice/ }).click();
-    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/practice");
+    await expect(page.getByText("CompanionAI", { exact: true })).toBeVisible();
 
     const stored = await page.evaluate(() => ({
         userA: localStorage.getItem("companionai:workspace:user:user-a"),
