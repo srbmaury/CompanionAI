@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import metrics from "../../metrics/index.js";
+import productionMetrics from "../../metrics/production.js";
 
 dotenv.config();
 
@@ -26,6 +27,12 @@ const promptVersionForPurpose = (purpose) => {
 
 const observePurpose = (provider, model, purpose, promptVersion, outcome) => {
     try { metrics.aiPurposeRequestsTotal.labels(provider, model, purpose, promptVersion, outcome).inc(); } catch {}
+};
+
+const observeTokens = (provider, model, purpose, type, value) => {
+    if (!Number.isFinite(value) || Number(value) < 0) return;
+    metrics.aiTokensTotal.labels(provider, model, type).inc(Number(value));
+    productionMetrics.aiTokensByPurposeTotal.labels(provider, model, purpose, type).inc(Number(value));
 };
 
 // Module-level singletons — created once, reused across all requests
@@ -112,9 +119,8 @@ export const generateJSON = async (prompt) => {
             aiTimeoutMs,
             "OpenAI request"
         );
-        for (const [type, value] of [["input", completion?.usage?.prompt_tokens], ["output", completion?.usage?.completion_tokens]]) {
-            if (Number.isFinite(value)) metrics.aiTokensTotal.labels("openai", openAiModel, type).inc(value);
-        }
+        observeTokens("openai", openAiModel, purpose, "input", completion?.usage?.prompt_tokens);
+        observeTokens("openai", openAiModel, purpose, "output", completion?.usage?.completion_tokens);
         const text = completion?.choices?.[0]?.message?.content || "";
         const normalized = coerceToRawJSON(text);
         if (normalized || (text && text.trim())) {
@@ -142,6 +148,9 @@ export const generateJSON = async (prompt) => {
                 aiTimeoutMs,
                 "Gemini request"
             );
+            const usage = result?.response?.usageMetadata || {};
+            observeTokens("gemini", geminiModel, purpose, "input", usage.promptTokenCount);
+            observeTokens("gemini", geminiModel, purpose, "output", usage.candidatesTokenCount);
             const text = result?.response?.text?.() || "";
             const normalized = coerceToRawJSON(text);
             if (!normalized && !text.trim()) {
