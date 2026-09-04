@@ -25,6 +25,7 @@ const ROOT_PATHS = new Set([
 export const isGlobalNavigationRoot = ({ pathname, search = "" }) => {
     if (!pathname) return true;
     if (ROOT_PATHS.has(pathname)) return true;
+    if (pathname.startsWith("/docs/")) return true;
     if (pathname.startsWith("/assessment/")) return true;
 
     // Hiring overview, candidate pipeline, and assessment list are sibling root views.
