@@ -15,6 +15,16 @@ const INDEXABLE_ROUTES = [
     "/terms",
 ];
 
+const normalizePublicOrigin = (raw) => {
+    const value = String(raw || "").trim();
+    if (!value) return "";
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol) || url.pathname !== "/" || url.search || url.hash) {
+        throw new Error("VITE_PUBLIC_ORIGIN must be an origin only, for example https://companionai.example");
+    }
+    return url.origin;
+};
+
 const seoFilesPlugin = (origin) => ({
     name: "companionai-seo-files",
     async closeBundle() {
@@ -23,18 +33,11 @@ const seoFilesPlugin = (origin) => ({
         await mkdir(outDir, { recursive: true });
         const urls = INDEXABLE_ROUTES.map((route) => `  <url><loc>${origin}${route}</loc></url>`).join("\n");
         const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+        // Private SPA routes use a rendered noindex directive. Do not block them in
+        // robots.txt because a crawler must be able to load the page to observe noindex.
         const robots = [
             "User-agent: *",
             "Allow: /",
-            "Disallow: /dashboard",
-            "Disallow: /profile",
-            "Disallow: /assessments",
-            "Disallow: /hiring",
-            "Disallow: /admin",
-            "Disallow: /interviews",
-            "Disallow: /resume-review",
-            "Disallow: /resume-reviews",
-            "Disallow: /resumes",
             `Sitemap: ${origin}/sitemap.xml`,
             "",
         ].join("\n");
@@ -47,7 +50,7 @@ const seoFilesPlugin = (origin) => ({
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), "");
-    const publicOrigin = (env.VITE_PUBLIC_ORIGIN || "").trim().replace(/\/+$/, "");
+    const publicOrigin = normalizePublicOrigin(env.VITE_PUBLIC_ORIGIN);
 
     return {
         test: {
