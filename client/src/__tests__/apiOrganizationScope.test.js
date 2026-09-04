@@ -8,10 +8,11 @@ describe("Hiring organization request scope", () => {
         expect(shouldAttachOrganization("/assessments/123/preview")).toBe(true);
         expect(shouldAttachOrganization("/assessments/questions/generate")).toBe(true);
         expect(shouldAttachOrganization("/billing/hiring/entitlements")).toBe(true);
+        expect(shouldAttachOrganization("/sso/settings")).toBe(true);
         expect(shouldAttachOrganization("https://api.example.com/api/assessments/123")).toBe(true);
     });
 
-    it("does not leak organization context into candidate, Practice, account, or admin APIs", () => {
+    it("does not leak organization context into candidate, Practice, account, admin, or public SSO APIs", () => {
         expect(shouldAttachOrganization("/assessments/public/token")).toBe(false);
         expect(shouldAttachOrganization("/assessments/public/token/start")).toBe(false);
         expect(shouldAttachOrganization("/billing/practice/entitlements")).toBe(false);
@@ -21,5 +22,9 @@ describe("Hiring organization request scope", () => {
         expect(shouldAttachOrganization("/auth/profile")).toBe(false);
         expect(shouldAttachOrganization("/admin/feedback")).toBe(false);
         expect(shouldAttachOrganization("/organizations")).toBe(false);
+        expect(shouldAttachOrganization("/sso/discover")).toBe(false);
+        expect(shouldAttachOrganization("/sso/start")).toBe(false);
+        expect(shouldAttachOrganization("/sso/exchange")).toBe(false);
+        expect(shouldAttachOrganization("/sso/callback")).toBe(false);
     });
 });
