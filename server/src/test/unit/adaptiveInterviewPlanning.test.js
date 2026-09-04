@@ -5,7 +5,7 @@ import { buildFallbackRoundPlan, detectInterviewProfile, sanitizeRoundPlan } fro
 describe("adaptive interview intelligence", () => {
     it("never exceeds the follow-up budget", () => {
         expect(MAX_FOLLOW_UPS).toBe(3);
-        expect(normalizeFollowUpDecision({ shouldAsk: true, followUp: "One more?" }, 0)).toEqual({
+        expect(normalizeFollowUpDecision({ shouldAsk: true, followUp: "One more?" }, 0)).toMatchObject({
             shouldAsk: false,
             followUp: null,
             reason: "probe_budget_exhausted",
@@ -13,15 +13,19 @@ describe("adaptive interview intelligence", () => {
         });
     });
 
-    it("keeps a valid high-signal follow-up decision", () => {
+    it("keeps a valid high-signal follow-up decision and uncertainty metadata", () => {
         expect(normalizeFollowUpDecision({
             shouldAsk: true,
             followUp: "What failure mode made you choose at-least-once delivery?",
             reason: "validate trade-off",
             focus: "reliability",
+            answerConfidence: 0.42,
+            missingEvidence: ["failure handling"],
         }, 2)).toMatchObject({
             shouldAsk: true,
             focus: "reliability",
+            answerConfidence: 0.42,
+            missingEvidence: ["failure handling"],
         });
     });
 
