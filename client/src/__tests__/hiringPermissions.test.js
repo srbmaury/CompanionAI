@@ -54,7 +54,7 @@ describe("Hiring role permissions", () => {
             canManageHiringBilling: false,
             canExportCandidateData: false,
         });
-        expect(hiringHomeForRole("reviewer")).toBe("/assessments#candidate-pipeline");
+        expect(hiringHomeForRole("reviewer")).toBe("/hire/assessments#candidate-pipeline");
     });
 
     it("defaults unknown roles to least privilege", () => {

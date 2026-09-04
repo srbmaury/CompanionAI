@@ -4,8 +4,8 @@ import { useLocation } from "react-router-dom";
 
 export const isIndexablePath = (pathname) => (
     pathname === "/" ||
-    pathname === "/interview-practice" ||
-    pathname === "/technical-hiring" ||
+    pathname === "/practice" ||
+    pathname === "/hire" ||
     pathname === "/privacy" ||
     pathname === "/terms" ||
     pathname === "/docs" ||
