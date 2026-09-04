@@ -36,6 +36,9 @@ const AssessmentReportPage = lazy(() => import("./pages/AssessmentReportPage.jsx
 const CandidateAssessmentPage = lazy(() => import("./pages/CandidateAssessmentPage.jsx"));
 const AssessmentPreviewPage = lazy(() => import("./pages/AssessmentPreviewPage.jsx"));
 const HiringTeamPage = lazy(() => import("./pages/HiringTeamPage.jsx"));
+const SsoCallbackPage = lazy(() => import("./pages/SsoCallbackPage.jsx"));
+const SsoSettingsPage = lazy(() => import("./pages/SsoSettingsPage.jsx"));
+const PublicDocsPage = lazy(() => import("./pages/PublicDocsPage.jsx"));
 
 const PageLoader = () => (
     <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }} role="status" aria-label="Loading page">
@@ -93,8 +96,11 @@ function App() {
                 <Route path="/verify-email" element={<VerifyEmailPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="/sso/callback" element={<SsoCallbackPage />} />
                 <Route path="/privacy" element={<LegalPage type="privacy" />} />
                 <Route path="/terms" element={<LegalPage type="terms" />} />
+                <Route path="/docs" element={<PublicDocsPage />} />
+                <Route path="/docs/*" element={<PublicDocsPage />} />
                 <Route path="/assessment/:shareToken" element={<CandidateAssessmentPage />} />
 
                 {/* Protected routes */}
@@ -114,6 +120,7 @@ function App() {
                 <Route path="/assessments/:assessmentId" element={<HiringRoute><AssessmentReportPage /></HiringRoute>} />
                 <Route path="/assessments/:assessmentId/preview" element={<HiringRoute><AssessmentPreviewPage /></HiringRoute>} />
                 <Route path="/hiring/team" element={<HiringRoute><HiringTeamPage /></HiringRoute>} />
+                <Route path="/hiring/sso" element={<HiringRoute><SsoSettingsPage /></HiringRoute>} />
                 <Route path="/create-interview" element={<ProtectedRoute><CreateInterviewPage /></ProtectedRoute>} />
                 <Route path="/resume-review" element={<ProtectedRoute><ResumeReviewPage /></ProtectedRoute>} />
                 <Route path="/interviews/:interviewId" element={<ProtectedRoute><InterviewPage /></ProtectedRoute>} />
