@@ -42,17 +42,28 @@ describe("adaptive interview intelligence", () => {
 
     it("preserves AI delivery mode, skills and recommendation metadata while clamping counts", () => {
         const fallback = buildFallbackRoundPlan("Backend Engineer", "APIs and databases");
-        const rounds = sanitizeRoundPlan([{
-            roundName: "API Design",
-            description: "Probe API and data trade-offs.",
-            deliveryMode: "conversational",
-            questionLimit: 99,
-            skills: ["APIs", "data modeling"],
-            rationale: "Core role responsibility",
-            recommended: false,
-        }], fallback);
-        expect(rounds.length).toBeGreaterThanOrEqual(2);
+        const rounds = sanitizeRoundPlan([
+            {
+                roundName: "API Design",
+                description: "Probe API and data trade-offs.",
+                deliveryMode: "conversational",
+                questionLimit: 99,
+                skills: ["APIs", "data modeling"],
+                rationale: "Core role responsibility",
+                recommended: false,
+            },
+            {
+                roundName: "Failure Modes",
+                description: "Probe reliability decisions and production failure handling.",
+                deliveryMode: "conversational",
+                questionLimit: 4,
+                skills: ["reliability"],
+                rationale: "Important production responsibility",
+                recommended: true,
+            },
+        ], fallback);
+        expect(rounds).toHaveLength(2);
         expect(rounds[0]).toMatchObject({ roundName: "API Design", questionLimit: 10, recommended: false });
-        expect(rounds.some((round) => round.recommended)).toBe(true);
+        expect(rounds[1]).toMatchObject({ roundName: "Failure Modes", recommended: true });
     });
 });

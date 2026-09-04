@@ -27,7 +27,6 @@ export const useConversational = ({
     interviewId,
     selectedRound,
     isConversational,
-    setSelectedRound,
     selectRound,
     setInterview,
     showToast,

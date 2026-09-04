@@ -95,42 +95,36 @@ export const buildFallbackRoundPlan = (jobRole = "", jobDescription = "", resume
 };
 
 export const sanitizeRoundPlan = (rounds, fallbackRounds = []) => {
-    const source = Array.isArray(rounds) ? rounds : [];
-    const cleaned = source
-        .filter((round) => round && typeof round.roundName === "string" && typeof round.description === "string")
-        .map((round) => ({
-            roundName: clean(round.roundName, 60),
-            description: clean(round.description, 260),
-            deliveryMode: round.deliveryMode === "online-assessment" ? "online-assessment" : "conversational",
-            questionLimit: clamp(round.questionLimit, 2, 10),
-            skills: Array.isArray(round.skills) ? round.skills.map((skill) => clean(skill, 60)).filter(Boolean).slice(0, 6) : [],
-            rationale: clean(round.rationale, 240),
-            recommended: round.recommended !== false,
-        }))
-        .filter((round) => round.roundName && round.description);
+    const normalize = (round) => ({
+        ...round,
+        roundName: clean(round?.roundName, 60),
+        description: clean(round?.description, 260),
+        deliveryMode: round?.deliveryMode === "online-assessment" ? "online-assessment" : "conversational",
+        questionLimit: clamp(round?.questionLimit, 2, 10),
+        skills: Array.isArray(round?.skills) ? round.skills.map((skill) => clean(skill, 60)).filter(Boolean).slice(0, 6) : [],
+        rationale: clean(round?.rationale, 240),
+        recommended: round?.recommended !== false,
+    });
 
-    const unique = [];
-    const seen = new Set();
-    for (const round of [...cleaned, ...(fallbackRounds || [])]) {
-        const key = clean(round.roundName, 60).toLowerCase();
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        unique.push({
-            ...round,
-            roundName: clean(round.roundName, 60),
-            description: clean(round.description, 260),
-            deliveryMode: round.deliveryMode === "online-assessment" ? "online-assessment" : "conversational",
-            questionLimit: clamp(round.questionLimit, 2, 10),
-            skills: Array.isArray(round.skills) ? round.skills.map((skill) => clean(skill, 60)).filter(Boolean).slice(0, 6) : [],
-            rationale: clean(round.rationale, 240),
-            recommended: round.recommended !== false,
-        });
-        if (unique.length >= 5) break;
-    }
-    const result = unique.slice(0, 5);
-    if (result.length < 2) return (fallbackRounds || []).slice(0, 4);
+    const uniqueValid = (items, max) => {
+        const result = [];
+        const seen = new Set();
+        for (const candidate of Array.isArray(items) ? items : []) {
+            if (!candidate || typeof candidate.roundName !== "string" || typeof candidate.description !== "string") continue;
+            const round = normalize(candidate);
+            const key = round.roundName.toLowerCase();
+            if (!round.roundName || !round.description || seen.has(key)) continue;
+            seen.add(key);
+            result.push(round);
+            if (result.length >= max) break;
+        }
+        return result;
+    };
+
+    const aiPlan = uniqueValid(rounds, 5);
+    const result = aiPlan.length >= 2 ? aiPlan : uniqueValid(fallbackRounds, 4);
     if (!result.some((round) => round.recommended)) {
-        result.slice(0, 2).forEach((round) => { round.recommended = true; });
+        result.slice(0, Math.min(2, result.length)).forEach((round) => { round.recommended = true; });
     }
     return result;
 };
