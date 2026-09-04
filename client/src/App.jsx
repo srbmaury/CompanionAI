@@ -36,11 +36,13 @@ const BillingSuccessPage = lazy(() => import("./pages/BillingSuccessPage.jsx"));
 const AdminFeedbackPage = lazy(() => import("./pages/AdminFeedbackPage.jsx"));
 const AdminAuditPage = lazy(() => import("./pages/AdminAuditPage.jsx"));
 const AdminCalibrationPage = lazy(() => import("./pages/AdminCalibrationPage.jsx"));
+const AdminCommercialAccessPage = lazy(() => import("./pages/AdminCommercialAccessPage.jsx"));
 const AssessmentsPage = lazy(() => import("./pages/AssessmentsPage.jsx"));
 const AssessmentReportPage = lazy(() => import("./pages/AssessmentReportPage.jsx"));
 const CandidateAssessmentPage = lazy(() => import("./pages/CandidateAssessmentPage.jsx"));
 const AssessmentPreviewPage = lazy(() => import("./pages/AssessmentPreviewPage.jsx"));
 const HiringTeamPage = lazy(() => import("./pages/HiringTeamPage.jsx"));
+const HiringPilotPage = lazy(() => import("./pages/HiringPilotPage.jsx"));
 const SsoCallbackPage = lazy(() => import("./pages/SsoCallbackPage.jsx"));
 const SsoSettingsPage = lazy(() => import("./pages/SsoSettingsPage.jsx"));
 const PublicDocsPage = lazy(() => import("./pages/PublicDocsPage.jsx"));
@@ -148,9 +150,12 @@ function App() {
                 <Route path="/hire/assessments/:assessmentId" element={<HiringRoute><AssessmentReportPage /></HiringRoute>} />
                 <Route path="/hire/assessments/:assessmentId/preview" element={<HiringRoute><AssessmentPreviewPage /></HiringRoute>} />
                 <Route path="/hire/team" element={<HiringRoute><HiringTeamPage /></HiringRoute>} />
+                <Route path="/hire/pilot" element={<HiringRoute><HiringPilotPage /></HiringRoute>} />
                 <Route path="/hire/sso" element={<HiringRoute><SsoSettingsPage /></HiringRoute>} />
 
                 {/* Platform administration */}
+                <Route path="/admin" element={<Navigate to="/admin/commercial" replace />} />
+                <Route path="/admin/commercial" element={<ProtectedRoute><AdminRoute><AdminCommercialAccessPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/admin/feedback" element={<ProtectedRoute><AdminRoute><AdminFeedbackPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/admin/audit" element={<ProtectedRoute><AdminRoute><AdminAuditPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/admin/calibration" element={<ProtectedRoute><AdminRoute><AdminCalibrationPage /></AdminRoute></ProtectedRoute>} />
