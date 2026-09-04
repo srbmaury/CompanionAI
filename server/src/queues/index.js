@@ -2,6 +2,7 @@ import bullmqPkg from "bullmq";
 const { Queue, Worker, QueueScheduler } = bullmqPkg;
 import getRedisClient from "../config/redis.js";
 import metrics from "../metrics/index.js";
+import productionMetrics from "../metrics/production.js";
 
 let connection = null;
 let queues = new Map();
@@ -60,6 +61,12 @@ export const getQueue = async (name) => {
         try {
             const counts = await q.getJobCounts("waiting", "active", "delayed", "failed", "completed");
             for (const [state, count] of Object.entries(counts)) metrics.queueDepth.labels(name, state).set(count);
+
+            const [oldestWaiting] = await q.getWaiting(0, 0);
+            const ageSeconds = oldestWaiting?.timestamp
+                ? Math.max(0, (Date.now() - Number(oldestWaiting.timestamp)) / 1000)
+                : 0;
+            productionMetrics.queueOldestWaitingJobAgeSeconds.labels(name).set(ageSeconds);
         } catch {}
     };
     refreshDepth();
@@ -79,16 +86,43 @@ export const createWorker = async (name, processor) => {
     if (!conn) return null;
     const concurrency = Math.max(parseInt(process.env.WORKER_CONCURRENCY || "1", 10) || 1, 1);
     const worker = new Worker(name, processor, { connection: conn, concurrency });
+    const activeJobs = new Set();
+
+    const markActive = (job) => {
+        const id = job?.id == null ? "" : String(job.id);
+        if (id && !activeJobs.has(id)) {
+            activeJobs.add(id);
+            productionMetrics.queueJobsInFlight.labels(name).inc();
+        }
+    };
+    const markInactive = (jobOrId) => {
+        const id = typeof jobOrId === "object" ? jobOrId?.id : jobOrId;
+        const key = id == null ? "" : String(id);
+        if (key && activeJobs.delete(key)) productionMetrics.queueJobsInFlight.labels(name).dec();
+    };
+
+    worker.on("active", (job) => {
+        markActive(job);
+        if (Number(job?.attemptsMade || 0) === 0 && job?.timestamp) {
+            const startedAt = Number(job.processedOn || Date.now());
+            productionMetrics.queueWaitDurationSeconds.labels(name).observe(Math.max(0, startedAt - Number(job.timestamp)) / 1000);
+        }
+    });
     worker.on("completed", (job) => {
+        markInactive(job);
         metrics.queueJobsTotal.labels(name, "completed").inc();
         if (job?.processedOn && job?.finishedOn) metrics.queueJobDurationSeconds.labels(name, "completed").observe(Math.max(0, job.finishedOn - job.processedOn) / 1000);
     });
     worker.on("failed", (job, err) => {
+        markInactive(job);
         const retrying = Number(job?.attemptsMade || 0) < Number(job?.opts?.attempts || 1);
         metrics.queueJobsTotal.labels(name, retrying ? "failed_retryable" : "dead_letter").inc();
         if (retrying) metrics.queueRetriesTotal.labels(name).inc();
         if (job?.processedOn) metrics.queueJobDurationSeconds.labels(name, "failed").observe(Math.max(0, Date.now() - job.processedOn) / 1000);
         console.warn(`[worker:${name}] job ${job?.id} failed:`, err?.message || err);
+    });
+    worker.on("stalled", (jobId) => {
+        markInactive(jobId);
     });
     worker.on("error", (err) => {
         console.warn(`[worker:${name}] error:`, err?.message || err);
