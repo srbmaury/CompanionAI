@@ -32,24 +32,24 @@ test("mobile navigation exposes product destinations once without duplicate bill
     await page.goto("/hire");
     await openNavigation(page);
     await expect(page.getByRole("menuitem", { name: "Team & billing" })).toHaveCount(1);
-    await expect(page.getByRole("menuitem", { name: "Open CompanionAI Practice" })).toHaveCount(1);
+    await expect(page.getByRole("menuitem", { name: "Open CompanionAI Practice" })).toHaveCount(0);
     await closeMenu(page);
 
     await page.getByRole("button", { name: "Account menu" }).click();
     await expect(page.getByRole("menuitem", { name: "Team & billing" })).toHaveCount(0);
-    await expect(page.getByRole("menuitem", { name: "Open CompanionAI Practice" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Open CompanionAI Practice" })).toHaveCount(1);
     await closeMenu(page);
 
     await page.goto("/practice");
     await openNavigation(page);
-    await expect(page.getByRole("menuitem", { name: "Open CompanionAI Hire" })).toHaveCount(1);
+    await expect(page.getByRole("menuitem", { name: "Open CompanionAI Hire" })).toHaveCount(0);
     await expect(page.getByText(/practice plans & billing/i)).toHaveCount(0);
     await closeMenu(page);
 
     await page.getByRole("button", { name: "Account menu" }).click();
     await expect(page.getByRole("menuitem", { name: "Profile" })).toHaveCount(1);
     await expect(page.getByText(/plans & billing/i)).toHaveCount(0);
-    await expect(page.getByRole("menuitem", { name: "Open CompanionAI Hire" })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Open CompanionAI Hire" })).toHaveCount(1);
     await closeMenu(page);
 
     await page.goto("/privacy");
