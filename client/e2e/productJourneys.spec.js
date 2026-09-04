@@ -376,7 +376,7 @@ test("supporting authenticated screens render without overflow", async ({ page }
         ["/experiences", "Company interview insights"],
         ["/saved-experiences", "Saved company insights"],
         ["/pricing", "Choose your Practice plan"],
-        ["/assessments", "Hiring overview"],
+        ["/assessments", "Candidate assessments"],
         ["/admin/feedback", "Product feedback"],
         ["/admin/audit", "Audit activity"],
     ];
