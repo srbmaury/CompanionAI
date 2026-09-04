@@ -23,6 +23,15 @@ import { processAssessmentLifecycle } from "./services/assessmentLifecycle.js";
 
 dotenv.config();
 
+// The production frontend and API can be on different sites (for example,
+// separate Render subdomains). A Strict refresh cookie is withheld by the
+// browser on those cross-site requests, which makes reload-time refresh fail.
+// Keep localhost on Lax, but default production refresh cookies to None so the
+// existing Secure + HttpOnly cookie can be sent with credentialed CORS calls.
+if (process.env.NODE_ENV === "production" && !process.env.COOKIE_SAMESITE) {
+    process.env.COOKIE_SAMESITE = "none";
+}
+
 // Initialize Sentry if configured
 try {
     if (process.env.SENTRY_DSN) {
