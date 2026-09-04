@@ -1,6 +1,7 @@
 import { Box, Card, CardActionArea, CardContent, Chip, Container, Divider, Stack, Typography } from "@mui/material";
 import { Link as RouterLink, useLocation } from "react-router-dom";
 import Seo from "../components/Seo";
+import SiteFooter from "../components/SiteFooter";
 
 const articles = {
     "/docs/technical-hiring/structured-technical-assessments": {
@@ -66,6 +67,7 @@ const cards = [
     ["Interview scorecards", "/docs/technical-hiring/interview-scorecards", "Use evidence-backed ratings and explicit human review."],
     ["AI interview practice", "/docs/candidates/ai-interview-practice", "Turn repeated practice into deliberate improvement."],
     ["Integrity & human review", "/docs/security/human-review-and-integrity-signals", "Use candidate signals proportionately and responsibly."],
+    ["OIDC work SSO", "/docs/hiring/oidc-sso", "Configure enterprise organization sign-in with an OpenID Connect provider."],
 ];
 
 export default function PublicDocsPage() {
@@ -74,53 +76,59 @@ export default function PublicDocsPage() {
 
     if (!article) {
         const title = "CompanionAI Documentation | Technical interviews and hiring";
-        const description = "Practical documentation for structured technical assessments, system design interviews, candidate scorecards, AI interview practice, and responsible human review.";
+        const description = "Practical documentation for structured technical assessments, system design interviews, candidate scorecards, AI interview practice, enterprise SSO, and responsible human review.";
         return (
-            <Container maxWidth="lg" sx={{ py: { xs: 5, md: 9 } }}>
-                <Seo title={title} description={description} canonicalPath="/docs" structuredData={{ "@context": "https://schema.org", "@type": "CollectionPage", name: "CompanionAI Documentation", description }} />
-                <Stack spacing={2} maxWidth={780}>
-                    <Chip label="Documentation" color="primary" variant="outlined" sx={{ alignSelf: "flex-start" }} />
-                    <Typography component="h1" variant="h2" fontWeight={900} letterSpacing="-.04em">Technical interview documentation built around evidence.</Typography>
-                    <Typography variant="h6" color="text.secondary">Guides for engineering teams designing assessments and candidates preparing for technical interviews.</Typography>
-                </Stack>
-                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(2, 1fr)" }, gap: 2, mt: 5 }}>
-                    {cards.map(([name, path, summary]) => (
-                        <Card key={path} variant="outlined" sx={{ borderRadius: 4 }}>
-                            <CardActionArea component={RouterLink} to={path} sx={{ height: "100%" }}>
-                                <CardContent sx={{ p: 3 }}>
-                                    <Typography component="h2" variant="h5" fontWeight={800}>{name}</Typography>
-                                    <Typography color="text.secondary" mt={1}>{summary}</Typography>
-                                </CardContent>
-                            </CardActionArea>
-                        </Card>
-                    ))}
-                </Box>
-            </Container>
+            <Box>
+                <Container maxWidth="lg" sx={{ py: { xs: 5, md: 9 } }}>
+                    <Seo title={title} description={description} canonicalPath="/docs" structuredData={{ "@context": "https://schema.org", "@type": "CollectionPage", name: "CompanionAI Documentation", description }} />
+                    <Stack spacing={2} maxWidth={780}>
+                        <Chip label="Documentation" color="primary" variant="outlined" sx={{ alignSelf: "flex-start" }} />
+                        <Typography component="h1" variant="h2" fontWeight={900} letterSpacing="-.04em">Technical interview documentation built around evidence.</Typography>
+                        <Typography variant="h6" color="text.secondary">Guides for engineering teams designing assessments and candidates preparing for technical interviews.</Typography>
+                    </Stack>
+                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(2, 1fr)" }, gap: 2, mt: 5 }}>
+                        {cards.map(([name, path, summary]) => (
+                            <Card key={path} variant="outlined" sx={{ borderRadius: 4 }}>
+                                <CardActionArea component={RouterLink} to={path} sx={{ height: "100%" }}>
+                                    <CardContent sx={{ p: 3 }}>
+                                        <Typography component="h2" variant="h5" fontWeight={800}>{name}</Typography>
+                                        <Typography color="text.secondary" mt={1}>{summary}</Typography>
+                                    </CardContent>
+                                </CardActionArea>
+                            </Card>
+                        ))}
+                    </Box>
+                </Container>
+                <SiteFooter />
+            </Box>
         );
     }
 
     const canonicalPath = pathname;
     const title = `${article.title} | CompanionAI Docs`;
     return (
-        <Container maxWidth="md" sx={{ py: { xs: 5, md: 9 } }}>
-            <Seo title={title} description={article.description} canonicalPath={canonicalPath} structuredData={{ "@context": "https://schema.org", "@type": "Article", headline: article.title, description: article.description, author: { "@type": "Organization", name: "CompanionAI" }, publisher: { "@type": "Organization", name: "CompanionAI" }, mainEntityOfPage: `${window.location.origin}${canonicalPath}` }} />
-            <Stack spacing={2}>
-                <Typography component={RouterLink} to="/docs" color="primary.main" sx={{ textDecoration: "none", fontWeight: 800 }}>← Documentation</Typography>
-                <Typography variant="overline" color="primary.main" fontWeight={850}>{article.eyebrow}</Typography>
-                <Typography component="h1" variant="h2" fontWeight={900} letterSpacing="-.04em">{article.title}</Typography>
-                <Typography variant="h6" color="text.secondary">{article.description}</Typography>
-            </Stack>
-            <Divider sx={{ my: 5 }} />
-            <Stack spacing={5}>
-                {article.sections.map(([heading, body]) => (
-                    <Box component="section" key={heading}>
-                        <Typography component="h2" variant="h4" fontWeight={850}>{heading}</Typography>
-                        <Typography sx={{ mt: 1.5, fontSize: "1.08rem", lineHeight: 1.8 }} color="text.secondary">{body}</Typography>
-                    </Box>
-                ))}
-            </Stack>
-            <Divider sx={{ my: 5 }} />
-            <Typography component={RouterLink} to="/docs" color="primary.main" sx={{ textDecoration: "none", fontWeight: 800 }}>Browse all CompanionAI documentation →</Typography>
-        </Container>
+        <Box>
+            <Container maxWidth="md" sx={{ py: { xs: 5, md: 9 } }}>
+                <Seo title={title} description={article.description} canonicalPath={canonicalPath} structuredData={{ "@context": "https://schema.org", "@type": "Article", headline: article.title, description: article.description, author: { "@type": "Organization", name: "CompanionAI" }, publisher: { "@type": "Organization", name: "CompanionAI" }, mainEntityOfPage: `${window.location.origin}${canonicalPath}` }} />
+                <Stack spacing={2}>
+                    <Typography component={RouterLink} to="/docs" color="primary.main" sx={{ textDecoration: "none", fontWeight: 800 }}>← Documentation</Typography>
+                    <Typography variant="overline" color="primary.main" fontWeight={850}>{article.eyebrow}</Typography>
+                    <Typography component="h1" variant="h2" fontWeight={900} letterSpacing="-.04em">{article.title}</Typography>
+                    <Typography variant="h6" color="text.secondary">{article.description}</Typography>
+                </Stack>
+                <Divider sx={{ my: 5 }} />
+                <Stack spacing={5}>
+                    {article.sections.map(([heading, body]) => (
+                        <Box component="section" key={heading}>
+                            <Typography component="h2" variant="h4" fontWeight={850}>{heading}</Typography>
+                            <Typography sx={{ mt: 1.5, fontSize: "1.08rem", lineHeight: 1.8 }} color="text.secondary">{body}</Typography>
+                        </Box>
+                    ))}
+                </Stack>
+                <Divider sx={{ my: 5 }} />
+                <Typography component={RouterLink} to="/docs" color="primary.main" sx={{ textDecoration: "none", fontWeight: 800 }}>Browse all CompanionAI documentation →</Typography>
+            </Container>
+            <SiteFooter />
+        </Box>
     );
 }
