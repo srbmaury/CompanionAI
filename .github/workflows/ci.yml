@@ -24,7 +24,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: client/package-lock.json
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm test -- --run
       - run: npm run build
@@ -58,7 +58,7 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: server/package-lock.json
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - name: Server unit tests
         run: npm run test:unit
       - name: Server API journeys
