@@ -1,8 +1,33 @@
 import { createClient } from "redis";
+import productionMetrics from "../metrics/production.js";
 
 let client = null;
 let initializing = false;
 let policyChecked = false;
+let healthTimer = null;
+
+const startHealthSampler = () => {
+    if (healthTimer) return;
+    const intervalMs = Math.max(Number(process.env.REDIS_HEALTHCHECK_INTERVAL_MS || 30000), 5000);
+    const sample = async () => {
+        if (!client?.isReady) {
+            productionMetrics.redisConnectionReady.set(0);
+            return;
+        }
+        const startedAt = process.hrtime.bigint();
+        try {
+            await client.ping();
+            productionMetrics.redisConnectionReady.set(1);
+            productionMetrics.redisPingDurationSeconds.labels("success").observe(Number(process.hrtime.bigint() - startedAt) / 1e9);
+        } catch {
+            productionMetrics.redisConnectionReady.set(0);
+            productionMetrics.redisPingDurationSeconds.labels("failure").observe(Number(process.hrtime.bigint() - startedAt) / 1e9);
+        }
+    };
+    sample();
+    healthTimer = setInterval(sample, intervalMs);
+    healthTimer.unref?.();
+};
 
 const ensureNoEvictionPolicy = async (c) => {
     if (!c || policyChecked) return;
@@ -49,9 +74,16 @@ export const getRedisClient = async () => {
                     },
                 },
             });
+            client.on("ready", () => productionMetrics.redisConnectionReady.set(1));
+            client.on("end", () => productionMetrics.redisConnectionReady.set(0));
+            client.on("reconnecting", () => {
+                productionMetrics.redisConnectionReady.set(0);
+                productionMetrics.redisReconnectsTotal.inc();
+            });
             client.on("error", (err) => {
                 console.warn("Redis client error:", err?.message || err);
             });
+            startHealthSampler();
         }
         if (!client.isOpen && !initializing) {
             initializing = true;
@@ -67,6 +99,7 @@ export const getRedisClient = async () => {
         if (client.isOpen) await ensureNoEvictionPolicy(client);
         return client.isOpen ? client : null;
     } catch (e) {
+        productionMetrics.redisConnectionReady.set(0);
         return null;
     }
 };
