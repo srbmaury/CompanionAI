@@ -1,12 +1,17 @@
 import CandidateAttempt from "../../models/CandidateAttempt.js";
 import { FEEDBACK_ENGINE_VERSION, FEEDBACK_PROMPT_VERSION, generateFeedbackForAnswer } from "../../utils/generateFeedback.js";
 import metrics from "../../metrics/index.js";
+import productionMetrics from "../../metrics/production.js";
 import Assessment from "../../models/Assessment.js";
 import { summarizeSystemDesignDiagram } from "../../utils/systemDesignDiagram.js";
 
 export default async function candidateAssessmentProcessor(job) {
     const attempt = await CandidateAttempt.findOne({ _id: job.data?.attemptId, status: "evaluating" });
     if (!attempt) return { skipped: true };
+
+    productionMetrics.assessmentEvaluationsInFlight.inc();
+    let terminalOutcome = "";
+    let terminalAt = null;
     try {
         const assessment = await Assessment.findById(attempt.assessment).lean();
         const items = attempt.rounds.flatMap((round) => round.questions);
@@ -39,10 +44,23 @@ export default async function candidateAssessmentProcessor(job) {
         await attempt.save();
         await Assessment.updateOne({ _id: attempt.assessment, "invitations.email": attempt.candidateEmail }, { $set: { "invitations.$.status": "completed" } });
         try { metrics.candidateAssessmentCompletionDurationSeconds.observe(Math.max((attempt.submittedAt.getTime() - attempt.startedAt.getTime()) / 1000, 0)); } catch {}
+        terminalOutcome = "success";
+        terminalAt = attempt.submittedAt;
         return { submitted: true, score: attempt.overallScore };
     } catch (error) {
         const finalAttempt = Number(job.attemptsMade || 0) + 1 >= Number(job.opts?.attempts || 1);
-        if (finalAttempt) await CandidateAttempt.updateOne({ _id: attempt._id, status: "evaluating" }, { $set: { status: "evaluation_failed", evaluationError: (error?.message || "Evaluation failed").slice(0, 500) } });
+        if (finalAttempt) {
+            terminalOutcome = "failure";
+            terminalAt = new Date();
+            await CandidateAttempt.updateOne({ _id: attempt._id, status: "evaluating" }, { $set: { status: "evaluation_failed", evaluationError: (error?.message || "Evaluation failed").slice(0, 500) } });
+        }
         throw error;
+    } finally {
+        productionMetrics.assessmentEvaluationsInFlight.dec();
+        if (terminalOutcome && terminalAt && attempt.evaluationStartedAt) {
+            productionMetrics.assessmentEvaluationDurationSeconds
+                .labels(terminalOutcome)
+                .observe(Math.max(0, (terminalAt.getTime() - attempt.evaluationStartedAt.getTime()) / 1000));
+        }
     }
 }
