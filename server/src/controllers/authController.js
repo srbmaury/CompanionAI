@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import mongoose from "mongoose";
 import User from "../models/User.js";
-import { bumpTokenVersion, signAccessToken, issueRefreshToken, validateRefreshToken, revokeAllRefreshTokens } from "../utils/tokens.js";
+import { bumpTokenVersion, signAccessToken, issueRefreshToken, validateRefreshToken, revokeRefreshToken, revokeAllRefreshTokens } from "../utils/tokens.js";
 import { OAuth2Client } from "google-auth-library";
 import metrics from "../metrics/index.js";
 import { sendMail, buildVerificationEmail } from "../utils/mailer.js";
@@ -125,10 +125,7 @@ export const loginUser = async (req, res, next) => {
             try { metrics.authLoginAttemptsTotal.labels("local", "blocked").inc(); } catch {}
             return res.status(403).json({ message: "Email not verified" });
         }
-        await bumpTokenVersion(user._id);
-        await revokeAllRefreshTokens(user._id);
-        const fresh = await User.findById(user._id).select("tokenVersion");
-        const token = signAccessToken(user._id, fresh?.tokenVersion);
+        const token = signAccessToken(user._id, user.tokenVersion);
         const { raw, expiresAt } = await issueRefreshToken(user._id, { userAgent: req.get("user-agent"), ip: req.ip });
         setRefreshCookie(res, raw, expiresAt);
         res.json({ token, user: { _id: user._id, name: user.name, email: user.email } });
@@ -142,7 +139,10 @@ export const loginUser = async (req, res, next) => {
 
 // Logout
 export const logoutUser = async (req, res, next) => {
-    try { await revokeAllRefreshTokens(req.user?._id); } catch {}
+    try {
+        const raw = req.cookies?.refreshToken;
+        if (raw) await revokeRefreshToken(raw);
+    } catch {}
     clearRefreshCookie(res);
     res.status(200).json({ message: "Logged out successfully" });
     try { metrics.authLogoutTotal.inc(); } catch {}
@@ -164,8 +164,8 @@ export const refreshAccessToken = async (req, res, next) => {
             clearRefreshCookie(res);
             return res.status(401).json({ message: "User not found" });
         }
-        // Keep the one server-side refresh session stable. Rotating it on every
-        // request makes concurrent tab reloads invalidate each other.
+        // Keep this browser's refresh session stable so reloads and concurrent
+        // tabs do not invalidate this or other signed-in devices.
         const token = signAccessToken(user._id, user.tokenVersion);
         return res.json({ token });
     } catch (err) {
@@ -259,10 +259,7 @@ export const googleSignIn = async (req, res, next) => {
             await user.save();
         }
 
-        await bumpTokenVersion(user._id);
-        await revokeAllRefreshTokens(user._id);
-        const fresh = await User.findById(user._id).select("tokenVersion");
-        const token = signAccessToken(user._id, fresh?.tokenVersion);
+        const token = signAccessToken(user._id, user.tokenVersion);
         const { raw, expiresAt } = await issueRefreshToken(user._id, { userAgent: req.get("user-agent"), ip: req.ip });
         setRefreshCookie(res, raw, expiresAt);
         try { metrics.authLoginAttemptsTotal.labels("google", "success").inc(); } catch {}
