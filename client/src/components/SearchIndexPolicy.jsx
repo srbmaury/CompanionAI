@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 
-const isIndexablePath = (pathname) => (
+export const isIndexablePath = (pathname) => (
     pathname === "/" ||
+    pathname === "/interview-practice" ||
+    pathname === "/technical-hiring" ||
     pathname === "/privacy" ||
     pathname === "/terms" ||
     pathname === "/docs" ||
