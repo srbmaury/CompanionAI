@@ -23,7 +23,7 @@ test("product preference stays scoped to the authenticated account", async ({ pa
     await page.route("**/api/events", (route) => json(route, { accepted: true }, 202));
 
     await page.goto("/hire");
-    await expect(page.getByText("CompanionAI", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem("companionai:workspace:user:user-a"))).toBe("hiring");
 
     currentUser = {
@@ -36,7 +36,7 @@ test("product preference stays scoped to the authenticated account", async ({ pa
 
     // A full navigation restores the session as the second account.
     await page.goto("/practice");
-    await expect(page.getByText("CompanionAI", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
 
     const stored = await page.evaluate(() => ({
         userA: localStorage.getItem("companionai:workspace:user:user-a"),
