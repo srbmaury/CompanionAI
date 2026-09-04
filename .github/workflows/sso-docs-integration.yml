@@ -16,9 +16,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: hiring-organizations
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Sync latest branch head
+        run: |
+          git fetch origin hiring-organizations
+          git reset --hard origin/hiring-organizations
       - name: Apply guarded integration patch
         run: python .github/scripts/sso_docs_integration.py
       - name: Commit integration
