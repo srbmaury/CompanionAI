@@ -105,11 +105,14 @@ export const useConversational = ({
         setConvFeedbackProgress(0);
         try {
             await pollJobStatus("bulk-feedback", jobId, setConvFeedbackProgress);
+        } catch (error) {
+            console.error("background feedback failed", error);
+            showToast("warning", "Your round was saved, but feedback could not be generated yet.");
         } finally {
             setConvRoundSubmitting(false);
             setConvFeedbackProgress(0);
         }
-    }, []);
+    }, [showToast]);
 
     const handleSubmitAnswer = useCallback(async (answer) => {
         if (!selectedRound || !isConversational || pendingFollowUp) return;
@@ -194,6 +197,7 @@ export const useConversational = ({
                 }
             } catch (error) {
                 console.error("bulk feedback (conversational) error", error);
+                showToast("warning", "The round will be saved even though feedback is currently unavailable.");
             }
             await api.post(`/questions/${selectedRound._id}/complete`);
             const { data } = await api.get(`/interviews/${interviewId}`);
