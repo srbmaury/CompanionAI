@@ -158,12 +158,25 @@ const CreateInterviewPage = () => {
                 company: formData.company,
                 jobRole: formData.jobRole,
                 jobDescription: formData.jobDescription,
+                resumeId: formData.resumeId || undefined,
             });
             const rounds = Array.isArray(data) ? data : (Array.isArray(data?.rounds) ? data.rounds : []);
             setGrounding(Array.isArray(data) ? null : data?.grounding || null);
             setSuggestedRounds(rounds);
+            const coreRounds = rounds
+                .filter((round) => round.recommended !== false)
+                .map((round) => ({
+                    ...round,
+                    deliveryMode: round.deliveryMode || "conversational",
+                    questionLimit: Number(round.questionLimit) || getDefaultQuestionLimit(round),
+                }));
+            setSelectedRounds(coreRounds.length ? coreRounds : rounds.slice(0, 2).map((round) => ({
+                ...round,
+                deliveryMode: round.deliveryMode || "conversational",
+                questionLimit: Number(round.questionLimit) || getDefaultQuestionLimit(round),
+            })));
             if (rounds.length > 0) setActiveStep(1);
-            notify("Interview rounds are ready to review.", "success");
+            notify(coreRounds.length ? `AI selected ${coreRounds.length} core round${coreRounds.length === 1 ? "" : "s"}; review or adjust them.` : "Interview rounds are ready to review.", "success");
         } catch (error) {
             console.error(error);
             notify("Interview rounds could not be suggested.", "error");

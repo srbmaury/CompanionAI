@@ -1,4 +1,4 @@
-import { Card, CardActionArea, CardContent, LinearProgress, Stack, Tooltip, Typography } from "@mui/material";
+import { Card, CardActionArea, CardContent, Chip, LinearProgress, Stack, Tooltip, Typography } from "@mui/material";
 import { memo } from "react";
 
 const RoundList = ({ interview, selectedRoundId, onSelect, showOnMobile = false }) => {
@@ -8,9 +8,15 @@ const RoundList = ({ interview, selectedRoundId, onSelect, showOnMobile = false 
             {interview.rounds.map(({ round }) => {
                 const idx = interview.rounds.findIndex((r) => r.round._id === round._id);
                 const locked = idx > 0 && interview.rounds.slice(0, idx).some((r) => r.round.status !== "completed");
-                const total = Math.max(0, Number(round?.questions?.length) || 0);
+                const adaptive = Boolean(round?.adaptiveState?.enabled);
+                const generated = Math.max(0, Number(round?.questions?.length) || 0);
                 const answered = Math.max(0, (round?.questions || []).reduce((acc, q) => acc + (q?.answerGiven ? 1 : 0), 0));
-                const pct = total > 0 ? Math.round((answered / total) * 100) : (round?.status === 'completed' ? 100 : 0);
+                const budget = adaptive
+                    ? Math.max(generated, Number(round?.adaptiveState?.maxQuestions) || Number(round?.questionLimit) || generated)
+                    : generated;
+                const pct = round?.status === "completed"
+                    ? 100
+                    : budget > 0 ? Math.round((answered / budget) * 100) : 0;
                 return (
                     <Card
                         key={round._id}
@@ -23,13 +29,16 @@ const RoundList = ({ interview, selectedRoundId, onSelect, showOnMobile = false 
                     >
                         <CardActionArea disabled={locked} onClick={() => !locked && onSelect?.(round)}>
                         <CardContent>
-                            <Stack spacing={0.5}>
-                                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                            <Stack spacing={0.75}>
+                                <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
                                     <Typography variant="subtitle1">{round.name}</Typography>
-                                    <Typography variant="caption" color="text.secondary">
-                                        {round.status === 'completed' ? 'Completed' : `${answered}/${total}`}
+                                    <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+                                        {round.status === "completed" ? "Completed" : adaptive ? `${answered}/${budget} max` : `${answered}/${generated}`}
                                     </Typography>
                                 </Stack>
+                                {adaptive && round.status !== "completed" && (
+                                    <Chip size="small" label="Adaptive" variant="outlined" sx={{ alignSelf: "flex-start", height: 22 }} />
+                                )}
                                 <LinearProgress variant="determinate" value={pct} />
                                 {locked && (
                                     <Tooltip title="Complete previous round to unlock">

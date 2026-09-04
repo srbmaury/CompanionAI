@@ -3,6 +3,7 @@ import { createRound, getSuggestedRounds } from "../controllers/roundController.
 import protect from "../middleware/authMiddleware.js";
 import validate from "../middleware/validate.js";
 import { z } from "zod";
+import { ObjectIdString } from "../validation/commonSchemas.js";
 
 const router = express.Router();
 
@@ -11,7 +12,7 @@ const router = express.Router();
  * /api/rounds/suggest:
  *   post:
  *     tags: [Rounds]
- *     summary: Suggest interview rounds from JD using AI
+ *     summary: Suggest a role-aware interview plan from the JD and optional resume
  *     security:
  *       - cookieAuth: []
  *     requestBody:
@@ -20,9 +21,19 @@ const router = express.Router();
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [jobRole, jobDescription]
+ *             properties:
+ *               company:
+ *                 type: string
+ *               jobRole:
+ *                 type: string
+ *               jobDescription:
+ *                 type: string
+ *               resumeId:
+ *                 type: string
  *     responses:
  *       200:
- *         description: Suggested rounds
+ *         description: AI-selected core and optional interview rounds
  *
  * /api/rounds:
  *   post:
@@ -41,31 +52,26 @@ const router = express.Router();
  *         description: Round created
  */
 
-// Suggest rounds using Gemini
 router.post(
     "/suggest",
     protect,
-    validate(
-        z.object({
-            company: z.string().max(120).optional().default(""),
-            jobRole: z.string().min(1).max(120),
-            jobDescription: z.string().min(1).max(4000),
-        })
-    ),
+    validate(z.object({
+        company: z.string().max(120).optional().default(""),
+        jobRole: z.string().min(1).max(120),
+        jobDescription: z.string().min(1).max(5000),
+        resumeId: ObjectIdString.optional(),
+    })),
     getSuggestedRounds
 );
 
-// Create one round manually
 router.post(
     "/",
     protect,
-    validate(
-        z.object({
-            roundName: z.string().min(2).max(60),
-            description: z.string().min(4).max(220),
-            deliveryMode: z.enum(["online-assessment", "conversational"]).optional(),
-        })
-    ),
+    validate(z.object({
+        roundName: z.string().min(2).max(60),
+        description: z.string().min(4).max(260),
+        deliveryMode: z.enum(["online-assessment", "conversational"]).optional(),
+    })),
     createRound
 );
 

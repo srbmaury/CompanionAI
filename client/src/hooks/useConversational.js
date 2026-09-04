@@ -1,18 +1,32 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import api from "../api/axios";
 import { storage, storageKeys } from "../utils/interviewStorage";
 import { pollJobStatus } from "../utils/pollJobStatus";
 import { trackEvent } from "../utils/analytics";
 
-/**
- * Manages the conversational interview mode: state machine, draft persistence,
- * answer submission, clarification, and round completion.
- */
+const pendingFollowUpFor = (item) => {
+    const followUps = Array.isArray(item?.followUps) ? item.followUps : [];
+    for (let i = followUps.length - 1; i >= 0; i -= 1) {
+        const followUp = followUps[i];
+        if (followUp?.question && !followUp?.answer && !followUp?.skipped) {
+            return { question: followUp.question, number: i + 1 };
+        }
+    }
+    return null;
+};
+
+const composeFeedbackAnswer = (item) => {
+    const original = (item?.answerGiven || "").toString().trim();
+    const followUps = (item?.followUps || [])
+        .filter((followUp) => followUp?.question && followUp?.answer && !followUp?.skipped)
+        .map((followUp, index) => `Follow-up ${index + 1}: ${followUp.question}\nFollow-up answer ${index + 1}: ${followUp.answer}`);
+    return [original, ...followUps].filter(Boolean).join("\n\n").trim();
+};
+
 export const useConversational = ({
     interviewId,
     selectedRound,
     isConversational,
-    setSelectedRound,
     selectRound,
     setInterview,
     showToast,
@@ -24,59 +38,59 @@ export const useConversational = ({
     const [convSubmitting, setConvSubmitting] = useState(false);
     const [convRoundSubmitting, setConvRoundSubmitting] = useState(false);
     const [convFeedbackProgress, setConvFeedbackProgress] = useState(0);
-    const [pendingFollowUp, setPendingFollowUp] = useState(null); // { question, qIndex, originalAnswer }
-    const pendingSavesRef = useRef(new Set());
+    const [pendingFollowUp, setPendingFollowUp] = useState(null);
 
     const syncConvStateFromRound = useCallback((round) => {
         if (!round || round.deliveryMode !== "conversational") return;
         const limit = Math.min(Number(round.questionLimit) || 8, round.questions?.length || 0);
         if (round.status === "completed") {
-            setConvState({ index: 0, current: null, done: true });
-            setConvAnswer("");
-            return;
-        }
-        if (limit === 0) {
-            setConvState({ index: 0, current: null, done: false });
-            setConvAnswer("");
-            return;
-        }
-        let idx = Number(round.conversationalIndex) || 0;
-        if (idx >= limit) {
+            setPendingFollowUp(null);
             setConvState({ index: limit, current: null, done: true });
             setConvAnswer("");
             return;
         }
-        if (idx > 0) {
-            const prev = round.questions?.[idx - 1];
-            if (prev && !prev.answerGiven) idx = idx - 1;
+        if (limit === 0) {
+            setPendingFollowUp(null);
+            setConvState({ index: 0, current: null, done: false });
+            return;
         }
-        const item = round.questions?.[idx];
-        setConvState({ index: idx, current: item?.question || null, done: false });
+        const index = Math.min(Math.max(Number(round.conversationalIndex) || 0, 0), limit - 1);
+        const item = round.questions?.[index];
+        const pending = pendingFollowUpFor(item);
+        setPendingFollowUp(pending ? { ...pending, qIndex: index } : null);
+        setConvState({ index, current: item?.question || null, done: false });
     }, []);
 
-    // Sync state when round data changes (also fires when questions load for the first time)
+    const refreshInterviewAndRound = useCallback(async () => {
+        const { data } = await api.get(`/interviews/${interviewId}`);
+        setInterview(data);
+        const updated = data.rounds?.find((entry) => entry.round?._id === selectedRound?._id)?.round;
+        if (updated) {
+            selectRound(updated);
+            syncConvStateFromRound(updated);
+        }
+        return updated;
+    }, [interviewId, selectedRound?._id, selectRound, setInterview, syncConvStateFromRound]);
+
     useEffect(() => {
         if (!selectedRound || !isConversational) return;
         syncConvStateFromRound(selectedRound);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedRound?._id, isConversational, selectedRound?.conversationalIndex, selectedRound?.status, selectedRound?.questions?.length]);
+    }, [selectedRound, isConversational, syncConvStateFromRound]);
 
-    // Restore saved draft when the active question changes
     useEffect(() => {
-        if (!selectedRound || !isConversational || !convState || convState.done) return;
+        if (!selectedRound || !isConversational || convState.done) return;
         const key = storageKeys.conv(interviewId, selectedRound._id, convState.index);
         const saved = storage.get(key);
         if (typeof saved === "string" && saved !== convAnswer) setConvAnswer(saved);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [interviewId, selectedRound?._id, isConversational, convState.index, convState.current]);
+    }, [interviewId, selectedRound?._id, isConversational, convState.index, pendingFollowUp?.number]);
 
-    // Persist draft on every keystroke
     useEffect(() => {
-        if (!selectedRound || !isConversational || !convState || convState.done || !convState.current) return;
+        if (!selectedRound || !isConversational || convState.done || !convState.current) return;
         const trimmed = (convAnswer || "").trim();
         if (!trimmed) return;
         storage.set(storageKeys.conv(interviewId, selectedRound._id, convState.index), convAnswer);
-        try { setConvSavedAt(Date.now()); } catch { void 0; }
+        setConvSavedAt(Date.now());
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [convAnswer]);
 
@@ -85,154 +99,79 @@ export const useConversational = ({
         return { ...convState, done: selectedRound.status === "completed" || convState.done };
     }, [convState, selectedRound]);
 
-    const handleFollowUpDone = useCallback(async (followUpAnswer = "") => {
-        if (!pendingFollowUp) return;
-        const { qIndex, originalAnswer, question } = pendingFollowUp;
-        const safeFollowUp = (followUpAnswer || "").toString().trim();
-        if (safeFollowUp) {
-            try {
-                await api.post(`/questions/${selectedRound._id}/follow-up-answer`, { index: qIndex, question, answer: safeFollowUp });
-            } catch (error) {
-                showToast("warning", error?.response?.data?.message || "Follow-up answer could not be saved.");
-                return;
-            }
+    const settleFeedbackJob = useCallback(async (jobId) => {
+        if (!jobId) return;
+        setConvRoundSubmitting(true);
+        setConvFeedbackProgress(0);
+        try {
+            await pollJobStatus("bulk-feedback", jobId, setConvFeedbackProgress);
+        } catch (error) {
+            console.error("background feedback failed", error);
+            showToast("warning", "Your round was saved, but feedback could not be generated yet.");
+        } finally {
+            setConvRoundSubmitting(false);
+            setConvFeedbackProgress(0);
         }
-        setPendingFollowUp(null);
-        setSelectedRound((prev) => {
-            if (!prev) return prev;
-            const copy = { ...prev, questions: [...(prev.questions || [])] };
-            if (copy.questions[qIndex]) {
-                copy.questions[qIndex] = { ...copy.questions[qIndex], answerGiven: originalAnswer, followUpQuestion: safeFollowUp ? question : undefined, followUpAnswer: safeFollowUp || undefined };
-            }
-            const lim = Math.min(Number(copy.questionLimit) || 8, copy.questions?.length || 0);
-            copy.conversationalIndex = qIndex + 1;
-            if (qIndex + 1 >= lim) copy.status = "completed";
-            setInterview((prevInt) => {
-                if (!prevInt) return prevInt;
-                return {
-                    ...prevInt,
-                    rounds: (prevInt.rounds || []).map((r) =>
-                        r.round._id === copy._id ? { ...r, round: copy } : r
-                    ),
-                };
-            });
-            setTimeout(() => syncConvStateFromRound(copy), 0);
-            return copy;
-        });
-        setConvAnswer("");
-    }, [pendingFollowUp, selectedRound?._id, setSelectedRound, setInterview, showToast, syncConvStateFromRound]);
+    }, [showToast]);
 
     const handleSubmitAnswer = useCallback(async (answer) => {
         if (!selectedRound || !isConversational || pendingFollowUp) return;
         const currentIndex = convState.index;
         if (currentIndex === 0) trackEvent("first_answer_submitted");
         setConvSubmitting(true);
-        const limit = Math.min(Number(selectedRound?.questionLimit) || 8, selectedRound?.questions?.length || 0);
-        const isLast = currentIndex + 1 >= limit && limit > 0;
+        try {
+            storage.remove(storageKeys.conv(interviewId, selectedRound._id, currentIndex));
+            const { data } = await api.post(`/questions/${selectedRound._id}/answer`, { index: currentIndex, answer });
+            setConvAnswer("");
+            if (data?.followUp) setPendingFollowUp({ question: data.followUp, number: data.followUpNumber || 1, qIndex: currentIndex });
+            if (data?.feedbackJobId) await settleFeedbackJob(data.feedbackJobId);
+            await refreshInterviewAndRound();
+            if (data?.done) trackEvent("round_completed");
+        } catch (error) {
+            console.error("answer submit error", error);
+            showToast("error", error?.response?.data?.message || "Failed to save your answer.");
+        } finally {
+            setConvSubmitting(false);
+        }
+    }, [selectedRound, isConversational, pendingFollowUp, convState.index, interviewId, refreshInterviewAndRound, settleFeedbackJob, showToast]);
 
-        try { storage.remove(storageKeys.conv(interviewId, selectedRound._id, currentIndex)); } catch { void 0; }
-
-        if (isLast) {
-            // Optimistic advance then save + feedback
-            setSelectedRound((prev) => {
-                if (!prev) return prev;
-                const copy = { ...prev, questions: [...(prev.questions || [])] };
-                if (copy.questions[currentIndex]) {
-                    copy.questions[currentIndex] = { ...copy.questions[currentIndex], answerGiven: answer };
-                }
-                copy.conversationalIndex = currentIndex + 1;
-                copy.status = "completed";
-                setInterview((prevInt) => {
-                    if (!prevInt) return prevInt;
-                    return {
-                        ...prevInt,
-                        rounds: (prevInt.rounds || []).map((r) =>
-                            r.round._id === copy._id ? { ...r, round: copy } : r
-                        ),
-                    };
-                });
-                setTimeout(() => syncConvStateFromRound(copy), 0);
-                return copy;
+    const handleFollowUpDone = useCallback(async (followUpAnswer = "") => {
+        if (!pendingFollowUp || !selectedRound) return;
+        const answer = (followUpAnswer || "").toString().trim();
+        setConvSubmitting(true);
+        try {
+            storage.remove(storageKeys.conv(interviewId, selectedRound._id, pendingFollowUp.qIndex));
+            const { data } = await api.post(`/questions/${selectedRound._id}/follow-up-answer`, {
+                index: pendingFollowUp.qIndex,
+                answer,
+                skip: !answer,
             });
             setConvAnswer("");
-            try {
-                setConvRoundSubmitting(true);
-                setConvFeedbackProgress(0);
-                const resp = await api.post(`/questions/${selectedRound._id}/answer`, { index: currentIndex, answer });
-                const jobId = resp?.data?.feedbackJobId;
-                if (jobId) {
-                    await pollJobStatus("bulk-feedback", jobId, setConvFeedbackProgress);
-                }
-                const { data } = await api.get(`/interviews/${interviewId}`);
-                setInterview(data);
-                const updated = data.rounds.find((r) => r.round._id === selectedRound._id)?.round;
-                if (updated) selectRound(updated);
-                trackEvent("round_completed");
-            } catch (e) {
-                console.error("final answer submit error", e);
-                showToast("warning", "Failed to save final answer or load feedback.");
-            } finally {
-                setConvRoundSubmitting(false);
-                setConvSubmitting(false);
-                setConvFeedbackProgress(0);
+            if (data?.followUp) {
+                setPendingFollowUp({ question: data.followUp, number: data.followUpNumber || pendingFollowUp.number + 1, qIndex: pendingFollowUp.qIndex });
+            } else {
+                setPendingFollowUp(null);
             }
-        } else {
-            // Save answer and fetch follow-up question in parallel
-            try {
-                const [, fuResult] = await Promise.allSettled([
-                    api.post(`/questions/${selectedRound._id}/answer`, { index: currentIndex, answer })
-                        .catch((e) => {
-                            console.error("submit answer error", e);
-                            showToast("warning", "Failed to save answer. Retrying may help.");
-                        }),
-                    Promise.race([
-                        api.post(`/questions/${selectedRound._id}/follow-up`, { index: currentIndex, answer }),
-                        new Promise((r) => setTimeout(() => r({ data: { followUp: null } }), 5000)),
-                    ]),
-                ]);
-                const followUp = fuResult.status === "fulfilled" ? (fuResult.value?.data?.followUp || null) : null;
-                if (followUp) {
-                    setPendingFollowUp({ question: followUp, qIndex: currentIndex, originalAnswer: answer });
-                    setConvAnswer("");
-                } else {
-                    setSelectedRound((prev) => {
-                        if (!prev) return prev;
-                        const copy = { ...prev, questions: [...(prev.questions || [])] };
-                        if (copy.questions[currentIndex]) {
-                            copy.questions[currentIndex] = { ...copy.questions[currentIndex], answerGiven: answer };
-                        }
-                        const lim = Math.min(Number(copy.questionLimit) || 8, copy.questions?.length || 0);
-                        copy.conversationalIndex = currentIndex + 1;
-                        if (currentIndex + 1 >= lim) copy.status = "completed";
-                        setInterview((prevInt) => {
-                            if (!prevInt) return prevInt;
-                            return {
-                                ...prevInt,
-                                rounds: (prevInt.rounds || []).map((r) =>
-                                    r.round._id === copy._id ? { ...r, round: copy } : r
-                                ),
-                            };
-                        });
-                        setTimeout(() => syncConvStateFromRound(copy), 0);
-                        return copy;
-                    });
-                    setConvAnswer("");
-                }
-            } finally {
-                setConvSubmitting(false);
-            }
+            if (data?.feedbackJobId) await settleFeedbackJob(data.feedbackJobId);
+            await refreshInterviewAndRound();
+            if (data?.done) trackEvent("round_completed");
+        } catch (error) {
+            console.error("follow-up submit error", error);
+            showToast("warning", error?.response?.data?.message || "Follow-up answer could not be saved.");
+        } finally {
+            setConvSubmitting(false);
         }
-    }, [selectedRound, isConversational, convState.index, interviewId, pendingFollowUp, showToast, selectRound, setSelectedRound, setInterview, syncConvStateFromRound]);
+    }, [pendingFollowUp, selectedRound, interviewId, refreshInterviewAndRound, settleFeedbackJob, showToast]);
 
     const handleClarify = useCallback(async (message) => {
         if (!selectedRound || !isConversational) return;
         try {
             const { data } = await api.post(`/questions/${selectedRound._id}/clarify`, { message });
-            const ans = (data?.answer || "").toString();
-            if (ans) showToast("info", ans, true);
-        } catch (e) {
-            console.error("clarify error", e);
-            showToast("error", e?.response?.data?.message || "Failed to clarify.");
+            const response = (data?.answer || "").toString();
+            if (response) showToast("info", response, true);
+        } catch (error) {
+            console.error("clarify error", error);
+            showToast("error", error?.response?.data?.message || "Failed to clarify.");
         }
     }, [selectedRound, isConversational, showToast]);
 
@@ -240,64 +179,41 @@ export const useConversational = ({
         if (!selectedRound) return;
         try {
             setConvRoundSubmitting(true);
-            // Flush any in-flight saves
-            try {
-                const pending = Array.from(pendingSavesRef.current || []);
-                if (pending.length > 0) {
-                    await Promise.race([
-                        Promise.allSettled(pending),
-                        new Promise((res) => setTimeout(res, 1500)),
-                    ]);
-                }
-            } catch { void 0; }
-
             let latest;
             try {
                 const { data } = await api.get(`/interviews/${interviewId}`);
                 latest = data;
                 setInterview(data);
             } catch { void 0; }
-
-            const roundForFeedback = latest?.rounds?.find((r) => r.round?._id === selectedRound._id)?.round || selectedRound;
-
+            const roundForFeedback = latest?.rounds?.find((entry) => entry.round?._id === selectedRound._id)?.round || selectedRound;
             try {
                 setConvFeedbackProgress(0);
                 const answered = (roundForFeedback.questions || [])
-                    .map((q, i) => {
-                        const original = (q.answerGiven || "").toString().trim();
-                        const followUp = q.followUpQuestion && q.followUpAnswer
-                            ? `\n\nFollow-up question: ${q.followUpQuestion}\nFollow-up answer: ${q.followUpAnswer}`
-                            : "";
-                        return { index: i, questionId: q.question?._id, answer: `${original}${followUp}`.trim() };
-                    })
-                    .filter((it) => it.questionId && it.answer.length > 0);
+                    .map((item, index) => ({ index, questionId: item.question?._id, answer: composeFeedbackAnswer(item) }))
+                    .filter((item) => item.questionId && item.answer);
                 if (answered.length > 0) {
                     const { data: job } = await api.post(`/jobs/bulk-feedback`, { roundId: selectedRound._id, items: answered, attach: true });
-                    if (job?.jobId) {
-                        await pollJobStatus("bulk-feedback", job.jobId, setConvFeedbackProgress);
-                    }
+                    if (job?.jobId) await pollJobStatus("bulk-feedback", job.jobId, setConvFeedbackProgress);
                 }
-            } catch (e) {
-                console.error("bulk feedback (conversational) error", e);
+            } catch (error) {
+                console.error("bulk feedback (conversational) error", error);
+                showToast("warning", "The round will be saved even though feedback is currently unavailable.");
             }
-
             await api.post(`/questions/${selectedRound._id}/complete`);
             const { data } = await api.get(`/interviews/${interviewId}`);
             setInterview(data);
             clearDraftsForRound(selectedRound);
-
-            const idxNow = (data.rounds || []).findIndex((r) => r.round._id === selectedRound._id);
-            const nextRound = idxNow >= 0 && idxNow + 1 < data.rounds.length ? data.rounds[idxNow + 1].round : null;
-            if (nextRound) {
-                selectRound(nextRound);
-            } else {
-                const updatedSelf = data.rounds.find((r) => r.round._id === selectedRound._id)?.round;
+            const index = (data.rounds || []).findIndex((entry) => entry.round._id === selectedRound._id);
+            const nextRound = index >= 0 && index + 1 < data.rounds.length ? data.rounds[index + 1].round : null;
+            if (nextRound) selectRound(nextRound);
+            else {
+                const updatedSelf = data.rounds.find((entry) => entry.round._id === selectedRound._id)?.round;
                 if (updatedSelf) selectRound(updatedSelf);
             }
             showToast("success", "Round submitted. Preparing feedback in background.");
-        } catch (e) {
-            console.error("complete round error", e);
-            showToast("error", e?.response?.data?.message || "Failed to complete round.");
+        } catch (error) {
+            console.error("complete round error", error);
+            showToast("error", error?.response?.data?.message || "Failed to complete round.");
         } finally {
             setConvRoundSubmitting(false);
             setConvFeedbackProgress(0);

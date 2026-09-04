@@ -11,7 +11,6 @@ import {
     completeRound,
     skipRound,
     clarifyCurrentQuestion,
-    getFollowUp,
     submitFollowUpAnswer,
 } from "../controllers/questionController.js";
 
@@ -163,19 +162,10 @@ router.post(
 );
 
 router.post(
-    "/:roundId/follow-up",
-    protect,
-    validate(z.object({ roundId: ObjectIdString }), "params"),
-    validate(z.object({ index: z.coerce.number().int().min(0), answer: z.string().max(5000) })),
-    audit("round.followup", { entityType: "Round", getEntityId: (req) => req.params.roundId }),
-    getFollowUp
-);
-
-router.post(
     "/:roundId/follow-up-answer",
     protect,
     validate(z.object({ roundId: ObjectIdString }), "params"),
-    validate(z.object({ index: z.coerce.number().int().min(0), question: z.string().min(1).max(1000), answer: z.string().max(5000) })),
+    validate(z.object({ index: z.coerce.number().int().min(0), answer: z.string().max(5000).optional().default(""), skip: z.boolean().optional().default(false) })),
     audit("round.followup.answer", { entityType: "Round", getEntityId: (req) => req.params.roundId, pickBody: (body) => ({ index: body.index }) }),
     submitFollowUpAnswer
 );

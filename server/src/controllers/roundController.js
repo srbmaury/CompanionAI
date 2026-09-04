@@ -1,18 +1,20 @@
 import { suggestRounds } from "../utils/interviewRounds.js";
 import Round from "../models/Round.js";
+import Resume from "../models/Resume.js";
 
 export const getSuggestedRounds = async (req, res, next) => {
-    const { company, jobRole, jobDescription } = req.body;
-
-    if (!jobRole || !jobDescription) {
-        return res
-            .status(400)
-            .json({ message: "Job Role and JD are required" });
-    }
+    const { company, jobRole, jobDescription, resumeId } = req.body;
+    if (!jobRole || !jobDescription) return res.status(400).json({ message: "Job Role and JD are required" });
 
     try {
-        const result = await suggestRounds(company || "", jobRole, jobDescription);
-        res.status(200).json(result);
+        let resumeText = "";
+        if (resumeId) {
+            const resume = await Resume.findOne({ _id: resumeId, user: req.user._id }).select("extractedText").lean();
+            if (!resume) return res.status(404).json({ message: "Resume not found" });
+            resumeText = resume.extractedText || "";
+        }
+        const result = await suggestRounds(company || "", jobRole, jobDescription, { resumeText });
+        return res.status(200).json(result);
     } catch (error) {
         return next(error instanceof Error ? error : new Error(String(error)));
     }
@@ -20,13 +22,7 @@ export const getSuggestedRounds = async (req, res, next) => {
 
 export const createRound = async (req, res, next) => {
     const { roundName, description, deliveryMode } = req.body;
-
-    if (!roundName || !description) {
-        return res
-            .status(400)
-            .json({ message: "Name and Description are required" });
-    }
-
+    if (!roundName || !description) return res.status(400).json({ message: "Name and Description are required" });
     try {
         const round = await Round.create({
             name: roundName,
@@ -34,8 +30,7 @@ export const createRound = async (req, res, next) => {
             deliveryMode: deliveryMode === "online-assessment" ? "online-assessment" : "conversational",
             questions: [],
         });
-
-        res.status(201).json(round);
+        return res.status(201).json(round);
     } catch (error) {
         console.error("Error creating round:", error);
         return next(error instanceof Error ? error : new Error(String(error)));

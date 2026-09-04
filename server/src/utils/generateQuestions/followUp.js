@@ -1,35 +1,93 @@
 import { generateJSON } from "./aiClient.js";
 import { sanitizeText } from "./textUtils.js";
 
-export const generateFollowUp = async ({ questionText, userAnswer, jobRole, roundName, systemDesign = false }) => {
-    const q = sanitizeText(questionText, 400);
-    const a = sanitizeText(userAnswer, 1000);
+export const MAX_FOLLOW_UPS = 3;
+
+export const normalizeFollowUpDecision = (raw, remaining = MAX_FOLLOW_UPS) => {
+    if (remaining <= 0 || !raw || typeof raw !== "object") {
+        return { shouldAsk: false, followUp: null, reason: "probe_budget_exhausted", focus: null, answerConfidence: 1, missingEvidence: [] };
+    }
+    const followUp = typeof raw.followUp === "string" ? raw.followUp.trim().slice(0, 1000) : "";
+    const shouldAsk = raw.shouldAsk === true && Boolean(followUp);
+    return {
+        shouldAsk,
+        followUp: shouldAsk ? followUp : null,
+        reason: sanitizeText(raw.reason || (shouldAsk ? "useful_probe" : "answer_sufficient"), 240),
+        focus: shouldAsk ? sanitizeText(raw.focus || "technical_depth", 120) : null,
+        answerConfidence: Math.max(0, Math.min(1, Number(raw.answerConfidence) || 0)),
+        missingEvidence: Array.isArray(raw.missingEvidence)
+            ? raw.missingEvidence.map((item) => sanitizeText(item, 160)).filter(Boolean).slice(0, 4)
+            : [],
+    };
+};
+
+const formatHistory = (followUps = []) => followUps
+    .filter((item) => item?.question && item?.answer && !item?.skipped)
+    .slice(0, MAX_FOLLOW_UPS)
+    .map((item, index) => `Follow-up ${index + 1}: ${sanitizeText(item.question, 500)}\nCandidate: ${sanitizeText(item.answer, 1000)}`)
+    .join("\n\n");
+
+export const generateFollowUp = async ({
+    questionText,
+    userAnswer,
+    followUps = [],
+    jobRole,
+    roundName,
+    systemDesign = false,
+    competencies = [],
+    sourceClaim = "",
+}) => {
+    const q = sanitizeText(questionText, 500);
+    const a = sanitizeText(userAnswer, 1800);
     const role = sanitizeText(jobRole, 120);
-    const rnd = sanitizeText(roundName, 60);
+    const rnd = sanitizeText(roundName, 80);
+    const answeredFollowUps = (followUps || []).filter((item) => item?.answer && !item?.skipped).slice(0, MAX_FOLLOW_UPS);
+    const remaining = Math.max(0, MAX_FOLLOW_UPS - (followUps || []).length);
+    if (remaining <= 0) return normalizeFollowUpDecision(null, 0);
 
-    const prompt = `You are a technical interviewer for a ${rnd || "technical"} round at a ${role || "software engineering"} company.
+    const history = formatHistory(answeredFollowUps);
+    const competencyText = (Array.isArray(competencies) ? competencies : []).map((item) => sanitizeText(item, 80)).filter(Boolean).slice(0, 4).join(", ");
+    const claim = sanitizeText(sourceClaim, 500);
+    const prompt = `You are conducting a realistic ${rnd || "technical"} interview for a ${role || "software engineering"} role.
 
-Question asked: "${q}"
-Candidate answered: "${a}"
+Original question: "${q}"
+Candidate's original answer: "${a}"
+Target competencies: ${competencyText || "infer from the question"}
+${claim ? `Resume claim being validated: ${claim}` : ""}
+${history ? `\nConversation so far:\n${history}\n` : ""}
+You may ask at most ${MAX_FOLLOW_UPS} follow-up questions for the original question. ${remaining} follow-up slot(s) remain.
 
-Should you ask a follow-up question? Return ONLY valid JSON: {"followUp": string | null}
-Rules:
-- If the answer is thorough and complete, return {"followUp": null}.
-- If a follow-up is warranted (probe deeper, clarify a vague point, test an edge case not covered), write one concise follow-up question (1-2 sentences max).
-- If the answer is blank or very short (fewer than 15 words), ask the candidate to elaborate.
-- Do not repeat or paraphrase what the candidate already clearly stated.
-${systemDesign ? `- Act as a system-design interviewer, not a coach: never provide the solution or praise/score the design.
-- Base the probe on a concrete component, connection, missing requirement, failure mode, capacity assumption, data-consistency choice, security boundary, or observability gap visible in the supplied evidence.
-- Ask only one neutral question. If diagram extraction is uncertain, ask the candidate to clarify rather than assuming a connection exists.` : ""}`;
+Return ONLY valid JSON:
+{"shouldAsk":boolean,"followUp":string|null,"reason":string,"focus":string|null,"answerConfidence":0.0,"missingEvidence":["..."]}
 
-    const text = (await generateJSON(prompt)) || "{}";
+Decision policy:
+- First estimate answerConfidence: confidence that the conversation already gives enough evidence to judge the IMPORTANT target competency, not confidence that the candidate is correct.
+- Identify only decision-relevant missingEvidence. Ignore trivia and nice-to-have details.
+- Ask ONE more follow-up only when missing evidence materially affects the competency judgment and a focused probe can resolve it.
+- High-confidence complete evidence => stop, even if follow-up budget remains.
+- Low confidence caused by one important ambiguity/unsupported claim/trade-off/failure case => probe that exact gap.
+- Low confidence caused by a very thin or irrelevant answer may justify one rescue probe, but do not repeatedly re-ask the same concept.
+- Base the next probe on the full conversation. Never repeat something already answered clearly.
+- Prefer depth over trivia. Ask one thing at a time, in natural interviewer language, usually one sentence.
+- After two follow-ups, use the third only when uncertainty remains on a core hiring signal.
+- Never coach, reveal an ideal answer, praise, score, or hint at what the candidate should say.
+${claim ? "- For the resume claim, prioritize verification of actual ownership, measurement/evidence, technical decisions, constraints, trade-offs, or failure modes that remain unsupported." : ""}
+${systemDesign ? "- For system design, probe an actual design choice: requirements, scale, API/data model, component boundaries, bottlenecks, consistency, failure handling, security, observability, or trade-offs. Do not invent components the candidate did not mention." : ""}
+- If no additional probe is warranted, return shouldAsk=false and followUp=null.`;
+
     try {
-        const obj = JSON.parse(text);
-        const fu = obj?.followUp;
-        if (typeof fu === "string" && fu.trim()) return fu.trim();
-        return null;
+        const text = (await generateJSON(prompt)) || "{}";
+        return normalizeFollowUpDecision(JSON.parse(text), remaining);
     } catch {
-        return null;
+        // A provider outage must not block the interview. Moving on is safer than
+        // inventing an ungrounded follow-up locally.
+        return normalizeFollowUpDecision({
+            shouldAsk: false,
+            followUp: null,
+            reason: "followup_provider_unavailable",
+            answerConfidence: 0,
+            missingEvidence: [],
+        }, remaining);
     }
 };
 
