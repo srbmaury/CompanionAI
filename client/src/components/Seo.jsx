@@ -12,8 +12,10 @@ export default function Seo({ title, description, canonicalPath, structuredData 
                 element = document.createElement("meta");
                 document.head.appendChild(element);
             }
+            const previous = {};
+            Object.keys(attributes).forEach((key) => { previous[key] = element.getAttribute(key); });
             Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
-            return { element, created };
+            return { element, created, previous };
         };
 
         const descriptionMeta = ensureMeta('meta[name="description"]', { name: "description", content: description });
@@ -23,6 +25,7 @@ export default function Seo({ title, description, canonicalPath, structuredData 
 
         let canonical = document.head.querySelector('link[rel="canonical"]');
         const canonicalCreated = !canonical;
+        const previousCanonicalHref = canonical?.getAttribute("href") ?? null;
         if (!canonical) {
             canonical = document.createElement("link");
             canonical.rel = "canonical";
@@ -41,8 +44,19 @@ export default function Seo({ title, description, canonicalPath, structuredData 
 
         return () => {
             document.title = previousTitle;
-            [descriptionMeta, ogTitle, ogDescription, ogType].forEach(({ element, created }) => { if (created) element.remove(); });
+            [descriptionMeta, ogTitle, ogDescription, ogType].forEach(({ element, created, previous }) => {
+                if (created) {
+                    element.remove();
+                    return;
+                }
+                Object.entries(previous).forEach(([key, value]) => {
+                    if (value == null) element.removeAttribute(key);
+                    else element.setAttribute(key, value);
+                });
+            });
             if (canonicalCreated) canonical.remove();
+            else if (previousCanonicalHref == null) canonical.removeAttribute("href");
+            else canonical.setAttribute("href", previousCanonicalHref);
             if (jsonLd) jsonLd.remove();
         };
     }, [canonicalPath, description, structuredData, title]);
