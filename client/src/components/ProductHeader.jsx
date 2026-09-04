@@ -208,8 +208,7 @@ export default function ProductHeader({ surface = "practice" }) {
                                 <Menu anchorEl={profileAnchor} open={Boolean(profileAnchor?.isConnected)} onClose={() => setProfileAnchor(null)} PaperProps={{ sx: { minWidth: 250 } }}>
                                     <Box px={2} py={1.25}><Typography fontWeight={850}>{user?.name || "Account"}</Typography><Typography variant="caption" color="text.secondary">{user?.email}</Typography></Box><Divider />
                                     {surface === "practice" && <MenuItem component={RouterLink} to="/practice/profile"><PersonOutlineRounded sx={{ mr: 1.25 }} />Profile</MenuItem>}
-                                    {surface === "hiring" && permissions.canManageOrganization && <MenuItem component={RouterLink} to="/hire/team"><SettingsOutlined sx={{ mr: 1.25 }} />Team & billing</MenuItem>}
-                                    <MenuItem onClick={openOtherProduct}><SwapHorizRounded sx={{ mr: 1.25 }} />{config.crossLabel}</MenuItem>
+                                    <MenuItem onClick={openOtherProduct} sx={{ display: { xs: "none", md: "flex" } }}><SwapHorizRounded sx={{ mr: 1.25 }} />{config.crossLabel}</MenuItem>
                                     <MenuItem onClick={() => { setProfileAnchor(null); setFeedbackOpen(true); }}><RateReviewOutlined sx={{ mr: 1.25 }} />Send feedback</MenuItem>
                                     {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/feedback"><SettingsOutlined sx={{ mr: 1.25 }} />Admin</MenuItem>}
                                     <Divider />
