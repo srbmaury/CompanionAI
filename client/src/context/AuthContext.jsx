@@ -63,7 +63,8 @@ export const AuthProvider = ({ children }) => {
     const completeSsoLogin = useCallback(async (exchangeCode) => {
         const { data } = await api.post(`/sso/exchange`, { exchangeCode }, { skipAuthRedirect: true });
         if (data?.token) setAccessToken(data.token);
-        return fetchProfile();
+        const authenticatedUser = await fetchProfile();
+        return { user: authenticatedUser, organizationId: data?.organizationId || null };
     }, [fetchProfile]);
 
     const resendVerification = async (email) => {
