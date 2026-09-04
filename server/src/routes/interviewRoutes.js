@@ -68,19 +68,21 @@ const router = express.Router();
  *         description: Interview
  */
 
-// Validators
 const RoundInput = z.object({
     roundName: z.string().min(2).max(60),
-    description: z.string().min(4).max(220),
+    description: z.string().min(4).max(260),
     deliveryMode: z.enum(["online-assessment", "conversational"]).optional(),
     questionLimit: z.coerce.number().int().min(1).max(20).optional(),
+    skills: z.array(z.string().min(1).max(80)).max(6).optional().default([]),
+    rationale: z.string().max(300).optional().default(""),
+    recommended: z.boolean().optional().default(true),
 });
 
 const CreateInterviewSchema = z.object({
     resumeId: z.union([z.string().min(1), z.literal(""), z.null()]).optional().default(""),
     company: z.string().max(120).optional().default(""),
     jobRole: z.string().min(1).max(120),
-    jobDescription: z.string().min(1).max(4000),
+    jobDescription: z.string().min(1).max(5000),
     rounds: z.array(RoundInput).min(1).max(5),
 }).transform((d) => ({
     ...d,
