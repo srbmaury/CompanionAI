@@ -1,23 +1,21 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { Alert, Box, CircularProgress, Container, Stack, Typography } from "@mui/material";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import { setWorkspacePreference } from "../utils/workspacePreference";
 
 export default function SsoCallbackPage() {
     const { search } = useLocation();
-    const navigate = useNavigate();
-    const { completeSsoLogin } = useContext(AuthContext);
+    const { completeSsoLogin, loading: authLoading } = useContext(AuthContext);
     const started = useRef(false);
     const [error, setError] = useState("");
 
     useEffect(() => {
-        if (started.current) return;
+        if (authLoading || started.current) return;
         started.current = true;
         const params = new URLSearchParams(search);
         const providerError = params.get("error");
         const exchangeCode = params.get("exchange");
-        const organizationId = params.get("organization");
         if (providerError) {
             setError(providerError);
             return;
@@ -27,17 +25,16 @@ export default function SsoCallbackPage() {
             return;
         }
         completeSsoLogin(exchangeCode)
-            .then((user) => {
-                if (user?._id) {
-                    setWorkspacePreference("hiring", user._id);
-                    if (organizationId) {
-                        try { localStorage.setItem(`companionai:organization:user:${user._id}`, organizationId); } catch { /* optional */ }
-                    }
-                }
-                navigate("/assessments", { replace: true });
+            .then(({ user, organizationId }) => {
+                if (!user?._id || !organizationId) throw new Error("SSO session did not include organization access");
+                setWorkspacePreference("hiring", user._id);
+                try { localStorage.setItem(`companionai:organization:user:${user._id}`, organizationId); } catch { /* optional */ }
+                // Reload once so AuthProvider and OrganizationProvider initialize from the new
+                // server session and the trusted organization preference in one deterministic pass.
+                window.location.replace("/assessments");
             })
-            .catch((err) => setError(err?.response?.data?.message || "SSO sign-in failed."));
-    }, [completeSsoLogin, navigate, search]);
+            .catch((err) => setError(err?.response?.data?.message || err?.message || "SSO sign-in failed."));
+    }, [authLoading, completeSsoLogin, search]);
 
     return (
         <Container maxWidth="sm" sx={{ py: 10 }}>
