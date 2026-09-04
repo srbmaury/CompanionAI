@@ -2,9 +2,14 @@ import { generateJSON } from "../utils/generateQuestions/aiClient.js";
 import { generateQuestionsForRound } from "../utils/generateQuestions.js";
 import { sanitizeText } from "../utils/generateQuestions/textUtils.js";
 
-const clamp = (value, min, max) => Math.min(Math.max(Number(value) || min, min), max);
+const clamp = (value, min, max, fallback = min) => {
+    const parsed = Number(value);
+    const resolved = Number.isFinite(parsed) ? parsed : fallback;
+    return Math.min(Math.max(resolved, min), max);
+};
 const clean = (value, max = 300) => sanitizeText(value, max);
 const keyOf = (value) => clean(value, 120).toLowerCase().replace(/[^a-z0-9+#.]+/g, " ").trim();
+const MAX_RESUME_CLAIM_BASE_QUESTIONS = 2;
 
 const uniqueStrings = (values, max = 8, length = 120) => {
     const out = [];
@@ -83,7 +88,7 @@ const normalizeCompetencies = (items, fallback) => {
         out.push({
             name,
             description: clean(typeof item === "string" ? "" : item?.description, 240),
-            weight: clamp(typeof item === "string" ? 1 : item?.weight, 0.1, 3),
+            weight: clamp(typeof item === "string" ? 1 : item?.weight, 0.1, 3, 1),
             scoreEstimate: null,
             confidence: 0,
             evidenceCount: 0,
@@ -127,7 +132,7 @@ export const initializeAdaptiveInterviewState = async ({
 }) => {
     const fallback = fallbackCompetencies({ roundName, roundDescription, skills });
     const fallbackClaims = extractResumeClaimsFallback(resumeText);
-    const boundedMax = clamp(maxQuestions, 2, 10);
+    const boundedMax = clamp(maxQuestions, 2, 10, 5);
     const safeRole = clean(jobRole, 120);
     const safeJD = clean(jobDescription, 3500);
     const safeRound = clean(roundName, 80);
@@ -162,15 +167,16 @@ Rules:
         parsed = {};
     }
 
+    const initialDifficulty = clamp(parsed?.initialDifficulty, 1, 5, 3);
     return {
         enabled: true,
-        minQuestions: clamp(parsed?.minQuestions, 2, boundedMax),
+        minQuestions: clamp(parsed?.minQuestions, 2, boundedMax, 2),
         maxQuestions: boundedMax,
-        currentDifficulty: clamp(parsed?.initialDifficulty, 1, 5),
+        currentDifficulty: initialDifficulty,
         questionsAsked: 0,
         competencies: normalizeCompetencies(parsed?.competencies, fallback),
         resumeClaims: normalizeClaims(parsed?.resumeClaims, fallbackClaims),
-        lastDecision: { action: "continue", difficulty: clamp(parsed?.initialDifficulty, 1, 5), confidence: 0 },
+        lastDecision: { action: "continue", difficulty: initialDifficulty, confidence: 0 },
         completedReason: "",
         initializedAt: new Date(),
         updatedAt: new Date(),
@@ -179,13 +185,13 @@ Rules:
 
 const normalizedDimension = (item) => ({
     name: clean(item?.name, 80),
-    score: clamp(item?.score, 0, 10),
+    score: clamp(item?.score, 0, 10, 0),
     evidence: uniqueStrings(item?.evidence, 4, 300),
 });
 
 const normalizedCompetencyEvidence = (item) => ({
     name: clean(item?.name, 80),
-    score: clamp(item?.score, 0, 10),
+    score: clamp(item?.score, 0, 10, 0),
     confidence: Math.max(0, Math.min(1, Number(item?.confidence) || 0)),
     evidence: uniqueStrings(item?.evidence, 4, 300),
 });
@@ -209,8 +215,9 @@ export const evaluateAdaptiveAnswer = async ({
     roundName,
 }) => {
     const questionsAskedAfterThis = (Number(state?.questionsAsked) || 0) + 1;
-    const minQuestions = clamp(state?.minQuestions, 1, 20);
-    const maxQuestions = clamp(state?.maxQuestions, minQuestions, 20);
+    const minQuestions = clamp(state?.minQuestions, 1, 20, 2);
+    const maxQuestions = clamp(state?.maxQuestions, minQuestions, 20, Math.max(minQuestions, 5));
+    const currentDifficulty = clamp(state?.currentDifficulty, 1, 5, 3);
     const safeAnswer = clean(answerText, 6500);
     let parsed = {};
     try {
@@ -236,6 +243,7 @@ ${safeAnswer || "<blank>"}
 
 Current competency state:
 ${JSON.stringify(summaryForPrompt(state))}
+Current difficulty: ${currentDifficulty}
 Questions completed after this one: ${questionsAskedAfterThis}
 Minimum questions: ${minQuestions}
 Maximum questions: ${maxQuestions}
@@ -279,6 +287,8 @@ Evaluation rules:
     }
 
     const policy = parsed?.policy || {};
+    const requestedDifficulty = clamp(policy?.difficulty, 1, 5, currentDifficulty);
+    const boundedDifficulty = Math.max(currentDifficulty - 1, Math.min(currentDifficulty + 1, requestedDifficulty));
     return {
         overallScore,
         confidence,
@@ -289,7 +299,7 @@ Evaluation rules:
         policy: {
             action: policy?.action === "end-round" ? "end-round" : "next-question",
             targetCompetency: clean(policy?.targetCompetency, 80),
-            difficulty: clamp(policy?.difficulty || state?.currentDifficulty || 3, 1, 5),
+            difficulty: clamp(boundedDifficulty, 1, 5, currentDifficulty),
             reason: clean(policy?.reason, 500),
             confidence: Math.max(0, Math.min(1, Number(policy?.confidence) || 0)),
             sourceClaim: clean(policy?.sourceClaim, 500),
@@ -331,7 +341,9 @@ export const applyEvidenceToState = (state, evaluation, { questionIndex = 0, tar
     }
 
     next.questionsAsked = Math.max(Number(next.questionsAsked) || 0, questionIndex + 1);
-    next.currentDifficulty = clamp(evaluation?.policy?.difficulty || next.currentDifficulty || 3, 1, 5);
+    const currentDifficulty = clamp(next.currentDifficulty, 1, 5, 3);
+    const requestedDifficulty = clamp(evaluation?.policy?.difficulty, 1, 5, currentDifficulty);
+    next.currentDifficulty = Math.max(currentDifficulty - 1, Math.min(currentDifficulty + 1, requestedDifficulty));
     next.lastDecision = {
         action: evaluation?.policy?.action === "end-round" ? "end-round" : "next-question",
         targetCompetency: clean(evaluation?.policy?.targetCompetency, 80),
@@ -360,7 +372,7 @@ export const adaptiveCoverageRatio = (state) => {
     let weighted = 0;
     let total = 0;
     for (const item of competencies) {
-        const weight = clamp(item?.weight, 0.1, 3);
+        const weight = clamp(item?.weight, 0.1, 3, 1);
         const confidence = Math.max(0, Math.min(1, Number(item?.confidence) || 0));
         weighted += weight * Math.min(1, confidence / 0.72);
         total += weight;
@@ -373,7 +385,7 @@ export const chooseNextCompetency = (state) => {
     if (!competencies.length) return "Technical Depth";
     return [...competencies].sort((a, b) => {
         const priority = (item) => {
-            const weight = clamp(item?.weight, 0.1, 3);
+            const weight = clamp(item?.weight, 0.1, 3, 1);
             const confidence = Math.max(0, Math.min(1, Number(item?.confidence) || 0));
             const score = Number(item?.scoreEstimate);
             const lowScoreBonus = Number.isFinite(score) && score < 6 ? 0.2 : 0;
@@ -385,8 +397,8 @@ export const chooseNextCompetency = (state) => {
 
 export const shouldStopAdaptiveRound = (state, evaluation) => {
     const asked = Number(state?.questionsAsked) || 0;
-    const min = clamp(state?.minQuestions, 1, 20);
-    const max = clamp(state?.maxQuestions, min, 20);
+    const min = clamp(state?.minQuestions, 1, 20, 2);
+    const max = clamp(state?.maxQuestions, min, 20, Math.max(min, 5));
     if (asked >= max) return { stop: true, reason: "Maximum adaptive question budget reached." };
     if (asked < min) return { stop: false, reason: "Minimum evidence sample not reached." };
 
@@ -406,6 +418,8 @@ export const shouldStopAdaptiveRound = (state, evaluation) => {
 export const selectResumeClaimForTarget = (state, targetCompetency = "", preferredClaim = "") => {
     const claims = (Array.isArray(state?.resumeClaims) ? state.resumeClaims : []).filter((item) => !item?.covered);
     if (!claims.length) return null;
+    const claimQuestionsAsked = (state?.resumeClaims || []).reduce((sum, item) => sum + Math.min(1, Number(item?.probeCount) || 0), 0);
+    if (claimQuestionsAsked >= MAX_RESUME_CLAIM_BASE_QUESTIONS) return null;
     if (preferredClaim) {
         const preferredKey = keyOf(preferredClaim);
         const match = claims.find((item) => keyOf(item.claim) === preferredKey);
@@ -415,6 +429,78 @@ export const selectResumeClaimForTarget = (state, targetCompetency = "", preferr
     const relevant = target ? claims.find((item) => (item.topics || []).some((topic) => target.includes(keyOf(topic)) || keyOf(topic).includes(target))) : null;
     if (relevant) return relevant;
     return [...claims].sort((a, b) => (Number(a.probeCount) || 0) - (Number(b.probeCount) || 0))[0] || null;
+};
+
+export const buildDeterministicAdaptiveQuestion = ({
+    round,
+    state,
+    targetCompetency,
+    difficulty,
+    sourceClaim,
+} = {}) => {
+    const target = clean(targetCompetency || chooseNextCompetency(state), 80) || "technical depth";
+    const level = clamp(difficulty, 1, 5, clamp(state?.currentDifficulty, 1, 5, 3));
+    const claim = clean(sourceClaim, 500);
+    const questionNumber = Math.max(0, Number(state?.questionsAsked) || 0);
+    if (claim) {
+        const claimEntry = (state?.resumeClaims || []).find((item) => keyOf(item.claim) === keyOf(claim));
+        const probeIndex = Math.max(0, Number(claimEntry?.probeCount) || 0) % 4;
+        const probes = [
+            `You mentioned “${claim}”. What was your specific technical contribution that directly led to this result?`,
+            `You mentioned “${claim}”. How did you measure the result and establish that the change actually caused it?`,
+            `You mentioned “${claim}”. What was the most important technical trade-off you made to achieve it?`,
+            `You mentioned “${claim}”. What constraint or failure mode was hardest to handle in that work?`,
+        ];
+        return {
+            text: clean(probes[probeIndex], 500),
+            tags: [target.toLowerCase()].filter(Boolean),
+            competencies: [target],
+            difficulty: level,
+            sourceType: "resume-claim",
+            sourceClaim: claim,
+        };
+    }
+
+    const roundText = `${round?.name || ""} ${round?.description || ""}`.toLowerCase();
+    let variants;
+    if (/system\s*design|architecture/.test(roundText)) {
+        variants = [
+            `For ${target}, what production constraint would most strongly shape your design, and why?`,
+            `For ${target}, which failure mode would you design for first in a production system, and why?`,
+            `For ${target}, what trade-off would become hardest as traffic grows by an order of magnitude?`,
+            `For ${target}, what part of your design would you change first if reliability became the dominant requirement?`,
+        ];
+    } else if (/coding|algorithm|dsa|problem solving/.test(roundText)) {
+        variants = [
+            `Give a concrete example of how you would approach a ${target} problem while keeping correctness and complexity under control.`,
+            `For ${target}, what edge case is most likely to break an otherwise reasonable implementation?`,
+            `For ${target}, what optimization would you consider only after proving the straightforward solution is correct?`,
+            `For ${target}, how would you test that an implementation handles its hardest boundary condition correctly?`,
+        ];
+    } else if (/behavior|leadership|ownership|manager/.test(roundText)) {
+        variants = [
+            `Tell me about a specific situation where your ${target} was tested and the decision you personally made.`,
+            `Tell me about a ${target} decision that did not go as planned and what you changed afterward.`,
+            `Describe a situation where ${target} required you to make a difficult trade-off under uncertainty.`,
+            `Give an example where your approach to ${target} changed after new evidence emerged.`,
+        ];
+    } else {
+        variants = [
+            `Give me a concrete example of ${target} from your work and explain the main technical trade-off you made.`,
+            `For ${target}, what production failure or constraint changed how you approached the problem?`,
+            `For ${target}, what decision becomes harder at larger scale, and how would you reason about it?`,
+            `For ${target}, describe an alternative approach you considered and why you would choose one over the other.`,
+        ];
+    }
+    const text = variants[questionNumber % variants.length];
+    return {
+        text: clean(text, 500),
+        tags: [target.toLowerCase()].filter(Boolean),
+        competencies: [target],
+        difficulty: level,
+        sourceType: "fallback",
+        sourceClaim: "",
+    };
 };
 
 export const generateNextAdaptiveQuestion = async ({
@@ -427,7 +513,7 @@ export const generateNextAdaptiveQuestion = async ({
     excludeTexts = [],
 }) => {
     const target = clean(targetCompetency || chooseNextCompetency(state), 80);
-    const level = clamp(difficulty || state?.currentDifficulty || 3, 1, 5);
+    const level = clamp(difficulty, 1, 5, clamp(state?.currentDifficulty, 1, 5, 3));
     const claim = clean(sourceClaim, 500);
     const exclusions = uniqueStrings(excludeTexts, 20, 220);
     const difficultyGuide = {
@@ -476,31 +562,44 @@ Rules:
             };
         }
     } catch {
-        // Fall through to the existing grounded generator.
+        // Fall through to the existing grounded generator and then local fallback.
     }
 
-    const fallback = await generateQuestionsForRound({
-        company: interview?.company || "",
-        jobRole: interview?.jobRole || "",
-        jobDescription: interview?.jobDescription || "",
-        resumeText: interview?.resume?.extractedText || "",
-        roundName: round?.name || "Technical",
-        roundDescription: `${round?.description || ""} Focus next on ${target}. Difficulty ${level}/5.`,
-        deliveryMode: "conversational",
-        count: 1,
-        excludeTexts: exclusions,
-        grounding: interview?.grounding,
-    });
-    const item = Array.isArray(fallback) ? fallback[0] : null;
-    if (!item) return null;
-    return {
-        text: clean(typeof item === "string" ? item : item.text, 500),
-        tags: uniqueStrings(item?.tags, 6, 60),
-        competencies: [target],
+    try {
+        const fallback = await generateQuestionsForRound({
+            company: interview?.company || "",
+            jobRole: interview?.jobRole || "",
+            jobDescription: interview?.jobDescription || "",
+            resumeText: interview?.resume?.extractedText || "",
+            roundName: round?.name || "Technical",
+            roundDescription: `${round?.description || ""} Focus next on ${target}. Difficulty ${level}/5.`,
+            deliveryMode: "conversational",
+            count: 1,
+            excludeTexts: exclusions,
+            grounding: interview?.grounding,
+        });
+        const item = Array.isArray(fallback) ? fallback[0] : null;
+        if (item) {
+            return {
+                text: clean(typeof item === "string" ? item : item.text, 500),
+                tags: uniqueStrings(item?.tags, 6, 60),
+                competencies: [target],
+                difficulty: level,
+                sourceType: "fallback",
+                sourceClaim: claim,
+            };
+        }
+    } catch {
+        // Provider outage or malformed generation must not make the interview unusable.
+    }
+
+    return buildDeterministicAdaptiveQuestion({
+        round,
+        state,
+        targetCompetency: target,
         difficulty: level,
-        sourceType: "fallback",
         sourceClaim: claim,
-    };
+    });
 };
 
 export const compactAdaptiveState = (state) => ({
