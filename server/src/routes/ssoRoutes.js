@@ -10,7 +10,7 @@ import AuditLog from "../models/AuditLog.js";
 import protect from "../middleware/authMiddleware.js";
 import { organizationContext, requireOrganizationRole } from "../middleware/organizationContext.js";
 import validate from "../middleware/validate.js";
-import { bumpTokenVersion, issueRefreshToken, revokeAllRefreshTokens, signAccessToken } from "../utils/tokens.js";
+import { issueRefreshToken, signAccessToken } from "../utils/tokens.js";
 import {
     createOidcLoginState,
     discoverOidcProvider,
@@ -219,10 +219,7 @@ router.post("/exchange", validate(exchangeSchema), async (req, res, next) => {
         if (!membership) return res.status(403).json({ message: "Your organization access is no longer active" });
 
         const user = attempt.user;
-        await bumpTokenVersion(user._id);
-        await revokeAllRefreshTokens(user._id);
-        const fresh = await User.findById(user._id).select("tokenVersion");
-        const token = signAccessToken(user._id, fresh?.tokenVersion);
+        const token = signAccessToken(user._id, user.tokenVersion);
         const { raw, expiresAt } = await issueRefreshToken(user._id, { userAgent: req.get("user-agent"), ip: req.ip });
         setRefreshCookie(res, raw, expiresAt);
         try { await AuditLog.create({ user: user._id, action: "auth.sso_login", entityType: "Organization", entityId: attempt.organization, ip: req.ip, userAgent: req.get("user-agent"), requestId: req.id }); } catch {}

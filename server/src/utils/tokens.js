@@ -24,9 +24,8 @@ export const issueRefreshToken = async (userId, { userAgent, ip } = {}) => {
     const raw = crypto.randomBytes(40).toString("hex");
     const tokenHash = hashOpaqueToken(raw);
     const expiresAt = new Date(Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000);
-    // One refresh token is the server-side definition of one active session.
-    // Replacing it makes a new login or rotation invalidate every older cookie.
-    await RefreshToken.deleteMany({ user: userId });
+    // Refresh tokens represent independent browser/device sessions. Creating a
+    // new session must not invalidate sessions that are already signed in.
     await RefreshToken.create({ user: userId, tokenHash, expiresAt, userAgent, ip });
     return { raw, expiresAt };
 };
@@ -40,6 +39,11 @@ export const validateRefreshToken = async (raw) => {
         return null;
     }
     return record.user;
+};
+
+export const revokeRefreshToken = async (raw) => {
+    if (!raw) return;
+    await RefreshToken.deleteOne({ tokenHash: hashOpaqueToken(raw) });
 };
 
 export const revokeAllRefreshTokens = async (userId) => {

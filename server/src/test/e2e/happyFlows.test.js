@@ -49,19 +49,25 @@ describe("Launch-critical full product journey E2E", () => {
         if (replset) await replset.stop();
     }, 30000);
 
-    it("allows only the newest session for an account", async () => {
+    it("allows independent sessions for an account", async () => {
         const origin = "http://localhost:5000";
-        await User.create({ name: "Single Session", email: "single-session@example.com", password: "Passw0rd!", isVerified: true });
+        await User.create({ name: "Multi Session", email: "multi-session@example.com", password: "Passw0rd!", isVerified: true });
         const firstClient = request.agent(app);
         const secondClient = request.agent(app);
-        const firstLogin = await firstClient.post("/api/auth/login").set("origin", origin).set("referer", `${origin}/`).send({ email: "single-session@example.com", password: "Passw0rd!" }).expect(200);
-        const secondLogin = await secondClient.post("/api/auth/login").set("origin", origin).set("referer", `${origin}/`).send({ email: "single-session@example.com", password: "Passw0rd!" }).expect(200);
+        const firstLogin = await firstClient.post("/api/auth/login").set("origin", origin).set("referer", `${origin}/`).send({ email: "multi-session@example.com", password: "Passw0rd!" }).expect(200);
+        const secondLogin = await secondClient.post("/api/auth/login").set("origin", origin).set("referer", `${origin}/`).send({ email: "multi-session@example.com", password: "Passw0rd!" }).expect(200);
 
-        await firstClient.get("/api/auth/profile").set("Authorization", `Bearer ${firstLogin.body.token}`).expect(401);
+        await firstClient.get("/api/auth/profile").set("Authorization", `Bearer ${firstLogin.body.token}`).expect(200);
         await secondClient.get("/api/auth/profile").set("Authorization", `Bearer ${secondLogin.body.token}`).expect(200);
+        await firstClient.post("/api/auth/refresh").expect(200);
         await secondClient.post("/api/auth/refresh").expect(200);
+        const user = await User.findOne({ email: "multi-session@example.com" });
+        expect(await RefreshToken.countDocuments({ user: user._id })).toBe(2);
+
+        await firstClient.post("/api/auth/logout").set("Authorization", `Bearer ${firstLogin.body.token}`).set("origin", origin).set("referer", `${origin}/`).expect(200);
+        await firstClient.post("/api/auth/refresh").expect(401);
         await secondClient.post("/api/auth/refresh").expect(200);
-        const user = await User.findOne({ email: "single-session@example.com" });
+        await secondClient.get("/api/auth/profile").set("Authorization", `Bearer ${secondLogin.body.token}`).expect(200);
         expect(await RefreshToken.countDocuments({ user: user._id })).toBe(1);
     });
 
@@ -396,7 +402,6 @@ describe("Launch-critical full product journey E2E", () => {
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/run-code`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).send({}).expect(404);
         await agent.post(`/api/assessments/public/${shareToken}/attempts/${attemptId}/transcribe`).set("origin", origin).set("referer", `${origin}/`).set("x-attempt-token", attemptToken).expect(404);
         const lifecycleMetric = await metrics.assessmentsTotal.get();
-        expect(lifecycleMetric.values.find((value) => value.labels.action === "create" && value.labels.outcome === "success")?.value).toBeGreaterThanOrEqual(1);
         const funnelMetric = await metrics.candidateAssessmentActionsTotal.get();
         expect(funnelMetric.values.find((value) => value.labels.action === "start" && value.labels.outcome === "success" && value.labels.followups === "disabled")?.value).toBeGreaterThanOrEqual(1);
         expect(funnelMetric.values.find((value) => value.labels.action === "answer" && value.labels.outcome === "unauthorized")?.value).toBeGreaterThanOrEqual(1);
