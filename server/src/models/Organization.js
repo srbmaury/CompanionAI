@@ -12,6 +12,21 @@ const subscriptionStatuses = [
     "paused",
 ];
 
+const ssoSchema = new mongoose.Schema(
+    {
+        enabled: { type: Boolean, default: false },
+        issuer: { type: String, trim: true, default: "", maxlength: 500 },
+        clientId: { type: String, trim: true, default: "", maxlength: 500 },
+        clientSecretEncrypted: { type: String, default: "", select: false },
+        domains: [{ type: String, trim: true, lowercase: true, maxlength: 253 }],
+        tokenAuthMethod: { type: String, enum: ["client_secret_post", "client_secret_basic"], default: "client_secret_post" },
+        jitProvisioning: { type: Boolean, default: false },
+        defaultRole: { type: String, enum: ["recruiter", "hiring_manager", "reviewer"], default: "reviewer" },
+        configuredAt: { type: Date, default: null },
+    },
+    { _id: false }
+);
+
 const organizationSchema = new mongoose.Schema(
     {
         name: {
@@ -63,11 +78,13 @@ const organizationSchema = new mongoose.Schema(
             type: Date,
             default: null,
         },
+        sso: { type: ssoSchema, default: () => ({}) },
     },
     { timestamps: true }
 );
 
 organizationSchema.index({ createdBy: 1, createdAt: -1 });
 organizationSchema.index({ hiringBillingCustomerId: 1 }, { sparse: true });
+organizationSchema.index({ "sso.domains": 1, "sso.enabled": 1 });
 
 export default mongoose.model("Organization", organizationSchema);
