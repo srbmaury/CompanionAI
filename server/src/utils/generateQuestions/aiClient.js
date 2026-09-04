@@ -6,6 +6,7 @@ import metrics from "../../metrics/index.js";
 dotenv.config();
 
 export const ADAPTIVE_PROMPT_BUNDLE_VERSION = "adaptive-2026-09-v1";
+export const FEEDBACK_PROMPT_BUNDLE_VERSION = "feedback-2026-09-v1";
 
 const classifyPromptPurpose = (prompt) => {
     const text = (prompt || "").toString().toLowerCase();
@@ -13,7 +14,14 @@ const classifyPromptPurpose = (prompt) => {
     if (text.startsWith("evaluate one completed technical interview question")) return "adaptive_evaluation";
     if (text.startsWith("generate exactly one next question for an adaptive technical interview")) return "adaptive_question";
     if (text.startsWith("you are conducting a realistic") && text.includes("follow-up")) return "adaptive_followup";
+    if (text.startsWith("you are a rigorous, evidence-based technical interviewer")) return "feedback_evaluation";
     return "other";
+};
+
+const promptVersionForPurpose = (purpose) => {
+    if (purpose.startsWith("adaptive_")) return ADAPTIVE_PROMPT_BUNDLE_VERSION;
+    if (purpose === "feedback_evaluation") return FEEDBACK_PROMPT_BUNDLE_VERSION;
+    return "unversioned";
 };
 
 const observePurpose = (provider, model, purpose, promptVersion, outcome) => {
@@ -80,7 +88,7 @@ const coerceToRawJSON = (input) => {
 export const generateJSON = async (prompt) => {
     const trimmed = (prompt || "").toString().slice(0, 16000);
     const purpose = classifyPromptPurpose(trimmed);
-    const promptVersion = purpose.startsWith("adaptive_") ? ADAPTIVE_PROMPT_BUNDLE_VERSION : "unversioned";
+    const promptVersion = promptVersionForPurpose(purpose);
     const aiTimeoutMs = Math.min(
         Math.max(parseInt(process.env.AI_REQUEST_TIMEOUT_MS || "20000", 10) || 20000, 2000),
         120000
