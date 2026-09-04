@@ -1,6 +1,15 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
+const ssoIdentitySchema = new mongoose.Schema(
+    {
+        organization: { type: mongoose.Schema.Types.ObjectId, ref: "Organization", required: true },
+        issuer: { type: String, required: true, trim: true, maxlength: 500 },
+        subject: { type: String, required: true, trim: true, maxlength: 500 },
+    },
+    { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
     {
         name: {
@@ -21,12 +30,13 @@ const userSchema = new mongoose.Schema(
         },
         provider: {
             type: String,
-            enum: ["local", "google"],
+            enum: ["local", "google", "sso"],
             default: "local",
         },
         googleId: {
             type: String,
         },
+        ssoIdentities: { type: [ssoIdentitySchema], default: [] },
         isVerified: {
             type: Boolean,
             default: false,
@@ -116,6 +126,8 @@ const userSchema = new mongoose.Schema(
     },
     { timestamps: true }
 );
+
+userSchema.index({ "ssoIdentities.organization": 1, "ssoIdentities.issuer": 1, "ssoIdentities.subject": 1 });
 
 // Encrypt password before save
 userSchema.pre("save", async function (next) {
