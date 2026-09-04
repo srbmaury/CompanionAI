@@ -1,14 +1,16 @@
-import { Route, Routes, Navigate } from "react-router-dom";
+import { Route, Routes, Navigate, useLocation } from "react-router-dom";
 import { lazy, Suspense, useState } from "react";
 import { Box, CircularProgress } from "@mui/material";
 
 import Header from "./components/Header";
+import ProductHeader from "./components/ProductHeader";
 import ProtectedRoute from "./components/ProtectedRoute";
 import ErrorBoundary from "./components/ErrorBoundary";
 import AdminRoute from "./components/AdminRoute";
 import GuestOnlyRoute from "./components/GuestOnlyRoute";
 import HiringOrganizationGate from "./components/HiringOrganizationGate";
 import SearchIndexPolicy from "./components/SearchIndexPolicy";
+import CanonicalProductRedirect from "./components/CanonicalProductRedirect";
 
 const CreateInterviewPage = lazy(() => import("./pages/CreateInterviewPage"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
@@ -23,6 +25,7 @@ const ExperiencesPage = lazy(() => import("./pages/ExperiencesPage.jsx"));
 const ResumeReviewPage = lazy(() => import("./pages/ResumeReviewPage.jsx"));
 const ResumeMatcherPage = lazy(() => import("./pages/ResumeMatcherPage.jsx"));
 const LandingPage = lazy(() => import("./pages/LandingPage.jsx"));
+const ProductLandingPage = lazy(() => import("./pages/ProductLandingPage.jsx"));
 const LegalPage = lazy(() => import("./pages/LegalPage.jsx"));
 const ProgressPage = lazy(() => import("./pages/ProgressPage.jsx"));
 const ReviewHistoryPage = lazy(() => import("./pages/ReviewHistoryPage.jsx"));
@@ -55,6 +58,13 @@ const HiringRoute = ({ children }) => (
         <HiringOrganizationGate>{children}</HiringOrganizationGate>
     </ProtectedRoute>
 );
+
+const ProductAwareHeader = () => {
+    const location = useLocation();
+    if (location.pathname === "/practice" || location.pathname.startsWith("/practice/")) return <ProductHeader surface="practice" />;
+    if (location.pathname === "/hire" || location.pathname.startsWith("/hire/")) return <ProductHeader surface="hiring" />;
+    return <Header />;
+};
 
 function App() {
     const [showSkip, setShowSkip] = useState(false);
@@ -89,15 +99,23 @@ function App() {
             >
                 Skip to main content
             </a>
-            <Header />
+            <ProductAwareHeader />
             <main id="main-content">
                 <ErrorBoundary>
                 <Suspense fallback={<PageLoader />}>
                 <Routes>
-                {/* Public routes */}
+                {/* Product-family and public routes */}
                 <Route path="/" element={<GuestOnlyRoute><LandingPage /></GuestOnlyRoute>} />
-                <Route path="/interview-practice" element={<PublicUseCasePage />} />
-                <Route path="/technical-hiring" element={<PublicUseCasePage />} />
+                <Route path="/practice" element={<ProductLandingPage surface="practice" />} />
+                <Route path="/hire" element={<ProductLandingPage surface="hiring" />} />
+                <Route path="/interview-practice" element={<CanonicalProductRedirect />} />
+                <Route path="/technical-hiring" element={<CanonicalProductRedirect />} />
+
+                {/* Product-specific authentication. Generic routes remain for old links. */}
+                <Route path="/practice/login" element={<GuestOnlyRoute><LoginPage /></GuestOnlyRoute>} />
+                <Route path="/practice/register" element={<GuestOnlyRoute><RegisterPage /></GuestOnlyRoute>} />
+                <Route path="/hire/login" element={<GuestOnlyRoute><LoginPage /></GuestOnlyRoute>} />
+                <Route path="/hire/register" element={<GuestOnlyRoute><RegisterPage /></GuestOnlyRoute>} />
                 <Route path="/login" element={<GuestOnlyRoute><LoginPage /></GuestOnlyRoute>} />
                 <Route path="/register" element={<GuestOnlyRoute><RegisterPage /></GuestOnlyRoute>} />
                 <Route path="/verify-email" element={<VerifyEmailPage />} />
@@ -111,30 +129,55 @@ function App() {
                 <Route path="/docs/*" element={<PublicDocsPage />} />
                 <Route path="/assessment/:shareToken" element={<CandidateAssessmentPage />} />
 
-                {/* Protected routes */}
-                <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-                <Route path="/experiences" element={<ProtectedRoute><ExperiencesPage /></ProtectedRoute>} />
-                <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-                <Route path="/progress" element={<ProtectedRoute><ProgressPage /></ProtectedRoute>} />
-                <Route path="/resume-reviews" element={<ProtectedRoute><ReviewHistoryPage /></ProtectedRoute>} />
-                <Route path="/resume-match" element={<ProtectedRoute><ResumeMatcherPage /></ProtectedRoute>} />
-                <Route path="/saved-experiences" element={<ProtectedRoute><SavedExperiencesPage /></ProtectedRoute>} />
-                <Route path="/resumes" element={<ProtectedRoute><ResumesPage /></ProtectedRoute>} />
-                <Route path="/pricing" element={<ProtectedRoute><PricingPage /></ProtectedRoute>} />
-                <Route path="/billing/success" element={<ProtectedRoute><BillingSuccessPage /></ProtectedRoute>} />
+                {/* CompanionAI Practice */}
+                <Route path="/practice/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+                <Route path="/practice/company-insights" element={<ProtectedRoute><ExperiencesPage /></ProtectedRoute>} />
+                <Route path="/practice/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+                <Route path="/practice/progress" element={<ProtectedRoute><ProgressPage /></ProtectedRoute>} />
+                <Route path="/practice/resume-reviews" element={<ProtectedRoute><ReviewHistoryPage /></ProtectedRoute>} />
+                <Route path="/practice/resume-match" element={<ProtectedRoute><ResumeMatcherPage /></ProtectedRoute>} />
+                <Route path="/practice/saved-experiences" element={<ProtectedRoute><SavedExperiencesPage /></ProtectedRoute>} />
+                <Route path="/practice/resumes" element={<ProtectedRoute><ResumesPage /></ProtectedRoute>} />
+                <Route path="/practice/pricing" element={<ProtectedRoute><PricingPage /></ProtectedRoute>} />
+                <Route path="/practice/billing/success" element={<ProtectedRoute><BillingSuccessPage /></ProtectedRoute>} />
+                <Route path="/practice/new" element={<ProtectedRoute><CreateInterviewPage /></ProtectedRoute>} />
+                <Route path="/practice/resume-review" element={<ProtectedRoute><ResumeReviewPage /></ProtectedRoute>} />
+                <Route path="/practice/interviews/:interviewId" element={<ProtectedRoute><InterviewPage /></ProtectedRoute>} />
+
+                {/* CompanionAI Hire */}
+                <Route path="/hire/assessments" element={<HiringRoute><AssessmentsPage /></HiringRoute>} />
+                <Route path="/hire/assessments/:assessmentId" element={<HiringRoute><AssessmentReportPage /></HiringRoute>} />
+                <Route path="/hire/assessments/:assessmentId/preview" element={<HiringRoute><AssessmentPreviewPage /></HiringRoute>} />
+                <Route path="/hire/team" element={<HiringRoute><HiringTeamPage /></HiringRoute>} />
+                <Route path="/hire/sso" element={<HiringRoute><SsoSettingsPage /></HiringRoute>} />
+
+                {/* Platform administration */}
                 <Route path="/admin/feedback" element={<ProtectedRoute><AdminRoute><AdminFeedbackPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/admin/audit" element={<ProtectedRoute><AdminRoute><AdminAuditPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/admin/calibration" element={<ProtectedRoute><AdminRoute><AdminCalibrationPage /></AdminRoute></ProtectedRoute>} />
-                <Route path="/assessments" element={<HiringRoute><AssessmentsPage /></HiringRoute>} />
-                <Route path="/assessments/:assessmentId" element={<HiringRoute><AssessmentReportPage /></HiringRoute>} />
-                <Route path="/assessments/:assessmentId/preview" element={<HiringRoute><AssessmentPreviewPage /></HiringRoute>} />
-                <Route path="/hiring/team" element={<HiringRoute><HiringTeamPage /></HiringRoute>} />
-                <Route path="/hiring/sso" element={<HiringRoute><SsoSettingsPage /></HiringRoute>} />
-                <Route path="/create-interview" element={<ProtectedRoute><CreateInterviewPage /></ProtectedRoute>} />
-                <Route path="/resume-review" element={<ProtectedRoute><ResumeReviewPage /></ProtectedRoute>} />
-                <Route path="/interviews/:interviewId" element={<ProtectedRoute><InterviewPage /></ProtectedRoute>} />
 
-                {/* For any invalid url return to the product home */}
+                {/* Legacy product URLs: preserve old bookmarks and internal links while canonicalizing the browser URL. */}
+                <Route path="/dashboard" element={<CanonicalProductRedirect />} />
+                <Route path="/experiences" element={<CanonicalProductRedirect />} />
+                <Route path="/profile" element={<CanonicalProductRedirect />} />
+                <Route path="/progress" element={<CanonicalProductRedirect />} />
+                <Route path="/resume-reviews" element={<CanonicalProductRedirect />} />
+                <Route path="/resume-match" element={<CanonicalProductRedirect />} />
+                <Route path="/saved-experiences" element={<CanonicalProductRedirect />} />
+                <Route path="/resumes" element={<CanonicalProductRedirect />} />
+                <Route path="/pricing" element={<CanonicalProductRedirect />} />
+                <Route path="/billing/success" element={<CanonicalProductRedirect />} />
+                <Route path="/create-interview" element={<CanonicalProductRedirect />} />
+                <Route path="/resume-review" element={<CanonicalProductRedirect />} />
+                <Route path="/interviews/:interviewId" element={<CanonicalProductRedirect />} />
+                <Route path="/assessments" element={<CanonicalProductRedirect />} />
+                <Route path="/assessments/:assessmentId" element={<CanonicalProductRedirect />} />
+                <Route path="/assessments/:assessmentId/preview" element={<CanonicalProductRedirect />} />
+                <Route path="/hiring/team" element={<CanonicalProductRedirect />} />
+                <Route path="/hiring/sso" element={<CanonicalProductRedirect />} />
+
+                <Route path="/practice/*" element={<Navigate to="/practice" replace />} />
+                <Route path="/hire/*" element={<Navigate to="/hire" replace />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
                 </Suspense>

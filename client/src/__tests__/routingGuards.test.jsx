@@ -13,8 +13,12 @@ const renderRoutes = (auth, initial = "/private") => render(
         <MemoryRouter initialEntries={[initial]}>
             <Routes>
                 <Route path="/login" element={<div>Login screen</div>} />
-                <Route path="/dashboard" element={<div>Dashboard screen</div>} />
+                <Route path="/practice/login" element={<div>Practice login</div>} />
+                <Route path="/hire/login" element={<div>Hire login</div>} />
+                <Route path="/practice/dashboard" element={<div>Dashboard screen</div>} />
                 <Route path="/private" element={<ProtectedRoute><div>Private screen</div></ProtectedRoute>} />
+                <Route path="/practice/private" element={<ProtectedRoute><div>Practice private</div></ProtectedRoute>} />
+                <Route path="/hire/private" element={<ProtectedRoute><div>Hire private</div></ProtectedRoute>} />
                 <Route path="/guest" element={<GuestOnlyRoute><div>Guest screen</div></GuestOnlyRoute>} />
                 <Route path="/admin" element={<ProtectedRoute><AdminRoute><div>Admin screen</div></AdminRoute></ProtectedRoute>} />
             </Routes>
@@ -23,10 +27,19 @@ const renderRoutes = (auth, initial = "/private") => render(
 );
 
 describe("route authorization guards", () => {
-    it("redirects a signed-out user to login", () => {
+    it("redirects a signed-out user to generic login outside a product surface", () => {
         renderRoutes({ user: null, loading: false });
         expect(screen.getByText("Login screen")).toBeTruthy();
         expect(screen.queryByText("Private screen")).toBeNull();
+    });
+
+    it("redirects practice and hiring URLs to their own login experiences", () => {
+        const practice = renderRoutes({ user: null, loading: false }, "/practice/private");
+        expect(screen.getByText("Practice login")).toBeTruthy();
+        practice.unmount();
+
+        renderRoutes({ user: null, loading: false }, "/hire/private");
+        expect(screen.getByText("Hire login")).toBeTruthy();
     });
 
     it("allows an authenticated user to access protected content", () => {

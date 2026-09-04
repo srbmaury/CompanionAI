@@ -1,0 +1,240 @@
+import { useContext, useEffect, useMemo, useState } from "react";
+import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
+import {
+    AddRounded,
+    DarkMode,
+    ExpandMoreRounded,
+    LightMode,
+    LogoutRounded,
+    Menu as MenuIcon,
+    NotificationsNoneRounded,
+    PersonOutlineRounded,
+    RateReviewOutlined,
+    SchoolOutlined,
+    SettingsOutlined,
+    SwapHorizRounded,
+    WorkOutlineRounded,
+} from "@mui/icons-material";
+import {
+    AppBar,
+    Avatar,
+    Badge,
+    Box,
+    Button,
+    Container,
+    Divider,
+    IconButton,
+    ListItemText,
+    Menu,
+    MenuItem,
+    Stack,
+    Toolbar,
+    Tooltip,
+    Typography,
+} from "@mui/material";
+import { AuthContext } from "../context/AuthContext";
+import { OrganizationContext } from "../context/OrganizationContext";
+import { useThemeMode } from "../context/ThemeContext";
+import { useNotifications } from "../context/NotificationContext";
+import ProductFeedbackDialog from "./ProductFeedbackDialog";
+import { hiringHomeForRole, hiringPermissionsFor } from "../utils/hiringPermissions";
+import { productHomePath, productLoginPath, productRegisterPath } from "../utils/productRoutes";
+import { setWorkspacePreference } from "../utils/workspacePreference";
+
+const CONFIG = {
+    practice: {
+        workspace: "practice",
+        label: "Practice",
+        icon: SchoolOutlined,
+        publicHome: "/practice",
+        appHome: "/practice/dashboard",
+        crossPath: "/hire",
+        crossLabel: "Open CompanionAI Hire",
+    },
+    hiring: {
+        workspace: "hiring",
+        label: "Hire",
+        icon: WorkOutlineRounded,
+        publicHome: "/hire",
+        appHome: "/hire/assessments",
+        crossPath: "/practice",
+        crossLabel: "Open CompanionAI Practice",
+    },
+};
+
+const navButtonSx = (active) => ({
+    px: 1.35,
+    color: active ? "primary.main" : "text.secondary",
+    bgcolor: active ? "action.selected" : "transparent",
+    "&:hover": { bgcolor: "action.hover", color: "text.primary" },
+});
+
+export default function ProductHeader({ surface = "practice" }) {
+    const config = CONFIG[surface] || CONFIG.practice;
+    const ProductIcon = config.icon;
+    const { user, loading, logout } = useContext(AuthContext);
+    const organizationContext = useContext(OrganizationContext);
+    const organizations = organizationContext?.organizations || [];
+    const activeOrganization = organizationContext?.activeOrganization || null;
+    const selectOrganization = organizationContext?.selectOrganization || (() => {});
+    const currentRole = organizationContext?.currentRole || null;
+    const permissions = hiringPermissionsFor(currentRole);
+    const { mode, toggle } = useThemeMode();
+    const { notifications, unreadCount, markNotificationRead, markAllRead } = useNotifications();
+    const location = useLocation();
+    const navigate = useNavigate();
+    const [mobileAnchor, setMobileAnchor] = useState(null);
+    const [profileAnchor, setProfileAnchor] = useState(null);
+    const [organizationAnchor, setOrganizationAnchor] = useState(null);
+    const [notificationAnchor, setNotificationAnchor] = useState(null);
+    const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+    useEffect(() => {
+        if (user?._id) setWorkspacePreference(config.workspace, user._id);
+        else setWorkspacePreference(config.workspace);
+    }, [config.workspace, user?._id]);
+
+    useEffect(() => {
+        setMobileAnchor(null);
+        setProfileAnchor(null);
+        setOrganizationAnchor(null);
+        setNotificationAnchor(null);
+    }, [location.pathname, location.search, location.hash]);
+
+    const isActive = (path) => location.pathname === path || location.pathname.startsWith(`${path}/`);
+    const hasHiringOrganization = Boolean(activeOrganization?._id);
+    const hiringHome = hasHiringOrganization ? hiringHomeForRole(currentRole) : "/hire/team";
+    const home = user ? (surface === "hiring" ? hiringHome : config.appHome) : config.publicHome;
+
+    const navigation = useMemo(() => {
+        if (!user) return [];
+        if (surface === "practice") {
+            return [
+                { label: "Overview", path: "/practice/dashboard" },
+                { label: "Resume review", path: "/practice/resume-review" },
+                { label: "Progress", path: "/practice/progress" },
+                { label: "Company insights", path: "/practice/company-insights" },
+            ];
+        }
+
+        const items = [];
+        if (!hasHiringOrganization) return [{ label: "Set up Hire", path: "/hire/team" }];
+        if (permissions.canViewOverview) items.push({ label: "Overview", path: "/hire/assessments" });
+        if (permissions.canViewCandidatePipeline) items.push({ label: "Candidates", path: "/hire/assessments", hash: "#candidate-pipeline" });
+        if (permissions.canViewAssessments) items.push({ label: "Assessments", path: "/hire/assessments", hash: "#assessment-list" });
+        if (permissions.canManageOrganization) items.push({ label: "Team & billing", path: "/hire/team" });
+        return items;
+    }, [hasHiringOrganization, permissions.canManageOrganization, permissions.canViewAssessments, permissions.canViewCandidatePipeline, permissions.canViewOverview, surface, user]);
+
+    const openNavItem = (item) => {
+        const destination = `${item.path}${item.hash || ""}`;
+        navigate(destination);
+        if (item.hash) window.requestAnimationFrame(() => document.querySelector(item.hash)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    };
+
+    const handleLogout = async () => {
+        await logout();
+        navigate(config.publicHome, { replace: true });
+    };
+
+    const openPrimaryAction = () => {
+        if (surface === "hiring") navigate("/hire/assessments?create=1", { state: { openCreate: Date.now() } });
+        else navigate("/practice/new");
+    };
+
+    const openOtherProduct = () => {
+        const nextWorkspace = surface === "hiring" ? "practice" : "hiring";
+        if (user?._id) setWorkspacePreference(nextWorkspace, user._id);
+        navigate(user ? productHomePath(nextWorkspace) : config.crossPath);
+    };
+
+    const selectHiringOrganization = (organization) => {
+        if (!organization?._id) return;
+        selectOrganization(organization._id);
+        setOrganizationAnchor(null);
+        navigate(hiringHomeForRole(organization.role));
+    };
+
+    const renderNavItem = (item, mobile = false) => {
+        const active = location.pathname === item.path && (!item.hash || location.hash === item.hash);
+        if (mobile) {
+            return <MenuItem key={`${item.label}-${item.hash || ""}`} onClick={() => openNavItem(item)} selected={active}>{item.label}</MenuItem>;
+        }
+        return <Button key={`${item.label}-${item.hash || ""}`} onClick={() => openNavItem(item)} sx={navButtonSx(active)}>{item.label}</Button>;
+    };
+
+    return (
+        <>
+            <AppBar position="sticky" color="transparent" elevation={0} sx={{ bgcolor: "background.paper", borderBottom: "1px solid", borderColor: "divider", color: "text.primary", backdropFilter: "blur(18px)", zIndex: 1200 }}>
+                <Container maxWidth="xl">
+                    <Toolbar disableGutters sx={{ minHeight: { xs: 64, md: 72 }, gap: 1.25 }}>
+                        <Stack direction="row" spacing={1.15} alignItems="center" minWidth={0} component={RouterLink} to={home} sx={{ textDecoration: "none", color: "inherit", flexShrink: 0 }}>
+                            <Box sx={{ width: 34, height: 34, borderRadius: 2.5, display: "grid", placeItems: "center", color: "white", background: surface === "hiring" ? "linear-gradient(135deg,#12685f,#36aa9d)" : "linear-gradient(135deg,#5b50d6,#8f85ff)", boxShadow: surface === "hiring" ? "0 8px 20px rgba(18,104,95,.24)" : "0 8px 20px rgba(91,80,214,.28)" }}><ProductIcon fontSize="small" /></Box>
+                            <Box sx={{ minWidth: 0 }}>
+                                <Typography fontWeight={900} letterSpacing="-.025em" lineHeight={1.05} sx={{ display: { xs: "none", sm: "block" } }}>CompanionAI</Typography>
+                                <Typography variant="caption" color="text.secondary" fontWeight={800} lineHeight={1} sx={{ display: { xs: "none", sm: "block" } }}>{config.label}</Typography>
+                            </Box>
+                        </Stack>
+
+                        {surface === "hiring" && user && hasHiringOrganization && organizations.length > 0 && (
+                            <>
+                                <Button color="inherit" size="small" endIcon={organizations.length > 1 ? <ExpandMoreRounded /> : undefined} onClick={(event) => organizations.length > 1 && setOrganizationAnchor(event.currentTarget)} sx={{ display: { xs: "none", lg: "inline-flex" }, maxWidth: 210, textTransform: "none", ml: .5 }}>
+                                    <Box component="span" sx={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeOrganization?.name}</Box>
+                                </Button>
+                                <Menu anchorEl={organizationAnchor} open={Boolean(organizationAnchor?.isConnected)} onClose={() => setOrganizationAnchor(null)}>
+                                    {organizations.map((organization) => <MenuItem key={organization._id} selected={organization._id === activeOrganization?._id} onClick={() => selectHiringOrganization(organization)}><ListItemText primary={organization.name} secondary={organization.role?.replaceAll("_", " ")} /></MenuItem>)}
+                                </Menu>
+                            </>
+                        )}
+
+                        <Stack direction="row" spacing={.35} alignItems="center" sx={{ ml: "auto", display: { xs: "none", md: "flex" } }}>
+                            {navigation.map((item) => renderNavItem(item))}
+                            {user && (surface === "practice" || permissions.canManageAssessments) && <Button variant="contained" startIcon={<AddRounded />} onClick={openPrimaryAction} sx={{ ml: 1.1 }}>{surface === "hiring" ? "New assessment" : "New practice"}</Button>}
+                            {!user && !loading && <>
+                                <Button component={RouterLink} to={config.crossPath} color="inherit">{surface === "hiring" ? "For candidates" : "For hiring teams"}</Button>
+                                <Button component={RouterLink} to={productLoginPath(config.workspace)} color="inherit">Sign in</Button>
+                                <Button component={RouterLink} to={productRegisterPath(config.workspace)} variant="contained">{surface === "hiring" ? "Start hiring" : "Start practicing"}</Button>
+                            </>}
+                        </Stack>
+
+                        <Stack direction="row" spacing={.25} alignItems="center" sx={{ ml: { xs: "auto", md: 1 } }}>
+                            <Tooltip title={mode === "dark" ? "Use light theme" : "Use dark theme"}><IconButton onClick={toggle} aria-label="Toggle theme">{mode === "dark" ? <LightMode /> : <DarkMode />}</IconButton></Tooltip>
+                            {user && <>
+                                <Tooltip title="Notifications"><IconButton onClick={(event) => setNotificationAnchor(event.currentTarget)} aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}><Badge color="error" badgeContent={unreadCount} max={9}><NotificationsNoneRounded /></Badge></IconButton></Tooltip>
+                                <Menu anchorEl={notificationAnchor} open={Boolean(notificationAnchor?.isConnected)} onClose={() => setNotificationAnchor(null)} PaperProps={{ sx: { width: 390, maxWidth: "calc(100vw - 24px)", maxHeight: 460 } }}>
+                                    <Stack direction="row" alignItems="center" justifyContent="space-between" px={2} py={1.25}><Box><Typography fontWeight={850}>Notifications</Typography><Typography variant="caption" color="text.secondary">{unreadCount ? `${unreadCount} unread` : "You're all caught up"}</Typography></Box>{unreadCount > 0 && <Button size="small" onClick={markAllRead}>Mark read</Button>}</Stack><Divider />
+                                    {notifications.length === 0 ? <Box px={2} py={3}><Typography variant="body2" color="text.secondary">No notifications yet.</Typography></Box> : notifications.slice(0, 8).map((notification) => <MenuItem key={notification.id || notification._id} onClick={() => { markNotificationRead(notification.id || notification._id); if (notification.href) navigate(notification.href); }}><ListItemText primary={notification.title || notification.message || "Notification"} secondary={notification.body || null} primaryTypographyProps={{ fontWeight: notification.read ? 500 : 800, noWrap: true }} secondaryTypographyProps={{ noWrap: true }} /></MenuItem>)}
+                                </Menu>
+                                <Tooltip title="Account"><IconButton onClick={(event) => setProfileAnchor(event.currentTarget)} aria-label="Account menu"><Avatar sx={{ width: 34, height: 34 }}>{user?.name?.trim()?.[0]?.toUpperCase() || "U"}</Avatar></IconButton></Tooltip>
+                                <Menu anchorEl={profileAnchor} open={Boolean(profileAnchor?.isConnected)} onClose={() => setProfileAnchor(null)} PaperProps={{ sx: { minWidth: 250 } }}>
+                                    <Box px={2} py={1.25}><Typography fontWeight={850}>{user?.name || "Account"}</Typography><Typography variant="caption" color="text.secondary">{user?.email}</Typography></Box><Divider />
+                                    {surface === "practice" && <MenuItem component={RouterLink} to="/practice/profile"><PersonOutlineRounded sx={{ mr: 1.25 }} />Profile</MenuItem>}
+                                    {surface === "hiring" && permissions.canManageOrganization && <MenuItem component={RouterLink} to="/hire/team"><SettingsOutlined sx={{ mr: 1.25 }} />Team & billing</MenuItem>}
+                                    <MenuItem onClick={openOtherProduct}><SwapHorizRounded sx={{ mr: 1.25 }} />{config.crossLabel}</MenuItem>
+                                    <MenuItem onClick={() => { setProfileAnchor(null); setFeedbackOpen(true); }}><RateReviewOutlined sx={{ mr: 1.25 }} />Send feedback</MenuItem>
+                                    {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/feedback"><SettingsOutlined sx={{ mr: 1.25 }} />Admin</MenuItem>}
+                                    <Divider />
+                                    <MenuItem onClick={handleLogout}><LogoutRounded sx={{ mr: 1.25 }} />Sign out</MenuItem>
+                                </Menu>
+                            </>}
+                            <IconButton onClick={(event) => setMobileAnchor(event.currentTarget)} aria-label="Open navigation" sx={{ display: { xs: "inline-flex", md: "none" } }}><MenuIcon /></IconButton>
+                            <Menu anchorEl={mobileAnchor} open={Boolean(mobileAnchor?.isConnected)} onClose={() => setMobileAnchor(null)} PaperProps={{ sx: { minWidth: 250 } }}>
+                                {user ? <>
+                                    {navigation.map((item) => renderNavItem(item, true))}
+                                    {(surface === "practice" || permissions.canManageAssessments) && <MenuItem onClick={openPrimaryAction}><AddRounded sx={{ mr: 1.25 }} />{surface === "hiring" ? "New assessment" : "New practice"}</MenuItem>}
+                                    <Divider />
+                                    <MenuItem onClick={openOtherProduct}><SwapHorizRounded sx={{ mr: 1.25 }} />{config.crossLabel}</MenuItem>
+                                </> : <>
+                                    <MenuItem component={RouterLink} to={config.crossPath}>{surface === "hiring" ? "For candidates" : "For hiring teams"}</MenuItem>
+                                    <MenuItem component={RouterLink} to={productLoginPath(config.workspace)}>Sign in</MenuItem>
+                                    <MenuItem component={RouterLink} to={productRegisterPath(config.workspace)}>{surface === "hiring" ? "Start hiring" : "Start practicing"}</MenuItem>
+                                </>}
+                            </Menu>
+                        </Stack>
+                    </Toolbar>
+                </Container>
+            </AppBar>
+            <ProductFeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+        </>
+    );
+}
