@@ -1,34 +1,83 @@
-import { defineConfig } from "vite";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
-export default defineConfig({
-    test: {
-        environment: "jsdom",
-        globals: true,
-        exclude: ["e2e/**", "node_modules/**"],
+const INDEXABLE_ROUTES = [
+    "/",
+    "/docs",
+    "/docs/technical-hiring/structured-technical-assessments",
+    "/docs/technical-hiring/system-design-interviews",
+    "/docs/technical-hiring/interview-scorecards",
+    "/docs/candidates/ai-interview-practice",
+    "/docs/security/human-review-and-integrity-signals",
+    "/privacy",
+    "/terms",
+];
+
+const seoFilesPlugin = (origin) => ({
+    name: "companionai-seo-files",
+    async closeBundle() {
+        if (!origin) return;
+        const outDir = path.resolve(process.cwd(), "dist");
+        await mkdir(outDir, { recursive: true });
+        const urls = INDEXABLE_ROUTES.map((route) => `  <url><loc>${origin}${route}</loc></url>`).join("\n");
+        const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+        const robots = [
+            "User-agent: *",
+            "Allow: /",
+            "Disallow: /dashboard",
+            "Disallow: /profile",
+            "Disallow: /assessments",
+            "Disallow: /hiring",
+            "Disallow: /admin",
+            "Disallow: /interviews",
+            "Disallow: /resume-review",
+            "Disallow: /resume-reviews",
+            "Disallow: /resumes",
+            `Sitemap: ${origin}/sitemap.xml`,
+            "",
+        ].join("\n");
+        await Promise.all([
+            writeFile(path.join(outDir, "sitemap.xml"), sitemap),
+            writeFile(path.join(outDir, "robots.txt"), robots),
+        ]);
     },
-    plugins: [react()],
-    build: {
-        rollupOptions: {
-            output: {
-                manualChunks(id) {
-                    if (id.includes("monaco-editor") || id.includes("react-monaco-editor")) return "monaco";
-                    if (id.includes("@mui") || id.includes("@emotion")) return "mui";
-                    if (/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(id)) return "react";
+});
+
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(mode, process.cwd(), "");
+    const publicOrigin = (env.VITE_PUBLIC_ORIGIN || "").trim().replace(/\/+$/, "");
+
+    return {
+        test: {
+            environment: "jsdom",
+            globals: true,
+            exclude: ["e2e/**", "node_modules/**"],
+        },
+        plugins: [react(), seoFilesPlugin(publicOrigin)],
+        build: {
+            rollupOptions: {
+                output: {
+                    manualChunks(id) {
+                        if (id.includes("monaco-editor") || id.includes("react-monaco-editor")) return "monaco";
+                        if (id.includes("@mui") || id.includes("@emotion")) return "mui";
+                        if (/node_modules\/(react|react-dom|react-router|react-router-dom|scheduler)\//.test(id)) return "react";
+                    },
                 },
             },
         },
-    },
-    server: {
-        headers: {
-            "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
-        },
-        proxy: {
-            "/api": {
-                target: "http://localhost:5000",
-                changeOrigin: true,
-                secure: false,
+        server: {
+            headers: {
+                "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+            },
+            proxy: {
+                "/api": {
+                    target: "http://localhost:5000",
+                    changeOrigin: true,
+                    secure: false,
+                },
             },
         },
-    },
+    };
 });
