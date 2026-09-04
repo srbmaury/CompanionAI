@@ -1,4 +1,37 @@
 import mongoose from "mongoose";
+import productionMetrics from "../metrics/production.js";
+
+let poolMetricsBound = false;
+
+const bindPoolMetrics = (mongoClient) => {
+    if (!mongoClient || poolMetricsBound || typeof mongoClient.on !== "function") return;
+    poolMetricsBound = true;
+    productionMetrics.mongoPoolConnections.labels("checked_out").set(0);
+    productionMetrics.mongoPoolWaitQueue.set(0);
+
+    mongoClient.on("connectionCheckOutStarted", () => {
+        productionMetrics.mongoPoolWaitQueue.inc();
+    });
+    mongoClient.on("connectionCheckedOut", () => {
+        productionMetrics.mongoPoolWaitQueue.dec();
+        productionMetrics.mongoPoolConnections.labels("checked_out").inc();
+    });
+    mongoClient.on("connectionCheckOutFailed", () => {
+        productionMetrics.mongoPoolWaitQueue.dec();
+        productionMetrics.mongoPoolCheckoutFailuresTotal.inc();
+    });
+    mongoClient.on("connectionCheckedIn", () => {
+        productionMetrics.mongoPoolConnections.labels("checked_out").dec();
+    });
+    mongoClient.on("connectionPoolCleared", () => {
+        productionMetrics.mongoPoolWaitQueue.set(0);
+        productionMetrics.mongoPoolConnections.labels("checked_out").set(0);
+    });
+    mongoClient.on("topologyClosed", () => {
+        productionMetrics.mongoPoolWaitQueue.set(0);
+        productionMetrics.mongoPoolConnections.labels("checked_out").set(0);
+    });
+};
 
 const connectDB = async () => {
     try {
@@ -9,6 +42,7 @@ const connectDB = async () => {
             sslValidate: process.env.MONGO_TLS_VALIDATE === "false" ? false : undefined,
         });
         console.log(`✅ MongoDB connected: ${conn.connection.host}`);
+        bindPoolMetrics(mongoose.connection.getClient?.());
 
         // Verify that transactions are supported (requires replica set or sharded cluster)
         await verifyTransactionsSupport();
