@@ -27,6 +27,25 @@ const ssoSchema = new mongoose.Schema(
     { _id: false }
 );
 
+const hiringGrantSchema = new mongoose.Schema(
+    {
+        type: {
+            type: String,
+            enum: ["none", "design_partner", "paid_pilot"],
+            default: "none",
+        },
+        candidateInterviews: { type: Number, min: 0, default: 0 },
+        startsAt: { type: Date, default: null },
+        expiresAt: { type: Date, default: null },
+        grantId: { type: String, trim: true, default: "", maxlength: 200 },
+        grantedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+        source: { type: String, enum: ["admin", "stripe", "none"], default: "none" },
+        note: { type: String, trim: true, default: "", maxlength: 500 },
+        stripeCheckoutSessionId: { type: String, trim: true, default: "", maxlength: 200 },
+    },
+    { _id: false }
+);
+
 const organizationSchema = new mongoose.Schema(
     {
         name: {
@@ -58,6 +77,7 @@ const organizationSchema = new mongoose.Schema(
             type: Boolean,
             default: false,
         },
+        hiringGrant: { type: hiringGrantSchema, default: () => ({}) },
         hiringBillingProvider: {
             type: String,
             enum: ["none", "stripe"],
@@ -85,6 +105,8 @@ const organizationSchema = new mongoose.Schema(
 
 organizationSchema.index({ createdBy: 1, createdAt: -1 });
 organizationSchema.index({ hiringBillingCustomerId: 1 }, { sparse: true });
+organizationSchema.index({ "hiringGrant.grantId": 1 }, { sparse: true });
+organizationSchema.index({ "hiringGrant.stripeCheckoutSessionId": 1 }, { sparse: true });
 organizationSchema.index({ "sso.domains": 1, "sso.enabled": 1 });
 
 export default mongoose.model("Organization", organizationSchema);

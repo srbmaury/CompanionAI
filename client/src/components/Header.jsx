@@ -76,7 +76,7 @@ export default function Header() {
             <AppBar position="sticky" color="transparent" elevation={0} sx={{ bgcolor: "background.paper", borderBottom: "1px solid", borderColor: "divider", color: "text.primary", backdropFilter: "blur(18px)", zIndex: 1200 }}>
                 <Container maxWidth="xl">
                     <Toolbar disableGutters sx={{ minHeight: { xs: 64, md: 72 }, gap: 1 }}>
-                        <Brand to={user && isAdmin ? "/admin/feedback" : "/"} />
+                        <Brand to={user && isAdmin ? "/admin" : "/"} />
 
                         {isCandidateAssessment ? (
                             <Stack direction="row" spacing={.5} alignItems="center" sx={{ ml: "auto" }}>
@@ -96,6 +96,7 @@ export default function Header() {
                                     <Button component={RouterLink} to="/practice" color="inherit">Practice</Button>
                                     <Button component={RouterLink} to="/hire" color="inherit">Hire</Button>
                                     {isAdmin && <>
+                                        <Button component={RouterLink} to="/admin/commercial" color="inherit">Commercial</Button>
                                         <Button component={RouterLink} to="/admin/feedback" color="inherit">Feedback</Button>
                                         <Button component={RouterLink} to="/admin/audit" color="inherit">Audit</Button>
                                         <Button component={RouterLink} to="/admin/calibration" color="inherit">AI calibration</Button>
@@ -137,6 +138,7 @@ export default function Header() {
                                         <Menu anchorEl={profileAnchor} open={Boolean(profileAnchor?.isConnected)} onClose={() => setProfileAnchor(null)} PaperProps={{ sx: { minWidth: 250 } }}>
                                             <Box px={2} py={1.25}><Typography fontWeight={850}>{user?.name || "Account"}</Typography><Typography variant="caption" color="text.secondary">{user?.email}</Typography></Box>
                                             <Divider />
+                                            {isAdmin && <MenuItem component={RouterLink} to="/admin"><SettingsOutlined sx={{ mr: 1.25 }} />Admin console</MenuItem>}
                                             <MenuItem component={RouterLink} to="/practice/profile"><SettingsOutlined sx={{ mr: 1.25 }} />Profile & settings</MenuItem>
                                             <MenuItem onClick={() => { setProfileAnchor(null); setFeedbackOpen(true); }}><RateReviewOutlined sx={{ mr: 1.25 }} />Send feedback</MenuItem>
                                             <Divider />
@@ -150,6 +152,7 @@ export default function Header() {
                                         <MenuItem component={RouterLink} to="/hire" onClick={closeMobile}>Hire</MenuItem>
                                         {isAdmin && <>
                                             <Divider />
+                                            <MenuItem component={RouterLink} to="/admin/commercial" onClick={closeMobile}>Commercial</MenuItem>
                                             <MenuItem component={RouterLink} to="/admin/feedback" onClick={closeMobile}>Feedback</MenuItem>
                                             <MenuItem component={RouterLink} to="/admin/audit" onClick={closeMobile}>Audit</MenuItem>
                                             <MenuItem component={RouterLink} to="/admin/calibration" onClick={closeMobile}>AI calibration</MenuItem>

@@ -3,6 +3,7 @@ import User from "../models/User.js";
 import Organization from "../models/Organization.js";
 import { getStripe } from "../config/stripe.js";
 import { getConfiguredPriceId } from "../services/billingCatalog.js";
+import { activeHiringSubscriptionPlan } from "../services/hiringEntitlements.js";
 import metrics from "../metrics/index.js";
 
 const activeStatuses = new Set(["active", "trialing"]);
@@ -27,6 +28,18 @@ const hiringPlanFromSubscription = (subscription) => {
 const currentPeriodEnd = (subscription) => subscription.current_period_end
     ? new Date(subscription.current_period_end * 1000)
     : null;
+
+const clearedHiringGrant = () => ({
+    type: "none",
+    candidateInterviews: 0,
+    startsAt: null,
+    expiresAt: null,
+    grantId: "",
+    grantedBy: null,
+    source: "none",
+    note: "",
+    stripeCheckoutSessionId: "",
+});
 
 const syncPracticeSubscription = async (subscription) => {
     const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id;
@@ -58,7 +71,10 @@ const syncHiringSubscription = async (subscription) => {
         hiringPlan: hiringPlanFromSubscription(subscription),
         hiringCurrentPeriodEnd: currentPeriodEnd(subscription),
     };
-    if (activeStatuses.has(subscription.status)) update.hiringTrialEligible = false;
+    if (activeStatuses.has(subscription.status)) {
+        update.hiringTrialEligible = false;
+        update.hiringGrant = clearedHiringGrant();
+    }
     await Organization.updateOne(filter, { $set: update });
 };
 
@@ -75,6 +91,48 @@ const syncInvoiceSubscription = async (invoice) => {
     const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription.id;
     if (!subscriptionId) return;
     await syncSubscription(await getStripe().subscriptions.retrieve(subscriptionId));
+};
+
+const boundedInt = (value, fallback, min, max) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(min, Math.min(max, Math.trunc(parsed))) : fallback;
+};
+
+const activatePaidPilot = async (session) => {
+    const organizationId = session.metadata?.organizationId || session.client_reference_id;
+    if (!organizationId) throw new Error("Paid pilot checkout is missing organizationId metadata");
+    const organization = await Organization.findById(organizationId).select("+hiringBillingCustomerId");
+    if (!organization) throw new Error("Paid pilot organization not found");
+    if (activeHiringSubscriptionPlan(organization)) return;
+    if (organization.hiringGrant?.stripeCheckoutSessionId === session.id) return;
+
+    const candidateInterviews = boundedInt(session.metadata?.candidateInterviews, 15, 1, 1000);
+    const validDays = boundedInt(session.metadata?.validDays, 30, 1, 365);
+    const startsAt = new Date();
+    const expiresAt = new Date(startsAt.getTime() + validDays * 24 * 60 * 60 * 1000);
+    const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
+
+    await Organization.updateOne(
+        { _id: organizationId },
+        {
+            $set: {
+                hiringTrialEligible: false,
+                hiringBillingProvider: "stripe",
+                ...(customerId ? { hiringBillingCustomerId: customerId } : {}),
+                hiringGrant: {
+                    type: "paid_pilot",
+                    candidateInterviews,
+                    startsAt,
+                    expiresAt,
+                    grantId: `pilot:${session.id}`,
+                    grantedBy: null,
+                    source: "stripe",
+                    note: `Paid launch pilot (${candidateInterviews} interviews / ${validDays} days)`,
+                    stripeCheckoutSessionId: session.id,
+                },
+            },
+        },
+    );
 };
 
 export const stripeWebhook = async (req, res) => {
@@ -105,7 +163,10 @@ export const stripeWebhook = async (req, res) => {
         if (event.type === "checkout.session.completed") {
             const session = event.data.object;
             const product = session.metadata?.billingProduct;
-            if (product === "practice") {
+            const purchaseType = session.metadata?.purchaseType;
+            if (product === "hiring" && purchaseType === "paid_pilot") {
+                if (session.payment_status === "paid") await activatePaidPilot(session);
+            } else if (product === "practice") {
                 const userId = session.client_reference_id || session.metadata?.userId;
                 await User.updateOne({ _id: userId }, { $set: {
                     practiceBillingProvider: "stripe",
@@ -125,6 +186,11 @@ export const stripeWebhook = async (req, res) => {
             if (session.subscription) {
                 const subscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription.id;
                 await syncSubscription(await getStripe().subscriptions.retrieve(subscriptionId));
+            }
+        } else if (event.type === "checkout.session.async_payment_succeeded") {
+            const session = event.data.object;
+            if (session.metadata?.billingProduct === "hiring" && session.metadata?.purchaseType === "paid_pilot") {
+                await activatePaidPilot(session);
             }
         } else if (["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"].includes(event.type)) {
             await syncSubscription(event.data.object);
