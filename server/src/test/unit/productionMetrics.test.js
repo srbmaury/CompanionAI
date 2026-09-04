@@ -14,7 +14,6 @@ describe("production metrics", () => {
 
     it("registers the launch-critical queue, dependency, evaluation, and AI metrics", async () => {
         const names = new Set((await client.register.getMetricsAsJSON()).map((metric) => metric.name));
-        expect(names).toEqual(expect.objectContaining ? names : names);
         for (const name of [
             "queue_wait_duration_seconds",
             "queue_oldest_waiting_job_age_seconds",
@@ -29,7 +28,7 @@ describe("production metrics", () => {
             "redis_connection_ready",
             "ai_tokens_by_purpose_total",
         ]) {
-            expect(names.has(name)).toBe(true);
+            expect(names.has(name), `${name} should be registered`).toBe(true);
         }
     });
 
