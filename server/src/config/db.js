@@ -1,4 +1,46 @@
 import mongoose from "mongoose";
+import productionMetrics from "../metrics/production.js";
+
+let poolMetricsBound = false;
+
+const bindPoolMetrics = (mongoClient) => {
+    if (!mongoClient || poolMetricsBound || typeof mongoClient.on !== "function") return;
+    poolMetricsBound = true;
+    let checkedOut = 0;
+    let waiting = 0;
+
+    const syncPoolGauges = () => {
+        productionMetrics.mongoPoolConnections.labels("checked_out").set(Math.max(0, checkedOut));
+        productionMetrics.mongoPoolWaitQueue.set(Math.max(0, waiting));
+    };
+    syncPoolGauges();
+
+    mongoClient.on("connectionCheckOutStarted", () => {
+        waiting += 1;
+        syncPoolGauges();
+    });
+    mongoClient.on("connectionCheckedOut", () => {
+        waiting = Math.max(0, waiting - 1);
+        checkedOut += 1;
+        syncPoolGauges();
+    });
+    mongoClient.on("connectionCheckOutFailed", () => {
+        waiting = Math.max(0, waiting - 1);
+        productionMetrics.mongoPoolCheckoutFailuresTotal.inc();
+        syncPoolGauges();
+    });
+    mongoClient.on("connectionCheckedIn", () => {
+        checkedOut = Math.max(0, checkedOut - 1);
+        syncPoolGauges();
+    });
+    const resetPoolGauges = () => {
+        waiting = 0;
+        checkedOut = 0;
+        syncPoolGauges();
+    };
+    mongoClient.on("connectionPoolCleared", resetPoolGauges);
+    mongoClient.on("topologyClosed", resetPoolGauges);
+};
 
 const connectDB = async () => {
     try {
@@ -9,6 +51,7 @@ const connectDB = async () => {
             sslValidate: process.env.MONGO_TLS_VALIDATE === "false" ? false : undefined,
         });
         console.log(`✅ MongoDB connected: ${conn.connection.host}`);
+        bindPoolMetrics(mongoose.connection.getClient?.());
 
         // Verify that transactions are supported (requires replica set or sharded cluster)
         await verifyTransactionsSupport();
