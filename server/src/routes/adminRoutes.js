@@ -10,11 +10,16 @@ import Interview from "../models/Interview.js";
 import ProductEvent from "../models/ProductEvent.js";
 import ReminderDelivery from "../models/ReminderDelivery.js";
 import RefreshToken from "../models/RefreshToken.js";
+import Organization from "../models/Organization.js";
+import OrganizationUsageCounter from "../models/OrganizationUsageCounter.js";
 import audit from "../middleware/audit.js";
 import { ObjectIdString } from "../validation/commonSchemas.js";
 import { getCalibrationSnapshot } from "../services/calibrationAnalytics.js";
+import { activeHiringSubscriptionPlan, hiringLimitsFor, hiringUsagePeriod } from "../services/hiringEntitlements.js";
 
 const router = express.Router();
+
+const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const QuerySchema = z.object({
     page: z.coerce.number().int().min(1).optional(),
@@ -58,6 +63,189 @@ router.get(
 );
 
 router.get(
+    "/users",
+    protect,
+    requireRole("admin"),
+    validate(z.object({
+        q: z.string().trim().max(200).optional(),
+        role: z.enum(["user", "admin"]).optional(),
+        limit: z.coerce.number().int().min(1).max(200).optional(),
+    }), "query"),
+    async (req, res, next) => {
+        try {
+            const filter = {};
+            if (req.query.role) filter.role = req.query.role;
+            if (req.query.q) {
+                const pattern = new RegExp(escapeRegex(req.query.q), "i");
+                filter.$or = [{ name: pattern }, { email: pattern }];
+            }
+            const users = await User.find(filter)
+                .select("_id name email role provider isVerified createdAt")
+                .sort({ createdAt: -1 })
+                .limit(req.query.limit || 100)
+                .lean();
+            return res.json({ users });
+        } catch (error) { return next(error); }
+    },
+);
+
+router.patch(
+    "/users/:userId/role",
+    protect,
+    requireRole("admin"),
+    validate(z.object({ userId: ObjectIdString }), "params"),
+    validate(z.object({ role: z.enum(["user", "admin"]) })),
+    audit("admin.user_role_update", {
+        entityType: "User",
+        getEntityId: (req) => req.params.userId,
+        pickBody: (body) => ({ role: body.role }),
+    }),
+    async (req, res, next) => {
+        try {
+            const target = await User.findById(req.params.userId).select("_id name email role");
+            if (!target) return res.status(404).json({ message: "User not found" });
+            if (req.body.role === "user" && String(target._id) === String(req.user._id)) {
+                return res.status(400).json({ message: "You cannot demote your own active admin account" });
+            }
+            if (target.role === "admin" && req.body.role === "user") {
+                const adminCount = await User.countDocuments({ role: "admin" });
+                if (adminCount <= 1) return res.status(409).json({ message: "At least one platform admin must remain" });
+            }
+            target.role = req.body.role;
+            await target.save();
+            return res.json({ user: { _id: target._id, name: target.name, email: target.email, role: target.role } });
+        } catch (error) { return next(error); }
+    },
+);
+
+router.get(
+    "/organizations",
+    protect,
+    requireRole("admin"),
+    validate(z.object({ q: z.string().trim().max(200).optional(), limit: z.coerce.number().int().min(1).max(200).optional() }), "query"),
+    async (req, res, next) => {
+        try {
+            const filter = req.query.q ? { name: { $regex: escapeRegex(req.query.q), $options: "i" } } : {};
+            const organizations = await Organization.find(filter)
+                .sort({ createdAt: -1 })
+                .limit(req.query.limit || 100)
+                .populate("createdBy", "name email")
+                .lean();
+            const items = await Promise.all(organizations.map(async (organization) => {
+                const limits = hiringLimitsFor(organization);
+                const period = hiringUsagePeriod(organization);
+                const counter = await OrganizationUsageCounter.findOne({
+                    organization: organization._id,
+                    metric: "candidateInterviews",
+                    period: period.key,
+                }).lean();
+                return {
+                    _id: organization._id,
+                    name: organization.name,
+                    createdBy: organization.createdBy,
+                    createdAt: organization.createdAt,
+                    subscriptionStatus: organization.hiringSubscriptionStatus,
+                    subscriptionPlan: activeHiringSubscriptionPlan(organization),
+                    plan: limits.plan,
+                    accessType: limits.accessType,
+                    limit: limits.candidateInterviews,
+                    used: counter?.used || 0,
+                    remaining: Math.max(limits.candidateInterviews - (counter?.used || 0), 0),
+                    period: period.key,
+                    periodType: period.cadence,
+                    grant: limits.accessType === "grant" ? {
+                        type: organization.hiringGrant?.type,
+                        candidateInterviews: organization.hiringGrant?.candidateInterviews,
+                        startsAt: organization.hiringGrant?.startsAt,
+                        expiresAt: organization.hiringGrant?.expiresAt,
+                        grantId: organization.hiringGrant?.grantId,
+                        source: organization.hiringGrant?.source,
+                        note: organization.hiringGrant?.note,
+                    } : null,
+                };
+            }));
+            return res.json({ organizations: items });
+        } catch (error) { return next(error); }
+    },
+);
+
+router.post(
+    "/organizations/:organizationId/hiring-grant",
+    protect,
+    requireRole("admin"),
+    validate(z.object({ organizationId: ObjectIdString }), "params"),
+    validate(z.object({
+        type: z.enum(["design_partner", "paid_pilot"]),
+        candidateInterviews: z.coerce.number().int().min(1).max(1000),
+        validDays: z.coerce.number().int().min(1).max(365).default(30),
+        note: z.string().trim().max(500).optional().default(""),
+    })),
+    audit("admin.hiring_grant_create", {
+        entityType: "Organization",
+        getEntityId: (req) => req.params.organizationId,
+        pickBody: (body) => ({ type: body.type, candidateInterviews: body.candidateInterviews, validDays: body.validDays }),
+    }),
+    async (req, res, next) => {
+        try {
+            const organization = await Organization.findById(req.params.organizationId);
+            if (!organization) return res.status(404).json({ message: "Organization not found" });
+            if (activeHiringSubscriptionPlan(organization)) {
+                return res.status(409).json({ message: "Active paid subscriptions already define this organization's Hiring capacity" });
+            }
+            const startsAt = new Date();
+            const expiresAt = new Date(startsAt.getTime() + req.body.validDays * 24 * 60 * 60 * 1000);
+            organization.hiringTrialEligible = false;
+            organization.hiringGrant = {
+                type: req.body.type,
+                candidateInterviews: req.body.candidateInterviews,
+                startsAt,
+                expiresAt,
+                grantId: `admin:${organization._id}:${Date.now()}`,
+                grantedBy: req.user._id,
+                source: "admin",
+                note: req.body.note,
+                stripeCheckoutSessionId: "",
+            };
+            await organization.save();
+            return res.status(201).json({
+                grant: organization.hiringGrant,
+                message: `${req.body.candidateInterviews} candidate interviews granted for ${req.body.validDays} days`,
+            });
+        } catch (error) { return next(error); }
+    },
+);
+
+router.delete(
+    "/organizations/:organizationId/hiring-grant",
+    protect,
+    requireRole("admin"),
+    validate(z.object({ organizationId: ObjectIdString }), "params"),
+    audit("admin.hiring_grant_revoke", {
+        entityType: "Organization",
+        getEntityId: (req) => req.params.organizationId,
+    }),
+    async (req, res, next) => {
+        try {
+            const organization = await Organization.findById(req.params.organizationId);
+            if (!organization) return res.status(404).json({ message: "Organization not found" });
+            organization.hiringGrant = {
+                type: "none",
+                candidateInterviews: 0,
+                startsAt: null,
+                expiresAt: null,
+                grantId: "",
+                grantedBy: null,
+                source: "none",
+                note: "",
+                stripeCheckoutSessionId: "",
+            };
+            await organization.save();
+            return res.json({ message: "Hiring grant revoked" });
+        } catch (error) { return next(error); }
+    },
+);
+
+router.get(
     "/audit",
     protect,
     requireRole("admin"),
@@ -71,7 +259,7 @@ router.get(
         if (outcome) filter.outcome = outcome;
         if (from || to) filter.createdAt = { ...(from ? { $gte: from } : {}), ...(to ? { $lte: to } : {}) };
         if (q) {
-            const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const escaped = escapeRegex(q);
             filter.$or = ["action", "entityType", "entityId", "requestId", "path"].map((field) => ({ [field]: { $regex: escaped, $options: "i" } }));
         }
         const [total, items] = await Promise.all([
@@ -99,7 +287,7 @@ router.get(
             const filter = {};
             if (status) filter.status = status;
             if (category) filter.category = category;
-            if (q) filter.message = { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" };
+            if (q) filter.message = { $regex: escapeRegex(q), $options: "i" };
             const [total, items] = await Promise.all([
                 ProductFeedback.countDocuments(filter),
                 ProductFeedback.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate("user", "name email").lean(),
