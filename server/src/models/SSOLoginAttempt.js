@@ -9,7 +9,7 @@ const ssoLoginAttemptSchema = new mongoose.Schema(
         nonce: { type: String, required: true, select: false },
         exchangeCodeHash: { type: String, unique: true, sparse: true, select: false },
         user: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-        status: { type: String, enum: ["started", "authenticated", "exchanged"], default: "started", index: true },
+        status: { type: String, enum: ["started", "processing", "authenticated", "exchanged"], default: "started", index: true },
         expiresAt: { type: Date, required: true, index: { expires: 0 } },
     },
     { timestamps: true }
