@@ -12,11 +12,11 @@ const getArg = (name) => {
 };
 
 const run = async () => {
-    const email = getArg("email") || process.env.ADMIN_EMAIL;
+    const email = (getArg("email") || process.env.ADMIN_EMAIL || "").trim().toLowerCase();
     const name = getArg("name") || process.env.ADMIN_NAME || "Admin";
     const password = getArg("password") || process.env.ADMIN_PASSWORD;
-    if (!email || !password) {
-        console.error("Missing required email/password. Provide --email and --password or set ADMIN_EMAIL/ADMIN_PASSWORD env vars.");
+    if (!email) {
+        console.error("Missing required email. Provide --email or set ADMIN_EMAIL.");
         process.exit(1);
     }
 
@@ -24,12 +24,14 @@ const run = async () => {
     try {
         let user = await User.findOne({ email });
         if (!user) {
+            if (!password) {
+                console.error("No existing user found. A password is required only when creating a new local admin account.");
+                process.exitCode = 1;
+                return;
+            }
             user = await User.create({ name, email, password, provider: "local", isVerified: true, role: "admin" });
             console.log(`Created admin user ${email}`);
         } else {
-            user.name = name || user.name;
-            if (password) user.password = password;
-            user.provider = user.provider || "local";
             user.isVerified = true;
             user.role = "admin";
             await user.save();
@@ -37,7 +39,7 @@ const run = async () => {
         }
     } catch (e) {
         console.error("Seed admin failed:", e?.message || e);
-        process.exit(1);
+        process.exitCode = 1;
     } finally {
         await mongoose.connection.close();
     }
