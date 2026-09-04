@@ -204,7 +204,7 @@ const ConversationalPanel = ({
                     {isFollowUp && (
                         <Chip
                             size="small"
-                            label="Follow-up"
+                            label={`Follow-up ${pendingFollowUp?.number || 1}/3`}
                             color="secondary"
                             sx={{ mb: 0.5, height: 18, fontSize: "0.65rem" }}
                         />
@@ -404,7 +404,7 @@ const ConversationalPanel = ({
                                     Submit Follow-up
                                 </Button>
                                 <Button variant="outlined" onClick={() => onFollowUpDone({ skip: true })}>
-                                    Skip follow-up
+                                    Move to next question
                                 </Button>
                             </Stack>
                         ) : (

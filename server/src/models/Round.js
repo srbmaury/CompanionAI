@@ -1,50 +1,37 @@
 import mongoose from "mongoose";
 
+const followUpSchema = new mongoose.Schema({
+    question: { type: String, required: true, maxlength: 1000 },
+    answer: { type: String, maxlength: 5000, default: "" },
+    reason: { type: String, maxlength: 240, default: "" },
+    focus: { type: String, maxlength: 120, default: "" },
+    skipped: { type: Boolean, default: false },
+    askedAt: { type: Date, default: Date.now },
+    answeredAt: { type: Date },
+}, { _id: false });
+
 const roundSchema = new mongoose.Schema({
-    name: {
-        type: String,
-        required: true,
-    },
-    nextRound: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Round",
-    },
-    description: {
-        type: String,
-        required: true,
-    },
-    // Delivery mode determines how questions are presented to the candidate
-    // "online-assessment" => all questions at once, "conversational" => one-by-one flow
+    name: { type: String, required: true },
+    nextRound: { type: mongoose.Schema.Types.ObjectId, ref: "Round" },
+    description: { type: String, required: true },
     deliveryMode: {
         type: String,
         enum: ["online-assessment", "conversational"],
         default: "conversational",
     },
-    // Tracks progress for conversational rounds
     conversationalIndex: { type: Number, default: 0 },
-    // Round lifecycle: governs when next rounds can start
     status: {
         type: String,
         enum: ["pending", "in_progress", "completed"],
         default: "pending",
     },
-    // Maximum number of questions for the round
     questionLimit: { type: Number, default: 8 },
-    questions: [
-        {
-            question: {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: "Question",
-            },
-            answerGiven: { type: String },
-            followUpQuestion: { type: String, maxlength: 1000 },
-            followUpAnswer: { type: String, maxlength: 5000 },
-            feedback: {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: "Feedback",
-            },
-        },
-    ],
+    questions: [{
+        question: { type: mongoose.Schema.Types.ObjectId, ref: "Question" },
+        answerGiven: { type: String },
+        followUps: { type: [followUpSchema], default: [] },
+        feedback: { type: mongoose.Schema.Types.ObjectId, ref: "Feedback" },
+    }],
 });
 
 const Round = mongoose.model("Round", roundSchema);

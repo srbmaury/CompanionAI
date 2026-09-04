@@ -10,12 +10,72 @@ import { getQueue } from "../queues/index.js";
 const findOwnedInterviewForRound = (userId, roundId) =>
     Interview.findOne({ user: userId, "rounds.round": roundId });
 
-const answerWithFollowUp = (item) => {
+const answerWithFollowUps = (item) => {
     const original = (item?.answerGiven || "").toString().trim();
-    const followUpQuestion = (item?.followUpQuestion || "").toString().trim();
-    const followUpAnswer = (item?.followUpAnswer || "").toString().trim();
-    if (!followUpQuestion || !followUpAnswer) return original;
-    return `${original}\n\nFollow-up question: ${followUpQuestion}\nFollow-up answer: ${followUpAnswer}`.trim();
+    const exchanges = (item?.followUps || [])
+        .filter((followUp) => followUp?.question && followUp?.answer && !followUp?.skipped)
+        .map((followUp, index) => `Follow-up ${index + 1}: ${followUp.question}\nFollow-up answer ${index + 1}: ${followUp.answer}`);
+    return [original, ...exchanges].filter(Boolean).join("\n\n").trim();
+};
+
+const roundLimit = (round) => Math.min(Number(round?.questionLimit) || 8, round?.questions?.length || 0, 20);
+const pendingFollowUpFor = (item) => (item?.followUps || []).findLast?.((followUp) => followUp?.question && !followUp?.answer && !followUp?.skipped)
+    || [...(item?.followUps || [])].reverse().find((followUp) => followUp?.question && !followUp?.answer && !followUp?.skipped)
+    || null;
+
+const advanceConversationalRound = (round, index) => {
+    const limit = roundLimit(round);
+    round.conversationalIndex = Math.min(index + 1, limit);
+    const done = round.conversationalIndex >= limit;
+    if (done) round.status = "completed";
+    return done;
+};
+
+const enqueueRoundFeedback = async ({ round, roundId, userId }) => {
+    const items = (round.questions || [])
+        .map((item, index) => ({
+            index,
+            questionId: item?.question?._id || item?.question,
+            answer: answerWithFollowUps(item),
+            hasFeedback: Boolean(item?.feedback),
+        }))
+        .filter((item) => item.questionId && item.answer && !item.hasFeedback)
+        .map(({ index, questionId, answer }) => ({ index, questionId, answer }));
+    if (!items.length) return null;
+    try {
+        const queue = await getQueue("bulk-feedback");
+        if (!queue) return null;
+        const job = await queue.add("bulk-feedback", { roundId, items, attach: true, userId: String(userId) }, {
+            removeOnComplete: { age: 3600, count: 500 },
+            removeOnFail: { age: 86400, count: 500 },
+        });
+        return job?.id || null;
+    } catch (error) {
+        console.warn("enqueue bulk-feedback after conversational completion failed", error?.message || error);
+        return null;
+    }
+};
+
+const decideNextFollowUp = async ({ interview, round, item }) => {
+    const existingPending = pendingFollowUpFor(item);
+    if (existingPending) {
+        return { question: existingPending.question, number: item.followUps.length, remaining: Math.max(0, 3 - item.followUps.length) };
+    }
+    const decision = await generateFollowUp({
+        questionText: item?.question?.text || "",
+        userAnswer: (item?.answerGiven || "").toString().trim(),
+        followUps: item?.followUps || [],
+        jobRole: interview?.jobRole || "",
+        roundName: round?.name || "",
+        systemDesign: /system\s*design|architecture/i.test(round?.name || ""),
+    });
+    if (!decision?.shouldAsk || !decision?.followUp) return null;
+    item.followUps.push({
+        question: decision.followUp,
+        reason: decision.reason || "",
+        focus: decision.focus || "",
+    });
+    return { question: decision.followUp, number: item.followUps.length, remaining: Math.max(0, 3 - item.followUps.length) };
 };
 
 export const prepareQuestionsForRound = async (req, res, next) => {
@@ -174,53 +234,47 @@ export const submitConversationalAnswer = async (req, res, next) => {
     try {
         const { roundId } = req.params;
         const { index, answer } = req.body || {};
-        const ownedInterview = await findOwnedInterviewForRound(req.user._id, roundId).lean();
-        if (!ownedInterview) return res.status(404).json({ message: "Round not found" });
+        const interview = await findOwnedInterviewForRound(req.user._id, roundId).lean();
+        if (!interview) return res.status(404).json({ message: "Round not found" });
         const round = await Round.findById(roundId).populate("questions.question");
         if (!round) return res.status(404).json({ message: "Round not found" });
-        if (round.deliveryMode !== "conversational")
-            return res.status(400).json({ message: "Round is not conversational" });
+        if (round.deliveryMode !== "conversational") return res.status(400).json({ message: "Round is not conversational" });
 
         const idx = Number(index);
-        const limit = Math.min(round.questionLimit || 8, 20);
-        if (!Number.isInteger(idx) || idx < 0 || idx >= Math.min(round.questions.length, limit))
-            return res.status(400).json({ message: "Invalid index" });
-
-        round.questions[idx].answerGiven = (answer || "").toString().slice(0, 5000);
-        if ((round.conversationalIndex || 0) === idx) {
-            round.conversationalIndex = idx + 1;
+        const limit = roundLimit(round);
+        if (!Number.isInteger(idx) || idx < 0 || idx >= limit) return res.status(400).json({ message: "Invalid index" });
+        const currentIndex = Number(round.conversationalIndex) || 0;
+        if (idx < currentIndex) {
+            return res.json({ success: true, replayed: true, done: round.status === "completed", nextIndex: Math.min(currentIndex, limit), followUp: null });
         }
-        const done = (round.conversationalIndex >= Math.min(round.questions.length, limit));
-        if (done) round.status = "completed";
+        if (idx !== currentIndex) return res.status(409).json({ message: "Answer the current question before moving ahead" });
+
+        const item = round.questions[idx];
+        const pending = pendingFollowUpFor(item);
+        if (pending) {
+            return res.json({ success: true, done: false, nextIndex: idx, followUp: pending.question, followUpNumber: item.followUps.length, remainingFollowUps: Math.max(0, 3 - item.followUps.length) });
+        }
+
+        item.answerGiven = (answer || "").toString().slice(0, 5000);
         await round.save();
 
-        // If this was the last answer and the round is now completed, enqueue bulk feedback job server-side
-        let feedbackJobId = null;
-        if (done) {
-            try {
-                const items = (round.questions || [])
-                    .map((q, i) => ({
-                        index: i,
-                        questionId: q?.question?._id || q?.question,
-                        answer: answerWithFollowUp(q),
-                        hasFeedback: Boolean(q?.feedback),
-                    }))
-                    .filter((it) => it.questionId && it.answer.length > 0 && !it.hasFeedback)
-                    .map(({ index, questionId, answer }) => ({ index, questionId, answer }));
-                if (items.length > 0) {
-                    const q = await getQueue("bulk-feedback");
-                    if (q) {
-                        const job = await q.add("bulk-feedback", { roundId, items, attach: true, userId: String(req.user._id) }, { removeOnComplete: { age: 3600, count: 500 }, removeOnFail: { age: 86400, count: 500 } });
-                        feedbackJobId = job?.id || null;
-                    }
-                }
-            } catch (e) {
-                // Log and continue without failing the answer submission
-                console.warn("enqueue bulk-feedback after conversational completion failed", e?.message || e);
-            }
+        const nextFollowUp = await decideNextFollowUp({ interview, round, item });
+        if (nextFollowUp) {
+            await round.save();
+            return res.json({
+                success: true,
+                done: false,
+                nextIndex: idx,
+                followUp: nextFollowUp.question,
+                followUpNumber: nextFollowUp.number,
+                remainingFollowUps: nextFollowUp.remaining,
+            });
         }
 
-        return res.json({ success: true, done, nextIndex: Math.min(round.conversationalIndex, Math.min(round.questions.length, limit)), feedbackJobId });
+        const done = advanceConversationalRound(round, idx);
+        await round.save();
+        const feedbackJobId = done ? await enqueueRoundFeedback({ round, roundId, userId: req.user._id }) : null;
+        return res.json({ success: true, done, nextIndex: round.conversationalIndex, followUp: null, feedbackJobId });
     } catch (error) {
         console.error("submitConversationalAnswer error:", error);
         return next(error instanceof Error ? error : new Error(String(error)));
@@ -306,50 +360,52 @@ export const skipRound = async (req, res, next) => {
     }
 };
 
-export const getFollowUp = async (req, res, next) => {
-    try {
-        const { roundId } = req.params;
-        const { index, answer } = req.body || {};
-
-        const interview = await findOwnedInterviewForRound(req.user._id, roundId).lean();
-        if (!interview) return res.status(404).json({ message: "Round not found" });
-        const round = await Round.findById(roundId).populate("questions.question");
-        if (!round) return res.status(404).json({ message: "Round not found" });
-        if (round.deliveryMode !== "conversational")
-            return res.status(400).json({ message: "Round is not conversational" });
-
-        const idx = Number(index) || 0;
-        const questionText = round.questions?.[idx]?.question?.text || "";
-
-        const followUp = await generateFollowUp({
-            questionText,
-            userAnswer: (answer || "").toString().trim(),
-            jobRole: interview?.jobRole || "",
-            roundName: round.name || "",
-        });
-
-        return res.json({ followUp });
-    } catch (error) {
-        console.error("getFollowUp error:", error);
-        return next(error instanceof Error ? error : new Error(String(error)));
-    }
-};
-
 export const submitFollowUpAnswer = async (req, res, next) => {
     try {
         const { roundId } = req.params;
-        const { index, question, answer } = req.body || {};
+        const { index, answer, skip = false } = req.body || {};
         const interview = await findOwnedInterviewForRound(req.user._id, roundId).lean();
         if (!interview) return res.status(404).json({ message: "Round not found" });
-        const round = await Round.findById(roundId);
+        const round = await Round.findById(roundId).populate("questions.question");
+        if (!round || round.deliveryMode !== "conversational") return res.status(400).json({ message: "Invalid follow-up" });
+
         const idx = Number(index);
-        if (!round || !Number.isInteger(idx) || idx < 0 || idx >= round.questions.length) {
-            return res.status(400).json({ message: "Invalid follow-up" });
+        const limit = roundLimit(round);
+        if (!Number.isInteger(idx) || idx < 0 || idx >= limit) return res.status(400).json({ message: "Invalid follow-up" });
+        if ((Number(round.conversationalIndex) || 0) !== idx) return res.status(409).json({ message: "This follow-up is no longer active" });
+        const item = round.questions[idx];
+        const pending = pendingFollowUpFor(item);
+        if (!pending) return res.status(409).json({ message: "No follow-up is waiting for an answer" });
+
+        if (skip) {
+            pending.skipped = true;
+            pending.answeredAt = new Date();
+        } else {
+            pending.answer = (answer || "").toString().trim().slice(0, 5000);
+            if (!pending.answer) return res.status(400).json({ message: "Follow-up answer required" });
+            pending.answeredAt = new Date();
         }
-        round.questions[idx].followUpQuestion = (question || "").toString().trim().slice(0, 1000);
-        round.questions[idx].followUpAnswer = (answer || "").toString().trim().slice(0, 5000);
         await round.save();
-        return res.json({ success: true });
+
+        if (!skip) {
+            const nextFollowUp = await decideNextFollowUp({ interview, round, item });
+            if (nextFollowUp) {
+                await round.save();
+                return res.json({
+                    success: true,
+                    done: false,
+                    nextIndex: idx,
+                    followUp: nextFollowUp.question,
+                    followUpNumber: nextFollowUp.number,
+                    remainingFollowUps: nextFollowUp.remaining,
+                });
+            }
+        }
+
+        const done = advanceConversationalRound(round, idx);
+        await round.save();
+        const feedbackJobId = done ? await enqueueRoundFeedback({ round, roundId, userId: req.user._id }) : null;
+        return res.json({ success: true, done, nextIndex: round.conversationalIndex, followUp: null, feedbackJobId });
     } catch (error) {
         return next(error instanceof Error ? error : new Error(String(error)));
     }
