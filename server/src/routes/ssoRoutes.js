@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import express from "express";
+import mongoose from "mongoose";
 import { z } from "zod";
 import User from "../models/User.js";
 import Organization from "../models/Organization.js";
@@ -36,6 +37,7 @@ const settingsSchema = z.object({
     defaultRole: z.enum(["recruiter", "hiring_manager", "reviewer"]).default("reviewer"),
 });
 
+const DOMAIN_PATTERN = /^(?=.{1,253}$)(?!-)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
 const clientOrigin = () => (process.env.CLIENT_ORIGIN || "http://localhost:5173").replace(/\/+$/, "");
 const serverOrigin = (req) => (process.env.SERVER_ORIGIN || `${req.protocol}://${req.get("host")}`).replace(/\/+$/, "");
 const callbackUri = (req) => `${serverOrigin(req)}/api/sso/callback`;
@@ -47,7 +49,9 @@ const refreshCookieOptions = () => ({
     path: "/api/auth",
 });
 const setRefreshCookie = (res, raw, expiresAt) => res.cookie("refreshToken", raw, { ...refreshCookieOptions(), expires: expiresAt });
-const ssoAvailableFor = (organization) => organization.hiringPlan === "enterprise" || process.env.SSO_ALLOW_NON_ENTERPRISE === "true" || process.env.NODE_ENV !== "production";
+const ssoAvailableFor = (organization) => organization?.hiringPlan === "enterprise" || process.env.SSO_ALLOW_NON_ENTERPRISE === "true" || process.env.NODE_ENV !== "production";
+
+class SsoAccessError extends Error {}
 
 const findSsoOrganizationForEmail = async (email, includeSecret = false) => {
     const domain = emailDomain(email);
@@ -55,6 +59,59 @@ const findSsoOrganizationForEmail = async (email, includeSecret = false) => {
     let query = Organization.findOne({ "sso.enabled": true, "sso.domains": domain });
     if (includeSecret) query = query.select("+sso.clientSecretEncrypted");
     return query;
+};
+
+const provisionSsoAccess = async ({ organization, metadata, claims, email }) => {
+    const identityMatch = { organization: organization._id, issuer: metadata.issuer, subject: claims.sub };
+    const session = await mongoose.startSession();
+    let user;
+    let membership;
+    try {
+        await session.withTransaction(async () => {
+            user = await User.findOne({ ssoIdentities: { $elemMatch: identityMatch } }).session(session);
+            if (!user) user = await User.findOne({ email }).session(session);
+
+            if (user) {
+                const existingForOrganization = user.ssoIdentities?.find((identity) => String(identity.organization) === String(organization._id));
+                if (existingForOrganization && (existingForOrganization.issuer !== metadata.issuer || existingForOrganization.subject !== claims.sub)) {
+                    throw new SsoAccessError("This CompanionAI account is linked to a different SSO identity");
+                }
+                membership = await OrganizationMembership.findOne({ organization: organization._id, user: user._id }).session(session);
+                if (membership?.status === "disabled") throw new SsoAccessError("Your organization access is disabled");
+                if (!membership && !organization.sso.jitProvisioning) {
+                    throw new SsoAccessError("Ask your organization admin to add you before using SSO");
+                }
+
+                if (!existingForOrganization) user.ssoIdentities.push(identityMatch);
+                user.isVerified = true;
+                if (!user.name && claims.name) user.name = String(claims.name).slice(0, 160);
+                await user.save({ session });
+            } else {
+                if (!organization.sso.jitProvisioning) {
+                    throw new SsoAccessError("Ask your organization admin to add you before using SSO");
+                }
+                [user] = await User.create([{
+                    name: String(claims.name || email.split("@")[0] || "User").slice(0, 160),
+                    email,
+                    provider: "sso",
+                    isVerified: true,
+                    ssoIdentities: [identityMatch],
+                }], { session });
+            }
+
+            if (!membership) {
+                [membership] = await OrganizationMembership.create([{
+                    organization: organization._id,
+                    user: user._id,
+                    role: organization.sso.defaultRole,
+                    status: "active",
+                }], { session });
+            }
+        });
+        return { user, membership };
+    } finally {
+        await session.endSession();
+    }
 };
 
 router.post("/discover", validate(emailSchema), async (req, res, next) => {
@@ -102,11 +159,17 @@ router.get("/callback", async (req, res) => {
         const code = typeof req.query.code === "string" ? req.query.code : "";
         const state = typeof req.query.state === "string" ? req.query.state : "";
         if (!code || !state) return fail("SSO sign-in was not completed");
-        const attempt = await SSOLoginAttempt.findOne({ stateHash: hashSsoToken(state), status: "started", expiresAt: { $gt: new Date() } })
+
+        const attempt = await SSOLoginAttempt.findOneAndUpdate(
+            { stateHash: hashSsoToken(state), status: "started", expiresAt: { $gt: new Date() } },
+            { $set: { status: "processing" } },
+            { new: true },
+        )
             .select("+stateHash +codeVerifier +nonce")
             .populate({ path: "organization", select: "+sso.clientSecretEncrypted" });
         const organization = attempt?.organization;
         if (!attempt || !organization?.sso?.enabled || !ssoAvailableFor(organization)) return fail("SSO sign-in expired or is unavailable");
+
         const config = organization.sso;
         const metadata = await discoverOidcProvider(config.issuer);
         const tokens = await exchangeAuthorizationCode({ metadata, config, code, codeVerifier: attempt.codeVerifier, redirectUri: callbackUri(req) });
@@ -115,43 +178,23 @@ router.get("/callback", async (req, res) => {
         const email = String(claims.email || claims.preferred_username || claims.upn || "").trim().toLowerCase();
         const domain = emailDomain(email);
         if (!email || claims.email_verified === false || !config.domains.includes(domain)) return fail("Your identity is not allowed for this organization");
+        if (email !== attempt.emailHint) return fail("Sign in with the same work email you entered in CompanionAI");
 
-        const identityMatch = { organization: organization._id, issuer: metadata.issuer, subject: claims.sub };
-        let user = await User.findOne({ ssoIdentities: { $elemMatch: identityMatch } });
-        if (!user) user = await User.findOne({ email });
-        if (user) {
-            const existingForOrganization = user.ssoIdentities?.find((identity) => String(identity.organization) === String(organization._id));
-            if (existingForOrganization && (existingForOrganization.issuer !== metadata.issuer || existingForOrganization.subject !== claims.sub)) {
-                return fail("This CompanionAI account is linked to a different SSO identity");
-            }
-            if (!existingForOrganization) user.ssoIdentities.push(identityMatch);
-            user.isVerified = true;
-            if (!user.name && claims.name) user.name = String(claims.name).slice(0, 160);
-            await user.save();
-        } else {
-            user = await User.create({
-                name: String(claims.name || email.split("@")[0] || "User").slice(0, 160),
-                email,
-                provider: "sso",
-                isVerified: true,
-                ssoIdentities: [identityMatch],
-            });
-        }
-
-        let membership = await OrganizationMembership.findOne({ organization: organization._id, user: user._id });
-        if (membership?.status === "disabled") return fail("Your organization access is disabled");
-        if (!membership) {
-            if (!config.jitProvisioning) return fail("Ask your organization admin to add you before using SSO");
-            membership = await OrganizationMembership.create({ organization: organization._id, user: user._id, role: config.defaultRole, status: "active" });
+        let access;
+        try {
+            access = await provisionSsoAccess({ organization, metadata, claims, email });
+        } catch (error) {
+            if (error instanceof SsoAccessError) return fail(error.message);
+            throw error;
         }
 
         const exchangeCode = crypto.randomBytes(32).toString("base64url");
         attempt.status = "authenticated";
-        attempt.user = user._id;
+        attempt.user = access.user._id;
         attempt.exchangeCodeHash = hashSsoToken(exchangeCode);
         attempt.expiresAt = new Date(Date.now() + 2 * 60 * 1000);
         await attempt.save();
-        try { await AuditLog.create({ user: user._id, action: "auth.sso_authenticated", entityType: "Organization", entityId: organization._id, ip: req.ip, userAgent: req.get("user-agent"), requestId: req.id }); } catch {}
+        try { await AuditLog.create({ user: access.user._id, action: "auth.sso_authenticated", entityType: "Organization", entityId: organization._id, ip: req.ip, userAgent: req.get("user-agent"), requestId: req.id }); } catch {}
         return res.redirect(`${clientOrigin()}/sso/callback?exchange=${encodeURIComponent(exchangeCode)}&organization=${organization._id}`);
     } catch (error) {
         console.warn("OIDC callback failed:", error?.message || error);
@@ -161,13 +204,20 @@ router.get("/callback", async (req, res) => {
 
 router.post("/exchange", validate(exchangeSchema), async (req, res, next) => {
     try {
-        const attempt = await SSOLoginAttempt.findOne({ exchangeCodeHash: hashSsoToken(req.body.exchangeCode), status: "authenticated", expiresAt: { $gt: new Date() } })
-            .select("+exchangeCodeHash")
-            .populate("user");
+        const attempt = await SSOLoginAttempt.findOneAndUpdate(
+            { exchangeCodeHash: hashSsoToken(req.body.exchangeCode), status: "authenticated", expiresAt: { $gt: new Date() } },
+            { $set: { status: "exchanged" }, $unset: { exchangeCodeHash: 1 } },
+            { new: true },
+        ).populate("user");
         if (!attempt?.user) return res.status(401).json({ message: "SSO exchange code is invalid or expired" });
-        attempt.status = "exchanged";
-        attempt.exchangeCodeHash = undefined;
-        await attempt.save();
+
+        const membership = await OrganizationMembership.exists({
+            organization: attempt.organization,
+            user: attempt.user._id,
+            status: "active",
+        });
+        if (!membership) return res.status(403).json({ message: "Your organization access is no longer active" });
+
         const user = attempt.user;
         await bumpTokenVersion(user._id);
         await revokeAllRefreshTokens(user._id);
@@ -183,7 +233,8 @@ router.post("/exchange", validate(exchangeSchema), async (req, res, next) => {
 router.get("/settings", protect, organizationContext, requireOrganizationRole("owner", "admin"), async (req, res, next) => {
     try {
         const organization = await Organization.findById(req.organizationId).select("+sso.clientSecretEncrypted");
-        const sso = organization?.sso || {};
+        if (!organization) return res.status(404).json({ message: "Organization not found" });
+        const sso = organization.sso || {};
         return res.json({
             availableOnPlan: ssoAvailableFor(organization),
             enabled: Boolean(sso.enabled),
@@ -203,11 +254,16 @@ router.put("/settings", protect, organizationContext, requireOrganizationRole("o
         const organization = await Organization.findById(req.organizationId).select("+sso.clientSecretEncrypted");
         if (!organization) return res.status(404).json({ message: "Organization not found" });
         if (req.body.enabled && !ssoAvailableFor(organization)) return res.status(402).json({ message: "Organization SSO is available on the Enterprise Hiring plan" });
-        const domains = [...new Set(req.body.domains.map(normalizeSsoDomain).filter(Boolean))];
-        if (!domains.length) return res.status(400).json({ message: "At least one valid SSO domain is required" });
+
+        const normalizedDomains = req.body.domains.map(normalizeSsoDomain);
+        if (normalizedDomains.some((domain) => !DOMAIN_PATTERN.test(domain))) {
+            return res.status(400).json({ message: "Enter valid public email domains for SSO" });
+        }
+        const domains = [...new Set(normalizedDomains)];
         const conflict = await Organization.findOne({ _id: { $ne: organization._id }, "sso.enabled": true, "sso.domains": { $in: domains } }).select("name").lean();
         if (conflict) return res.status(409).json({ message: "One of these domains is already claimed by another organization" });
         if (req.body.enabled && !req.body.clientSecret && !organization.sso?.clientSecretEncrypted) return res.status(400).json({ message: "OIDC client secret is required before enabling SSO" });
+
         await discoverOidcProvider(req.body.issuer);
         organization.sso.enabled = req.body.enabled;
         organization.sso.issuer = req.body.issuer.replace(/\/+$/, "");
