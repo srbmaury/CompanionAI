@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     adaptiveCoverageRatio,
     applyEvidenceToState,
+    buildDeterministicAdaptiveQuestion,
     chooseNextCompetency,
     extractResumeClaimsFallback,
     selectResumeClaimForTarget,
@@ -41,6 +42,20 @@ describe("adaptive interview engine", () => {
         expect(updated.competencies[0]).toMatchObject({ scoreEstimate: 8, evidenceCount: 1, coverage: "partial" });
         expect(updated.competencies[0].confidence).toBeGreaterThan(0.5);
         expect(updated.competencies[0].evidence[0].text).toContain("idempotency");
+    });
+
+    it("enforces at most one difficulty step per completed question", () => {
+        const increased = applyEvidenceToState(state({ currentDifficulty: 2 }), {
+            competencyEvidence: [],
+            policy: { action: "next-question", difficulty: 5 },
+        }, { questionIndex: 0 });
+        expect(increased.currentDifficulty).toBe(3);
+
+        const decreased = applyEvidenceToState(state({ currentDifficulty: 4 }), {
+            competencyEvidence: [],
+            policy: { action: "next-question", difficulty: 1 },
+        }, { questionIndex: 0 });
+        expect(decreased.currentDifficulty).toBe(3);
     });
 
     it("targets the highest-weight uncertain competency", () => {
@@ -85,5 +100,49 @@ describe("adaptive interview engine", () => {
             policy: { action: "next-question", targetCompetency: "Reliability", difficulty: 3, confidence: 0.8 },
         }, { questionIndex: 0, targetedCompetencies: ["APIs"], sourceClaim: "Reduced deployment time by 90%" });
         expect(updated.resumeClaims[0]).toMatchObject({ probeCount: 1, covered: true });
+    });
+
+    it("caps resume-claim base questions so the round still covers role competencies", () => {
+        const capped = state({
+            resumeClaims: [
+                { claim: "Claim one", topics: ["APIs"], probeAreas: [], probeCount: 1, covered: false },
+                { claim: "Claim two", topics: ["APIs"], probeAreas: [], probeCount: 1, covered: false },
+                { claim: "Claim three", topics: ["APIs"], probeAreas: [], probeCount: 0, covered: false },
+            ],
+        });
+        expect(selectResumeClaimForTarget(capped, "APIs")).toBeNull();
+    });
+
+    it("builds a useful deterministic question when providers are unavailable", () => {
+        const first = buildDeterministicAdaptiveQuestion({
+            round: { name: "Backend Deep Dive", description: "APIs, reliability, production trade-offs" },
+            state: state({ questionsAsked: 0 }),
+            targetCompetency: "Reliability",
+            difficulty: 3,
+        });
+        const second = buildDeterministicAdaptiveQuestion({
+            round: { name: "Backend Deep Dive", description: "APIs, reliability, production trade-offs" },
+            state: state({ questionsAsked: 1 }),
+            targetCompetency: "Reliability",
+            difficulty: 3,
+        });
+        expect(first.text.length).toBeGreaterThan(20);
+        expect(first.competencies).toEqual(["Reliability"]);
+        expect(first.sourceType).toBe("fallback");
+        expect(second.text).not.toBe(first.text);
+    });
+
+    it("builds degraded-mode resume probes from the actual claim", () => {
+        const claim = "Reduced deployment time by 90%";
+        const question = buildDeterministicAdaptiveQuestion({
+            round: { name: "Technical Deep Dive" },
+            state: state({ resumeClaims: [{ claim, probeCount: 0, covered: false }] }),
+            targetCompetency: "APIs",
+            difficulty: 4,
+            sourceClaim: claim,
+        });
+        expect(question.text).toContain("90%");
+        expect(question.text).toMatch(/specific technical contribution/i);
+        expect(question.sourceType).toBe("resume-claim");
     });
 });
