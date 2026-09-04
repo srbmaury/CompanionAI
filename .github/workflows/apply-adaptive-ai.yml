@@ -20,6 +20,18 @@ jobs:
         run: |
           git fetch origin adaptive-ai-interviews
           git reset --hard origin/adaptive-ai-interviews
+      - name: Fix literal regex replacements
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/apply_adaptive_ai.py')
+          text = path.read_text()
+          old = 'updated, count = re.subn(pattern, replacement, text, flags=re.S)'
+          new = 'updated, count = re.subn(pattern, lambda _match: replacement, text, flags=re.S)'
+          if text.count(old) != 1:
+              raise SystemExit('guarded regex helper not found exactly once')
+          path.write_text(text.replace(old, new))
+          PY
       - name: Apply guarded patch
         run: python .github/scripts/apply_adaptive_ai.py
       - name: Commit implementation
