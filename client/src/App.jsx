@@ -40,6 +40,8 @@ const HiringTeamPage = lazy(() => import("./pages/HiringTeamPage.jsx"));
 const SsoCallbackPage = lazy(() => import("./pages/SsoCallbackPage.jsx"));
 const SsoSettingsPage = lazy(() => import("./pages/SsoSettingsPage.jsx"));
 const PublicDocsPage = lazy(() => import("./pages/PublicDocsPage.jsx"));
+const OidcSsoDocsPage = lazy(() => import("./pages/OidcSsoDocsPage.jsx"));
+const PublicUseCasePage = lazy(() => import("./pages/PublicUseCasePage.jsx"));
 
 const PageLoader = () => (
     <Box sx={{ minHeight: "60vh", display: "grid", placeItems: "center" }} role="status" aria-label="Loading page">
@@ -93,6 +95,8 @@ function App() {
                 <Routes>
                 {/* Public routes */}
                 <Route path="/" element={<GuestOnlyRoute><LandingPage /></GuestOnlyRoute>} />
+                <Route path="/interview-practice" element={<PublicUseCasePage />} />
+                <Route path="/technical-hiring" element={<PublicUseCasePage />} />
                 <Route path="/login" element={<GuestOnlyRoute><LoginPage /></GuestOnlyRoute>} />
                 <Route path="/register" element={<GuestOnlyRoute><RegisterPage /></GuestOnlyRoute>} />
                 <Route path="/verify-email" element={<VerifyEmailPage />} />
@@ -102,6 +106,7 @@ function App() {
                 <Route path="/privacy" element={<LegalPage type="privacy" />} />
                 <Route path="/terms" element={<LegalPage type="terms" />} />
                 <Route path="/docs" element={<PublicDocsPage />} />
+                <Route path="/docs/hiring/oidc-sso" element={<OidcSsoDocsPage />} />
                 <Route path="/docs/*" element={<PublicDocsPage />} />
                 <Route path="/assessment/:shareToken" element={<CandidateAssessmentPage />} />
 
