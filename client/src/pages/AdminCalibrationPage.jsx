@@ -16,6 +16,7 @@ import {
     Typography,
 } from "@mui/material";
 import api from "../api/axios";
+import { calibrationHealth } from "../utils/calibrationHealth";
 
 const Metric = ({ label, value, helper }) => (
     <Paper variant="outlined" sx={{ p: 2.25, minHeight: 118 }}>
@@ -69,6 +70,7 @@ export default function AdminCalibrationPage() {
     const adaptive = data.adaptive || {};
     const agreement = data.reviewerAgreement || {};
     const readiness = readinessCopy[data.calibrationReadiness] || readinessCopy.collecting;
+    const health = calibrationHealth(data);
 
     return (
         <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -81,6 +83,8 @@ export default function AdminCalibrationPage() {
                 </Box>
 
                 <Alert severity={readiness[0]}><strong>{readiness[1]}.</strong> {readiness[2]}</Alert>
+                {health.status === "stable" && <Alert severity="success"><strong>Calibration guardrails are within the current thresholds.</strong> Continue monitoring as the reviewer and adaptive-round samples grow.</Alert>}
+                {health.signals.map((signal) => <Alert key={signal.key} severity={signal.severity}><strong>{signal.title}.</strong> {signal.detail}</Alert>)}
 
                 <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: { xs: "1fr", sm: "repeat(2,1fr)", xl: "repeat(4,1fr)" } }}>
                     <Metric label="Adaptive rounds" value={adaptive.rounds || 0} helper={`${adaptive.completed || 0} completed`} />
