@@ -51,9 +51,9 @@ describe("workspacePreference", () => {
         expect(getWorkspacePreference("user-b")).toBe("practice");
     });
 
-    it("maps workspaces to their home routes", () => {
-        expect(getWorkspaceHome("hiring")).toBe("/assessments");
-        expect(getWorkspaceHome("practice")).toBe("/dashboard");
-        expect(getWorkspaceHome(null)).toBe("/dashboard");
+    it("maps workspaces to canonical product home routes", () => {
+        expect(getWorkspaceHome("hiring")).toBe("/hire/assessments");
+        expect(getWorkspaceHome("practice")).toBe("/practice/dashboard");
+        expect(getWorkspaceHome(null)).toBe("/practice/dashboard");
     });
 });

@@ -4,5 +4,5 @@ import { AuthContext } from "../context/AuthContext";
 
 export default function AdminRoute({ children }) {
     const { user } = useContext(AuthContext);
-    return user?.role === "admin" ? children : <Navigate to="/dashboard" replace />;
+    return user?.role === "admin" ? children : <Navigate to="/practice/dashboard" replace />;
 }

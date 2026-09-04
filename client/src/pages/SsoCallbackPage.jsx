@@ -31,7 +31,7 @@ export default function SsoCallbackPage() {
                 try { localStorage.setItem(`companionai:organization:user:${user._id}`, organizationId); } catch { /* optional */ }
                 // Reload once so AuthProvider and OrganizationProvider initialize from the new
                 // server session and the trusted organization preference in one deterministic pass.
-                window.location.replace("/assessments");
+                window.location.replace("/hire/assessments");
             })
             .catch((err) => setError(err?.response?.data?.message || err?.message || "SSO sign-in failed."));
     }, [authLoading, completeSsoLogin, search]);
@@ -42,7 +42,7 @@ export default function SsoCallbackPage() {
                 {error ? <Alert severity="error">{error}</Alert> : (
                     <Stack spacing={2} alignItems="center">
                         <CircularProgress />
-                        <Typography component="h1" variant="h5" fontWeight={800}>Completing work SSO sign-in…</Typography>
+                        <Typography component="h1" variant="h5" fontWeight={800}>Completing CompanionAI Hire SSO sign-in…</Typography>
                         <Typography color="text.secondary">Verifying your organization access securely.</Typography>
                     </Stack>
                 )}

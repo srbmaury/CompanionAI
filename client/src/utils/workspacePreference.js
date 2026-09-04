@@ -1,3 +1,5 @@
+import { productHomePath } from "./productRoutes";
+
 export const WORKSPACE_EVENT = "companionai:workspace";
 
 const GUEST_WORKSPACE_KEY = "companionai:workspace:guest";
@@ -63,6 +65,4 @@ export const adoptGuestWorkspacePreference = (userId) => {
     return getWorkspacePreference(userId);
 };
 
-export const getWorkspaceHome = (workspace) => (
-    workspace === "hiring" ? "/assessments" : "/dashboard"
-);
+export const getWorkspaceHome = (workspace) => productHomePath(workspace === "hiring" ? "hiring" : "practice");

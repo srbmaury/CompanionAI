@@ -3,6 +3,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import { Box, CircularProgress } from "@mui/material";
 import { AuthContext } from "../context/AuthContext";
 import { getWorkspaceHome, getWorkspacePreference } from "../utils/workspacePreference";
+import { surfaceForPath, workspaceForSurface } from "../utils/productRoutes";
 
 export default function GuestOnlyRoute({ children }) {
     const { user, loading } = useContext(AuthContext);
@@ -15,11 +16,9 @@ export default function GuestOnlyRoute({ children }) {
         ? `${requested.pathname}${requested.search || ""}${requested.hash || ""}`
         : null;
     const workspaceParam = new URLSearchParams(location.search).get("workspace");
-    const explicitWorkspaceDestination = workspaceParam === "hiring"
-        ? "/assessments"
-        : workspaceParam === "practice"
-            ? "/dashboard"
-            : null;
+    const routeWorkspace = workspaceForSurface(surfaceForPath(location.pathname));
+    const explicitWorkspace = ["practice", "hiring"].includes(workspaceParam) ? workspaceParam : routeWorkspace;
+    const explicitWorkspaceDestination = explicitWorkspace ? getWorkspaceHome(explicitWorkspace) : null;
     const workspaceDestination = getWorkspaceHome(getWorkspacePreference(user?._id) || "practice");
 
     return user ? <Navigate to={requestedDestination || explicitWorkspaceDestination || workspaceDestination} replace /> : children;
