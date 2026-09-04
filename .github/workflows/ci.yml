@@ -42,7 +42,9 @@ jobs:
           retention-days: 14
       # React Router's remaining advisory affects RSC action handling; this app
       # is a client-only BrowserRouter SPA. Critical findings still fail CI.
-      - run: npm audit --omit=dev --audit-level=critical
+      # Registry/network failures retry, but actual audit findings fail immediately.
+      - name: Client dependency audit
+        run: bash ../.github/scripts/npm-audit-retry.sh --omit=dev --audit-level=critical
 
   server:
     runs-on: ubuntu-latest
@@ -63,4 +65,5 @@ jobs:
         run: npm run test:unit
       - name: Server API journeys
         run: npm run test:e2e
-      - run: npm audit --omit=dev --audit-level=high
+      - name: Server dependency audit
+        run: bash ../.github/scripts/npm-audit-retry.sh --omit=dev --audit-level=high
