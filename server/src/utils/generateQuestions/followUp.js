@@ -75,11 +75,19 @@ ${claim ? "- For the resume claim, prioritize verification of actual ownership, 
 ${systemDesign ? "- For system design, probe an actual design choice: requirements, scale, API/data model, component boundaries, bottlenecks, consistency, failure handling, security, observability, or trade-offs. Do not invent components the candidate did not mention." : ""}
 - If no additional probe is warranted, return shouldAsk=false and followUp=null.`;
 
-    const text = (await generateJSON(prompt)) || "{}";
     try {
+        const text = (await generateJSON(prompt)) || "{}";
         return normalizeFollowUpDecision(JSON.parse(text), remaining);
     } catch {
-        return normalizeFollowUpDecision(null, remaining);
+        // A provider outage must not block the interview. Moving on is safer than
+        // inventing an ungrounded follow-up locally.
+        return normalizeFollowUpDecision({
+            shouldAsk: false,
+            followUp: null,
+            reason: "followup_provider_unavailable",
+            answerConfidence: 0,
+            missingEvidence: [],
+        }, remaining);
     }
 };
 
