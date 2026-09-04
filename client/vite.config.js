@@ -5,12 +5,15 @@ import react from "@vitejs/plugin-react";
 
 const INDEXABLE_ROUTES = [
     "/",
+    "/interview-practice",
+    "/technical-hiring",
     "/docs",
     "/docs/technical-hiring/structured-technical-assessments",
     "/docs/technical-hiring/system-design-interviews",
     "/docs/technical-hiring/interview-scorecards",
     "/docs/candidates/ai-interview-practice",
     "/docs/security/human-review-and-integrity-signals",
+    "/docs/hiring/oidc-sso",
     "/privacy",
     "/terms",
 ];
