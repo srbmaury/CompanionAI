@@ -85,7 +85,7 @@ const publicAttempt = (attempt) => ({
                 followUpQuestion: current?.question || question.followUpQuestion || "",
                 followUpAnswer: pending ? "" : current?.answer || question.followUpAnswer || "",
                 followUpNumber: pending ? history.length : 0,
-                remainingFollowUps: pending ? Math.max(0, MAX_FOLLOW_UPS - history.length) : Math.max(0, MAX_FOLLOW_UPS - history.length),
+                remainingFollowUps: Math.max(0, MAX_FOLLOW_UPS - history.length),
             };
         }),
     })),
@@ -135,6 +135,7 @@ export const createAdaptiveAssessment = async (req, res, next) => {
                 description: input.description || "",
                 deliveryMode: input.deliveryMode || "conversational",
                 adaptive: (input.deliveryMode || "conversational") === "conversational" && input.adaptive !== false,
+                questionCount: count,
                 questions,
             });
         }
@@ -193,7 +194,7 @@ const makeAttemptRound = async (assessment, round) => {
         roundName: round.name,
         roundDescription: round.description,
         skills,
-        maxQuestions: round.questions.length,
+        maxQuestions: Number(round.questionCount) || round.questions.length,
     });
     const first = round.questions.find((question) => question.required) || round.questions[0];
     return {
