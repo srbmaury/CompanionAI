@@ -5,7 +5,8 @@ const DEFAULT_INTERVAL_MS = 7000;
 const MIN_CONTEXT_CHARS = 80;
 const MIN_NEW_CHARS = 35;
 const FIRST_INTERACTION_CONTEXT_CHARS = 140;
-const MAX_SILENT_MS = 45000;
+const CANDIDATE_SILENCE_MS = 15000;
+const SILENCE_POLL_MS = 1000;
 
 const looksLikeCandidateQuestion = (value = "") => {
     const tail = value.trim().slice(-180);
@@ -18,7 +19,8 @@ const looksLikeCandidateQuestion = (value = "") => {
  * Periodically gives the AI interviewer a chance to participate during a
  * system-design discussion. Candidate clarification questions are handled
  * immediately; otherwise the first meaningful probe is guaranteed once enough
- * context exists, and long silent stretches trigger another interviewer turn.
+ * context exists. If the candidate says nothing for 15 seconds, the interviewer
+ * must step in, including at the beginning of the round.
  */
 export const useSystemDesignDiscussion = ({
     enabled,
@@ -36,17 +38,27 @@ export const useSystemDesignDiscussion = ({
     const lastCheckedLengthRef = useRef(0);
     const lastCheckedAtRef = useRef(0);
     const lastInterjectionAtRef = useRef(0);
+    const lastCandidateActivityAtRef = useRef(Date.now());
+    const lastSilenceAttemptAtRef = useRef(0);
+    const lastObservedTranscriptRef = useRef(transcript || "");
     const transcriptRef = useRef(transcript);
     const diagramRef = useRef(diagramData);
     const interjectionsRef = useRef(interjections);
     const onInterjectionRef = useRef(onInterjection);
 
-    useEffect(() => { transcriptRef.current = transcript; }, [transcript]);
+    useEffect(() => {
+        transcriptRef.current = transcript;
+        const current = transcript || "";
+        if (current !== lastObservedTranscriptRef.current) {
+            lastObservedTranscriptRef.current = current;
+            lastCandidateActivityAtRef.current = Date.now();
+        }
+    }, [transcript]);
     useEffect(() => { diagramRef.current = diagramData; }, [diagramData]);
     useEffect(() => { interjectionsRef.current = interjections; }, [interjections]);
     useEffect(() => { onInterjectionRef.current = onInterjection; }, [onInterjection]);
 
-    const checkpoint = useCallback(async ({ force = false } = {}) => {
+    const checkpoint = useCallback(async ({ force = false, dueToSilence = false } = {}) => {
         if (!enabled || !endpoint || busyRef.current) return null;
         if (typeof document !== "undefined" && document.hidden) return null;
         const currentTranscript = (transcriptRef.current || "").trim();
@@ -55,10 +67,11 @@ export const useSystemDesignDiscussion = ({
         const previousInterjections = interjectionsRef.current;
         const candidateAskedQuestion = newChars >= 12 && looksLikeCandidateQuestion(currentTranscript);
         const needsFirstInteraction = previousInterjections.length === 0 && currentTranscript.length >= FIRST_INTERACTION_CONTEXT_CHARS;
-        const silentTooLong = previousInterjections.length > 0
-            && currentTranscript.length >= MIN_CONTEXT_CHARS
-            && now - lastInterjectionAtRef.current >= MAX_SILENT_MS;
-        const forceInteraction = force || candidateAskedQuestion || needsFirstInteraction || silentTooLong;
+        const candidateSilent = dueToSilence || (
+            now - lastCandidateActivityAtRef.current >= CANDIDATE_SILENCE_MS
+            && now - lastSilenceAttemptAtRef.current >= CANDIDATE_SILENCE_MS
+        );
+        const forceInteraction = force || candidateAskedQuestion || needsFirstInteraction || candidateSilent;
 
         if (!forceInteraction) {
             if (currentTranscript.length < MIN_CONTEXT_CHARS) return null;
@@ -66,6 +79,7 @@ export const useSystemDesignDiscussion = ({
             if (now - lastCheckedAtRef.current < Math.max(3500, intervalMs - 1500)) return null;
         }
 
+        if (candidateSilent) lastSilenceAttemptAtRef.current = now;
         busyRef.current = true;
         setChecking(true);
         lastCheckedLengthRef.current = currentTranscript.length;
@@ -85,7 +99,11 @@ export const useSystemDesignDiscussion = ({
                     kind: data.kind || "challenge",
                     at: new Date().toISOString(),
                 };
-                lastInterjectionAtRef.current = Date.now();
+                const interactionAt = Date.now();
+                lastInterjectionAtRef.current = interactionAt;
+                // Give the candidate a fresh 15-second turn after the interviewer
+                // finishes instead of immediately firing another silence prompt.
+                if (candidateSilent) lastCandidateActivityAtRef.current = interactionAt;
                 setInterjections((current) => [...current, item].slice(-12));
                 await onInterjectionRef.current?.(item);
                 return item;
@@ -108,12 +126,32 @@ export const useSystemDesignDiscussion = ({
     }, [checkpoint, enabled, endpoint, intervalMs]);
 
     useEffect(() => {
-        if (!enabled) {
-            setInterjections([]);
-            lastCheckedLengthRef.current = 0;
-            lastCheckedAtRef.current = 0;
-            lastInterjectionAtRef.current = 0;
+        if (!enabled || !endpoint) return undefined;
+        const timer = window.setInterval(() => {
+            const now = Date.now();
+            if (
+                !busyRef.current
+                && now - lastCandidateActivityAtRef.current >= CANDIDATE_SILENCE_MS
+                && now - lastSilenceAttemptAtRef.current >= CANDIDATE_SILENCE_MS
+            ) {
+                checkpoint({ force: true, dueToSilence: true });
+            }
+        }, SILENCE_POLL_MS);
+        return () => window.clearInterval(timer);
+    }, [checkpoint, enabled, endpoint]);
+
+    useEffect(() => {
+        if (enabled) {
+            lastCandidateActivityAtRef.current = Date.now();
+            lastSilenceAttemptAtRef.current = 0;
+            lastObservedTranscriptRef.current = transcriptRef.current || "";
+            return;
         }
+        setInterjections([]);
+        lastCheckedLengthRef.current = 0;
+        lastCheckedAtRef.current = 0;
+        lastInterjectionAtRef.current = 0;
+        lastSilenceAttemptAtRef.current = 0;
     }, [enabled]);
 
     return { interjections, checking, checkpoint };
