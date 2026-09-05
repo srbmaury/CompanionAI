@@ -13,7 +13,19 @@ const assessmentRoundSchema = new mongoose.Schema({
     description: { type: String, maxlength: 300 },
     deliveryMode: { type: String, enum: ["conversational", "online-assessment", "system-design"], default: "conversational" },
     adaptive: { type: Boolean, default: false },
-    questionCount: { type: Number, min: 1, max: 10, default: 3 },
+    questionCount: {
+        type: Number,
+        min: 1,
+        max: 10,
+        default: 3,
+        validate: {
+            validator(value) {
+                const requiredCount = (this.questions || []).filter((question) => question.required).length;
+                return Number(value) >= requiredCount;
+            },
+            message: "Question budget must include every required recruiter question",
+        },
+    },
     questions: { type: [assessmentQuestionSchema], validate: (value) => value.length >= 1 && value.length <= 10 },
 }, { _id: true });
 
