@@ -4,21 +4,12 @@ import OAForm from "../components/OAForm";
 
 vi.mock("../components/CodeEditorField", () => ({
     default: ({ value, onChange }) => (
-        <textarea
-            aria-label="Mock answer editor"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-        />
+        <textarea aria-label="Mock answer editor" value={value} onChange={(event) => onChange(event.target.value)} />
     ),
 }));
 
-vi.mock("../components/VoiceControls", () => ({
-    default: () => <button type="button">Replay question</button>,
-}));
-
-vi.mock("../components/SkipRoundButton", () => ({
-    default: () => <button type="button">Skip round</button>,
-}));
+vi.mock("../components/VoiceControls", () => ({ default: () => <button type="button">Replay question</button> }));
+vi.mock("../components/SkipRoundButton", () => ({ default: () => <button type="button">Skip round</button> }));
 
 afterEach(() => {
     cleanup();
@@ -26,7 +17,7 @@ afterEach(() => {
 });
 
 describe("OAForm interview experience", () => {
-    it("keeps one question in focus and lets the candidate navigate without losing answers", async () => {
+    it("keeps one problem in focus and lets the candidate navigate without losing answers", async () => {
         const questions = [
             { question: { text: "Implement an LRU cache." } },
             { question: { text: "Explain the complexity." } },
@@ -65,7 +56,7 @@ describe("OAForm interview experience", () => {
         fireEvent.change(firstEditor, { target: { value: "class LRU {}" } });
         expect(onChange).toHaveBeenCalledWith(0, "class LRU {}");
 
-        fireEvent.click(screen.getByRole("button", { name: "Next question" }));
+        fireEvent.click(screen.getByRole("button", { name: "Next problem" }));
         expect(screen.getByRole("heading", { name: "Explain the complexity." })).toBeTruthy();
         expect(await screen.findByDisplayValue("Already answered")).toBeTruthy();
 
@@ -73,7 +64,7 @@ describe("OAForm interview experience", () => {
         expect(screen.getByRole("heading", { name: "Implement an LRU cache." })).toBeTruthy();
     });
 
-    it("keeps round submission available from the focused workspace", () => {
+    it("keeps round completion available from the focused workspace", () => {
         const onSubmit = vi.fn();
         render(
             <OAForm
@@ -98,8 +89,8 @@ describe("OAForm interview experience", () => {
             />,
         );
 
-        fireEvent.click(screen.getByRole("button", { name: "Submit round" }));
+        fireEvent.click(screen.getByRole("button", { name: "Finish coding round" }));
         expect(onSubmit).toHaveBeenCalledTimes(1);
-        expect(screen.getByText("Ready to submit")).toBeTruthy();
+        expect(screen.getByText("Ready to finish")).toBeTruthy();
     });
 });
