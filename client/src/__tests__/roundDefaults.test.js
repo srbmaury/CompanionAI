@@ -1,18 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { getDefaultQuestionLimit } from "../utils/roundDefaults";
+import { getDefaultQuestionLimit, getQuestionCountCopy, isSystemDesignRound } from "../utils/roundDefaults";
 
-describe("getDefaultQuestionLimit", () => {
-    it("keeps deep interview rounds focused", () => {
-        expect(getDefaultQuestionLimit({ roundName: "Coding Interview" })).toBe(3);
-        expect(getDefaultQuestionLimit({ roundName: "System Design Interview" })).toBe(3);
+describe("practice round defaults", () => {
+    it("uses one evolving problem for system design", () => {
+        const round = { roundName: "System Design", deliveryMode: "conversational", description: "Design a scalable service" };
+        expect(isSystemDesignRound(round)).toBe(true);
+        expect(getDefaultQuestionLimit(round)).toBe(1);
+        expect(getQuestionCountCopy(round).label).toBe("Design problem");
     });
 
-    it("allows more short questions in screens and assessments", () => {
-        expect(getDefaultQuestionLimit({ roundName: "Recruiter Screening" })).toBe(5);
-        expect(getDefaultQuestionLimit({ roundName: "Technical Test", deliveryMode: "online-assessment" })).toBe(6);
+    it("uses two focused problems for online technical assessments", () => {
+        const round = { roundName: "Coding & Problem Solving", deliveryMode: "online-assessment" };
+        expect(getDefaultQuestionLimit(round)).toBe(2);
+        expect(getQuestionCountCopy(round).label).toBe("Problems");
     });
 
-    it("uses a moderate fallback", () => {
-        expect(getDefaultQuestionLimit({ roundName: "Domain Discussion" })).toBe(4);
+    it("keeps behavioral conversations shorter because follow-ups are adaptive", () => {
+        const round = { roundName: "Behavioral & Ownership", deliveryMode: "conversational" };
+        expect(getDefaultQuestionLimit(round)).toBe(3);
+        expect(getQuestionCountCopy(round).label).toBe("Starting questions");
+    });
+
+    it("uses four starting questions for technical conversations", () => {
+        const round = { roundName: "Backend Deep Dive", deliveryMode: "conversational" };
+        expect(getDefaultQuestionLimit(round)).toBe(4);
+    });
+
+    it("treats architecture rounds as live system-design discussions", () => {
+        expect(getDefaultQuestionLimit({ roundName: "Frontend Architecture", deliveryMode: "conversational" })).toBe(1);
     });
 });
