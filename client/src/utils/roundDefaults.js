@@ -1,6 +1,6 @@
 const roundText = (round = {}) => `${round.roundName || ""} ${round.description || ""} ${(round.skills || []).join(" ")}`.toLowerCase();
 
-export const isSystemDesignRound = (round = {}) => /\bsystem\s*design\b|\bsystem\s*architecture\b|\barchitecture\s*design\b/.test(roundText(round));
+export const isSystemDesignRound = (round = {}) => /system\s*design|architecture/.test(roundText(round));
 
 export const isBehavioralRound = (round = {}) => /recruiter|screen|behavior|culture|hiring manager|leadership|ownership|collaboration/.test(roundText(round));
 
