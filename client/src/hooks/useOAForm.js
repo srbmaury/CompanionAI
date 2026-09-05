@@ -40,14 +40,34 @@ export const useOAForm = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [interviewId, selectedRound?._id, selectedRound?.questions?.length, isConversational]);
 
-    // Persist OA drafts on every change
+    // Persist OA drafts on every change and mirror them into the in-memory interview
+    // object. RoundList reads that object, so its answered count should reflect the
+    // candidate's live/restored draft instead of waiting for final round submission.
     useEffect(() => {
         if (!selectedRound || isConversational) return;
-        const hasContent = (oaAnswers || []).some((a) => (a || "").toString().trim().length > 0);
-        if (!hasContent) return;
-        storage.set(storageKeys.oa(interviewId, selectedRound._id), oaAnswers);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [oaAnswers]);
+        const normalized = (oaAnswers || []).map((answer) => (answer || "").toString());
+        const hasContent = normalized.some((answer) => answer.trim().length > 0);
+        if (hasContent) storage.set(storageKeys.oa(interviewId, selectedRound._id), normalized);
+
+        const roundId = String(selectedRound._id);
+        setInterview((current) => {
+            if (!current) return current;
+            let changed = false;
+            const rounds = (current.rounds || []).map((entry) => {
+                if (String(entry?.round?._id || "") !== roundId) return entry;
+                let roundChanged = false;
+                const questions = (entry.round.questions || []).map((question, index) => {
+                    const nextAnswer = normalized[index] || "";
+                    if ((question?.answerGiven || "").toString() === nextAnswer) return question;
+                    changed = true;
+                    roundChanged = true;
+                    return { ...question, answerGiven: nextAnswer };
+                });
+                return roundChanged ? { ...entry, round: { ...entry.round, questions } } : entry;
+            });
+            return changed ? { ...current, rounds } : current;
+        });
+    }, [interviewId, isConversational, oaAnswers, selectedRound?._id, setInterview]);
 
     const handleOAChange = useCallback((i, val) => {
         setOaAnswers((prev) => {
