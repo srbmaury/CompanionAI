@@ -57,9 +57,9 @@ export const createAdaptiveAssessment = async (req, res, next) => {
         const excludeTexts = [];
         for (const input of rounds) {
             const count = Math.min(Math.max(Number(input.questionCount) || 3, 1), 10);
-            const manual = (input.questions || []).filter((item) => item?.text?.trim()).slice(0, count);
+            const supplied = (input.questions || []).filter((item) => item?.text?.trim()).slice(0, count);
             let generated = [];
-            if (manual.length < count) {
+            if (supplied.length < count) {
                 try {
                     generated = await generateQuestionsForRound({
                         company: req.organization?.name || "",
@@ -69,19 +69,22 @@ export const createAdaptiveAssessment = async (req, res, next) => {
                         roundName: input.name,
                         roundDescription: [input.description, input.aiPrompt ? `Interviewer generation request: ${input.aiPrompt}` : ""].filter(Boolean).join("\n"),
                         deliveryMode: input.deliveryMode || "conversational",
-                        count: count - manual.length,
-                        excludeTexts: [...excludeTexts, ...manual.map((item) => item.text)],
+                        count: count - supplied.length,
+                        excludeTexts: [...excludeTexts, ...supplied.map((item) => item.text)],
                     });
                 } catch { /* deterministic fill below keeps draft creation usable */ }
             }
-            const generatedItems = (Array.isArray(generated) ? generated : []).map((item) => ({ text: typeof item === "string" ? item : item?.text })).filter((item) => item.text?.trim());
-            const questions = [...manual, ...generatedItems].slice(0, count).map((item) => ({
+            const generatedItems = (Array.isArray(generated) ? generated : [])
+                .map((item) => ({ text: typeof item === "string" ? item : item?.text, required: false }))
+                .filter((item) => item.text?.trim());
+            const questions = [...supplied, ...generatedItems].slice(0, count).map((item) => ({
                 text: item.text.trim(),
                 weight: Number(item.weight) || 1,
                 competencies: Array.isArray(item.competencies) ? item.competencies : [],
                 knockout: Boolean(item.knockout),
+                required: Boolean(item.required),
             }));
-            while (questions.length < count) questions.push({ text: `Describe how you would approach ${input.name} challenge ${questions.length + 1} for a ${jobRole}.`, weight: 1, competencies: [], knockout: false });
+            while (questions.length < count) questions.push({ text: `Describe how you would approach ${input.name} challenge ${questions.length + 1} for a ${jobRole}.`, weight: 1, competencies: [], knockout: false, required: false });
             excludeTexts.push(...questions.map((item) => item.text));
             generatedRounds.push({
                 name: input.name,
@@ -118,6 +121,16 @@ export const createAdaptiveAssessment = async (req, res, next) => {
     } catch (error) { return next(error); }
 };
 
+const asAttemptQuestion = (question, state, fallbackCompetency = "") => ({
+    text: question.text,
+    weight: question.weight,
+    competencies: question.competencies?.length ? question.competencies : fallbackCompetency ? [fallbackCompetency] : [],
+    knockout: question.knockout,
+    required: Boolean(question.required),
+    difficulty: state?.currentDifficulty || 3,
+    sourceType: "planned",
+});
+
 const makeAttemptRound = async (assessment, round) => {
     const adaptive = round.deliveryMode === "conversational" && round.adaptive === true;
     if (!adaptive) return {
@@ -125,7 +138,7 @@ const makeAttemptRound = async (assessment, round) => {
         description: round.description,
         deliveryMode: round.deliveryMode || "conversational",
         adaptiveComplete: true,
-        questions: round.questions.map((question) => ({ text: question.text, weight: question.weight, competencies: question.competencies, knockout: question.knockout })),
+        questions: round.questions.map((question) => ({ text: question.text, weight: question.weight, competencies: question.competencies, knockout: question.knockout, required: Boolean(question.required) })),
     };
 
     const skills = [...new Set(round.questions.flatMap((question) => question.competencies || []))];
@@ -137,21 +150,14 @@ const makeAttemptRound = async (assessment, round) => {
         skills,
         maxQuestions: round.questions.length,
     });
-    const first = round.questions[0];
+    const first = round.questions.find((question) => question.required) || round.questions[0];
     return {
         name: round.name,
         description: round.description,
         deliveryMode: round.deliveryMode || "conversational",
         adaptiveState: state,
         adaptiveComplete: false,
-        questions: [{
-            text: first.text,
-            weight: first.weight,
-            competencies: first.competencies?.length ? first.competencies : [chooseNextCompetency(state)],
-            knockout: first.knockout,
-            difficulty: state.currentDifficulty,
-            sourceType: "planned",
-        }],
+        questions: [asAttemptQuestion(first, state, chooseNextCompetency(state))],
     };
 };
 
@@ -174,14 +180,14 @@ export const startAdaptiveCandidateAttempt = async (req, res, next) => {
         usageReservation = usage.reservation;
 
         const rawToken = crypto.randomBytes(32).toString("base64url");
-        const rounds = [];
-        for (const round of assessment.rounds) rounds.push(await makeAttemptRound(assessment, round));
+        const attemptRounds = [];
+        for (const round of assessment.rounds) attemptRounds.push(await makeAttemptRound(assessment, round));
         const attempt = new CandidateAttempt({
             assessment: assessment._id,
             candidateEmail,
             candidateName: req.body.name.trim(),
             accessTokenHash: tokenHash(rawToken),
-            rounds,
+            rounds: attemptRounds,
             status: "started",
             startedAt: new Date(),
             privacyConsentAt: new Date(),
@@ -205,6 +211,11 @@ const combinedAnswer = (item) => [
     item.followUpQuestion && item.followUpAnswer ? `Interviewer follow-up: ${item.followUpQuestion}\nCandidate: ${item.followUpAnswer}` : "",
 ].filter(Boolean).join("\n\n");
 
+const nextRequiredQuestion = (assessmentRound, attemptRound) => {
+    const asked = new Set((attemptRound.questions || []).filter((question) => question.required).map((question) => question.text.trim()));
+    return (assessmentRound?.questions || []).find((question) => question.required && !asked.has(question.text.trim())) || null;
+};
+
 const advanceAdaptiveRound = async ({ assessment, attempt, roundIndex, questionIndex }) => {
     const round = attempt.rounds[roundIndex];
     const item = round?.questions?.[questionIndex];
@@ -223,6 +234,13 @@ const advanceAdaptiveRound = async ({ assessment, attempt, roundIndex, questionI
     item.quickEvaluation = evaluation;
     item.adaptiveEvaluated = true;
     round.adaptiveState = applyEvidenceToState(round.adaptiveState, evaluation, { questionIndex, targetedCompetencies: item.competencies || [], sourceClaim: item.sourceClaim || "" });
+
+    const required = nextRequiredQuestion(assessment.rounds?.[roundIndex], round);
+    if (required && round.questions.length < Number(round.adaptiveState.maxQuestions || 1)) {
+        round.questions.push(asAttemptQuestion(required, round.adaptiveState, evaluation.policy?.targetCompetency || chooseNextCompetency(round.adaptiveState)));
+        return;
+    }
+
     const stop = shouldStopAdaptiveRound(round.adaptiveState, evaluation);
     if (stop.stop || round.questions.length >= Number(round.adaptiveState.maxQuestions || 1)) {
         round.adaptiveComplete = true;
@@ -246,6 +264,7 @@ const advanceAdaptiveRound = async ({ assessment, attempt, roundIndex, questionI
         weight: 1,
         competencies: next.competencies?.length ? next.competencies : [targetCompetency],
         knockout: false,
+        required: false,
         difficulty: next.difficulty,
         sourceType: next.sourceType || "adaptive",
         sourceClaim: next.sourceClaim || "",
