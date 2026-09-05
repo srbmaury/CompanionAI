@@ -5,6 +5,7 @@ const attemptQuestionSchema = new mongoose.Schema({
     weight: { type: Number, min: 0.1, max: 10, default: 1 },
     competencies: [{ type: String, maxlength: 80 }],
     knockout: { type: Boolean, default: false },
+    required: { type: Boolean, default: false },
     difficulty: { type: Number, min: 1, max: 5, default: 3 },
     sourceType: { type: String, enum: ["planned", "adaptive", "resume-claim", "fallback"], default: "planned" },
     sourceClaim: { type: String, maxlength: 500, default: "" },
