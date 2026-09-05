@@ -283,8 +283,8 @@ router.post("/refresh", refreshAccessToken);
 // Protected
 router.post("/logout", protect, logoutUser);
 router.get("/profile", protect, (req, res) => {
-    const { _id, name, email, role, provider, preferredProgrammingLanguage, practiceGoal, targetRole, weeklyPracticeTarget, reminderEnabled, reminderDay, reminderTime, reminderTimezone, practicePlan, practiceSubscriptionStatus, isVerified } = req.user;
-    res.json({ _id, name, email, role, provider, preferredProgrammingLanguage, practiceGoal, targetRole, weeklyPracticeTarget, reminderEnabled, reminderDay, reminderTime, reminderTimezone, practicePlan, practiceSubscriptionStatus, isVerified });
+    const { _id, name, email, role, provider, preferredProgrammingLanguage, interviewerVoicePreference, practiceGoal, targetRole, weeklyPracticeTarget, reminderEnabled, reminderDay, reminderTime, reminderTimezone, practicePlan, practiceSubscriptionStatus, isVerified } = req.user;
+    res.json({ _id, name, email, role, provider, preferredProgrammingLanguage, interviewerVoicePreference: interviewerVoicePreference || "random", practiceGoal, targetRole, weeklyPracticeTarget, reminderEnabled, reminderDay, reminderTime, reminderTimezone, practicePlan, practiceSubscriptionStatus, isVerified });
 });
 router.put("/profile", protect, validate(UpdateProfileSchema), audit("account.profile_update", { entityType: "User", getEntityId: (req) => req.user._id, pickBody: (body) => ({ nameChanged: body.name !== undefined, passwordChanged: Boolean(body.newPassword), goalChanged: body.practiceGoal !== undefined || body.targetRole !== undefined, reminderChanged: ["reminderEnabled", "reminderDay", "reminderTime", "reminderTimezone"].some((key) => body[key] !== undefined) }) }), updateProfile);
 router.post("/reminders/test", protect, audit("account.reminder_test", { entityType: "User", getEntityId: (req) => req.user._id }), async (req, res, next) => {
@@ -303,7 +303,7 @@ router.get("/export", protect, requireFeature("ACCOUNT_DATA_EXPORT_ENABLED"), as
     try {
         const userId = req.user._id;
         const [profile, interviews, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents] = await Promise.all([
-            User.findById(userId).select("name email role provider preferredProgrammingLanguage practiceGoal targetRole weeklyPracticeTarget reminderEnabled reminderDay reminderTime reminderTimezone practicePlan practiceSubscriptionStatus isVerified createdAt updatedAt").lean(),
+            User.findById(userId).select("name email role provider preferredProgrammingLanguage interviewerVoicePreference practiceGoal targetRole weeklyPracticeTarget reminderEnabled reminderDay reminderTime reminderTimezone practicePlan practiceSubscriptionStatus isVerified createdAt updatedAt").lean(),
             Interview.find({ user: userId }).lean(),
             Resume.find({ user: userId }).select("-cloudinaryUrl -secureUrl").lean(),
             ResumeReview.find({ user: userId }).lean(),
