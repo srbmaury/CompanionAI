@@ -8,9 +8,9 @@ import RecordVoiceOverRoundedIcon from "@mui/icons-material/RecordVoiceOverRound
 import StopCircleRoundedIcon from "@mui/icons-material/StopCircleRounded";
 import VolumeUpRoundedIcon from "@mui/icons-material/VolumeUpRounded";
 import { useSystemDesignDiscussion } from "../hooks/useSystemDesignDiscussion";
+import { countDiscussionWords, MIN_END_DISCUSSION_WORDS } from "../utils/systemDesignDiscussion";
 
 const SystemDesignCanvas = lazy(() => import("./SystemDesignCanvas"));
-const MIN_END_DISCUSSION_WORDS = 30;
 
 const KIND_LABELS = {
     clarify: "Clarification",
@@ -22,8 +22,6 @@ const KIND_LABELS = {
     security: "Security",
     observability: "Observability",
 };
-
-export const countDiscussionWords = (value = "") => value.trim().split(/\s+/).filter(Boolean).length;
 
 export default function SystemDesignDiscussionPanel({
     problem,
