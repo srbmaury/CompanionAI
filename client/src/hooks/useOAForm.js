@@ -1,11 +1,12 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import api from "../api/axios";
 import { storage, storageKeys } from "../utils/interviewStorage";
 import { pollJobStatus } from "../utils/pollJobStatus";
 import { trackEvent } from "../utils/analytics";
 
 /**
- * Manages online-assessment mode: answer state, draft persistence, and submission.
+ * Manages online-assessment mode: answer state, local recovery, debounced server
+ * autosave and final submission.
  */
 export const useOAForm = ({
     interviewId,
@@ -20,9 +21,9 @@ export const useOAForm = ({
     const [oaAnswers, setOaAnswers] = useState([]);
     const [oaSubmitting, setOaSubmitting] = useState(false);
     const [oaFeedbackProgress, setOaFeedbackProgress] = useState(0);
+    const autosaveTimerRef = useRef(null);
+    const lastServerSnapshotRef = useRef("");
 
-    // Reset answers and restore any saved draft when the selected OA round changes
-    // Also fires when questions load (questions?.length changes from 0 → N)
     useEffect(() => {
         if (!selectedRound || isConversational) return;
         const questionCount = selectedRound.questions?.length || 0;
@@ -31,18 +32,13 @@ export const useOAForm = ({
         const len = Math.max(questionCount, Array.isArray(saved) ? saved.length : 0);
         setOaAnswers((prev) => {
             const next = new Array(len).fill("");
-            for (let i = 0; i < len; i++) {
-                next[i] = (saved?.[i] ?? prev?.[i] ?? "").toString();
-            }
+            for (let i = 0; i < len; i++) next[i] = (saved?.[i] ?? prev?.[i] ?? "").toString();
             return next;
         });
-    // The selected fields are intentional: replacing the whole round object should not erase drafts.
+        lastServerSnapshotRef.current = JSON.stringify((selectedRound.questions || []).map((question) => (question?.answerGiven || "").toString()));
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [interviewId, selectedRound?._id, selectedRound?.questions?.length, isConversational]);
 
-    // Persist OA drafts on every change and mirror them into the in-memory interview
-    // object. RoundList reads that object, so its answered count should reflect the
-    // candidate's live/restored draft instead of waiting for final round submission.
     useEffect(() => {
         if (!selectedRound || isConversational) return;
         const normalized = (oaAnswers || []).map((answer) => (answer || "").toString());
@@ -69,6 +65,30 @@ export const useOAForm = ({
         });
     }, [interviewId, isConversational, oaAnswers, selectedRound?._id, setInterview]);
 
+    // Server autosave makes Next/Previous navigation safe even if the browser or
+    // device disappears before the candidate submits the round.
+    useEffect(() => {
+        clearTimeout(autosaveTimerRef.current);
+        if (!selectedRound || isConversational || selectedRound.status === "completed" || oaSubmitting) return undefined;
+        const questionCount = selectedRound.questions?.length || 0;
+        if (!questionCount) return undefined;
+        const snapshot = Array.from({ length: questionCount }, (_, index) => (oaAnswers?.[index] || "").toString());
+        const serialized = JSON.stringify(snapshot);
+        if (serialized === lastServerSnapshotRef.current) return undefined;
+        autosaveTimerRef.current = window.setTimeout(async () => {
+            try {
+                await api.post(`/questions/${selectedRound._id}/answers`, { answers: snapshot });
+                lastServerSnapshotRef.current = serialized;
+            } catch (error) {
+                // Local recovery remains authoritative if the network is briefly unavailable.
+                console.debug("OA autosave deferred", error?.message || error);
+            }
+        }, 850);
+        return () => clearTimeout(autosaveTimerRef.current);
+    }, [isConversational, oaAnswers, oaSubmitting, selectedRound]);
+
+    useEffect(() => () => clearTimeout(autosaveTimerRef.current), []);
+
     const handleOAChange = useCallback((i, val) => {
         setOaAnswers((prev) => {
             const next = [...prev];
@@ -93,14 +113,13 @@ export const useOAForm = ({
             return;
         }
         try {
+            clearTimeout(autosaveTimerRef.current);
             setOaSubmitting(true);
             trackEvent("first_answer_submitted");
             setOaFeedbackProgress(0);
-            const outgoing = Array.from(
-                { length: selectedRound.questions.length },
-                (_, i) => (answersToSubmit?.[i] ?? "").toString()
-            );
+            const outgoing = Array.from({ length: selectedRound.questions.length }, (_, i) => (answersToSubmit?.[i] ?? "").toString());
             await api.post(`/questions/${selectedRound._id}/answers`, { answers: outgoing });
+            lastServerSnapshotRef.current = JSON.stringify(outgoing);
 
             try {
                 const answered = (selectedRound.questions || [])
@@ -108,9 +127,7 @@ export const useOAForm = ({
                     .filter((it) => it.questionId && it.answer.length > 0);
                 if (answered.length > 0) {
                     const { data: job } = await api.post(`/jobs/bulk-feedback`, { roundId: selectedRound._id, items: answered, attach: true });
-                    if (job?.jobId) {
-                        await pollJobStatus("bulk-feedback", job.jobId, setOaFeedbackProgress);
-                    }
+                    if (job?.jobId) await pollJobStatus("bulk-feedback", job.jobId, setOaFeedbackProgress);
                 }
             } catch (e) {
                 console.error("bulk feedback enqueue error", e);
@@ -122,7 +139,7 @@ export const useOAForm = ({
             const updated = data.rounds.find((r) => r.round._id === selectedRound._id)?.round;
             if (updated) selectRound(updated);
             clearDraftsForRound(selectedRound);
-            showToast("success", "Round submitted successfully.");
+            showToast("success", "Assessment submitted successfully.");
             trackEvent("round_completed");
         } catch (e) {
             console.error("OA submit error", e);
