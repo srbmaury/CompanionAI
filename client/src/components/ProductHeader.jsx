@@ -69,6 +69,11 @@ const navButtonSx = (active) => ({
     "&:hover": { bgcolor: "action.hover", color: "text.primary" },
 });
 
+export const isProductNavItemActive = (location, item) => {
+    if (location.pathname !== item.path) return false;
+    return item.hash ? location.hash === item.hash : !location.hash;
+};
+
 export default function ProductHeader({ surface = "practice" }) {
     const config = CONFIG[surface] || CONFIG.practice;
     const ProductIcon = config.icon;
@@ -155,7 +160,7 @@ export default function ProductHeader({ surface = "practice" }) {
     };
 
     const renderNavItem = (item, mobile = false) => {
-        const active = location.pathname === item.path && (!item.hash || location.hash === item.hash);
+        const active = isProductNavItemActive(location, item);
         if (mobile) {
             return <MenuItem key={`${item.label}-${item.hash || ""}`} onClick={() => openNavItem(item)} selected={active}>{item.label}</MenuItem>;
         }
@@ -210,7 +215,7 @@ export default function ProductHeader({ surface = "practice" }) {
                                     {surface === "practice" && <MenuItem component={RouterLink} to="/practice/profile"><PersonOutlineRounded sx={{ mr: 1.25 }} />Profile</MenuItem>}
                                     <MenuItem onClick={openOtherProduct}><SwapHorizRounded sx={{ mr: 1.25 }} />{config.crossLabel}</MenuItem>
                                     <MenuItem onClick={() => { setProfileAnchor(null); setFeedbackOpen(true); }}><RateReviewOutlined sx={{ mr: 1.25 }} />Send feedback</MenuItem>
-                                    {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/feedback"><SettingsOutlined sx={{ mr: 1.25 }} />Admin</MenuItem>}
+                                    {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin"><SettingsOutlined sx={{ mr: 1.25 }} />Admin</MenuItem>}
                                     <Divider />
                                     <MenuItem onClick={handleLogout}><LogoutRounded sx={{ mr: 1.25 }} />Sign out</MenuItem>
                                 </Menu>
