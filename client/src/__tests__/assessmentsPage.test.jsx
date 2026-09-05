@@ -43,7 +43,7 @@ describe("assessment workspace hierarchy", () => {
         expect(screen.getByText("3 submitted")).toBeTruthy();
     });
 
-    it("lets recruiters choose adaptive primary questions or a fixed reviewed question set independently of follow-ups", async () => {
+    it("lets recruiters choose must-ask questions, adaptive primary questions, or a fixed reviewed set independently of follow-ups", async () => {
         get.mockResolvedValue({ data: { items: [], totalPages: 1 } });
         renderAssessments("/hire/assessments?create=1");
         await screen.findByRole("heading", { name: "Create assessment" });
@@ -55,8 +55,14 @@ describe("assessment workspace hierarchy", () => {
         expect(screen.getByText(/may ask 0–3 follow-ups per primary question/)).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: "Add manual question" }));
         fireEvent.change(screen.getByLabelText(/Question 1/), { target: { value: "Explain a reliability decision you made and the trade-off." } });
-        expect(screen.getByText("Required recruiter question")).toBeTruthy();
-        expect(screen.getByText("1 configured · 1 required · up to 3 total")).toBeTruthy();
+        expect(screen.getByText("Must-ask recruiter question")).toBeTruthy();
+        const mustAsk = screen.getByRole("checkbox", { name: /Must ask this question/ });
+        expect(mustAsk.checked).toBe(true);
+        expect(screen.getByText("1 configured · 1 must ask · up to 3 total")).toBeTruthy();
+        fireEvent.click(mustAsk);
+        expect(mustAsk.checked).toBe(false);
+        expect(screen.getByText("Optional AI-planned question")).toBeTruthy();
+        expect(screen.getByText("1 configured · 0 must ask · up to 3 total")).toBeTruthy();
         fireEvent.click(aiQuestionToggle);
         expect(screen.getByLabelText(/Question count/).disabled).toBe(true);
         expect(screen.getByLabelText(/Question count/).value).toBe("1");
@@ -64,6 +70,17 @@ describe("assessment workspace hierarchy", () => {
         expect(screen.getByText("Fixed interview question")).toBeTruthy();
         expect(screen.getByText("1 configured · fixed interview set")).toBeTruthy();
         expect(screen.getByRole("checkbox", { name: /^AI contextual follow-ups/ }).checked).toBe(true);
+    });
+
+    it("keeps advanced scoring controls collapsed by default", async () => {
+        get.mockResolvedValue({ data: { items: [], totalPages: 1 } });
+        renderAssessments("/hire/assessments?create=1");
+        await screen.findByRole("heading", { name: "Create assessment" });
+        fireEvent.click(screen.getByRole("button", { name: "Add manual question" }));
+        fireEvent.change(screen.getByLabelText(/Question 1/), { target: { value: "Explain how you would investigate a production reliability regression." } });
+        const advanced = screen.getByText("Advanced scoring and review").closest("details");
+        expect(advanced?.open).toBe(false);
+        expect(screen.getByText("Advanced scoring and review")).toBeTruthy();
     });
 
     it("supports a reviewed hybrid question set before publishing", async () => {

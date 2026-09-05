@@ -15,7 +15,7 @@ const attemptQuestionSchema = new mongoose.Schema({
     knockout: { type: Boolean, default: false },
     required: { type: Boolean, default: false },
     difficulty: { type: Number, min: 1, max: 5, default: 3 },
-    sourceType: { type: String, enum: ["planned", "adaptive", "resume-claim", "fallback"], default: "planned" },
+    sourceType: { type: String, enum: ["planned", "opening", "adaptive", "resume-claim", "fallback"], default: "planned" },
     sourceClaim: { type: String, maxlength: 500, default: "" },
     adaptiveEvaluated: { type: Boolean, default: false },
     quickEvaluation: { type: mongoose.Schema.Types.Mixed, default: undefined },

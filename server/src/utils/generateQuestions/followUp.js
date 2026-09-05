@@ -48,7 +48,7 @@ export const generateFollowUp = async ({
     const history = formatHistory(answeredFollowUps);
     const competencyText = (Array.isArray(competencies) ? competencies : []).map((item) => sanitizeText(item, 80)).filter(Boolean).slice(0, 4).join(", ");
     const claim = sanitizeText(sourceClaim, 500);
-    const prompt = `You are conducting a realistic ${rnd || "technical"} interview for a ${role || "software engineering"} role.
+    const prompt = `You are conducting a realistic, conversational ${rnd || "technical"} interview for a ${role || "software engineering"} role.
 
 Original question: "${q}"
 Candidate's original answer: "${a}"
@@ -68,6 +68,8 @@ Decision policy:
 - Low confidence caused by one important ambiguity/unsupported claim/trade-off/failure case => probe that exact gap.
 - Low confidence caused by a very thin or irrelevant answer may justify one rescue probe, but do not repeatedly re-ask the same concept.
 - Base the next probe on the full conversation. Never repeat something already answered clearly.
+- Sound like a thoughtful human interviewer continuing the same conversation. Use concise transitions such as “Got it — …”, “Makes sense. How did you…”, or “Let’s go one level deeper…” only when they fit naturally; do not prepend filler mechanically.
+- Keep the tone warm, neutral, and professional. Avoid robotic rubric language, interrogation-style wording, praise, judgment, or canned acknowledgements.
 - Prefer depth over trivia. Ask one thing at a time, in natural interviewer language, usually one sentence.
 - After two follow-ups, use the third only when uncertainty remains on a core hiring signal.
 - Never coach, reveal an ideal answer, praise, score, or hint at what the candidate should say.

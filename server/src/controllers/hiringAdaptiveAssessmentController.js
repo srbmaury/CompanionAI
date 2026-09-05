@@ -70,6 +70,8 @@ const publicAttempt = (attempt) => ({
         deliveryMode: round.deliveryMode || "conversational",
         adaptive: Boolean(round.adaptiveState?.enabled),
         adaptiveComplete: Boolean(round.adaptiveComplete),
+        maxQuestions: Number(round.adaptiveState?.maxQuestions) || round.questions.length,
+        questionsAsked: Number(round.adaptiveState?.questionsAsked) || round.questions.filter((question) => question.answer).length,
         questions: round.questions.map((question) => {
             const history = followUpList(question);
             const pending = pendingFollowUpFor(question);
@@ -225,14 +227,44 @@ const makeAttemptRound = async (assessment, round) => {
         skills,
         maxQuestions: Number(round.questionCount) || round.questions.length,
     });
-    const first = round.questions.find((question) => question.required) || round.questions[0];
+    const requiredCount = round.questions.filter((question) => question.required).length;
+    const openingTarget = chooseNextCompetency(state);
+    let first;
+    if (Number(state.maxQuestions || 1) > requiredCount) {
+        const opening = await generateNextAdaptiveQuestion({
+            interview: { jobRole: assessment.jobRole, jobDescription: assessment.jobDescription, company: "" },
+            round: {
+                name: round.name,
+                description: `${round.description || ""}\nThis is the opening question for the round. Start broad and conversational: briefly invite the candidate to introduce their relevant experience or walk through one representative example before moving into narrower technical depth. Keep it high-signal and role-relevant, not generic small talk.`,
+            },
+            state,
+            targetCompetency: openingTarget,
+            difficulty: Math.min(Number(state.currentDifficulty) || 3, 3),
+            sourceClaim: "",
+            excludeTexts: [],
+        });
+        first = {
+            text: opening.text,
+            weight: 1,
+            competencies: opening.competencies?.length ? opening.competencies : [openingTarget],
+            knockout: false,
+            required: false,
+            difficulty: opening.difficulty,
+            sourceType: "opening",
+            sourceClaim: "",
+            followUps: [],
+        };
+    } else {
+        const plannedFirst = round.questions.find((question) => question.required) || round.questions[0];
+        first = asAttemptQuestion(plannedFirst, state, openingTarget);
+    }
     return {
         name: round.name,
         description: round.description,
         deliveryMode: round.deliveryMode || "conversational",
         adaptiveState: state,
         adaptiveComplete: false,
-        questions: [asAttemptQuestion(first, state, chooseNextCompetency(state))],
+        questions: [first],
     };
 };
 
@@ -343,7 +375,10 @@ const advanceAdaptiveRound = async ({ assessment, attempt, roundIndex, questionI
     const claim = selectResumeClaimForTarget(round.adaptiveState, targetCompetency, evaluation.policy?.sourceClaim || "");
     const next = await generateNextAdaptiveQuestion({
         interview: { jobRole: assessment.jobRole, jobDescription: assessment.jobDescription, company: "" },
-        round: { name: round.name, description: round.description },
+        round: {
+            name: round.name,
+            description: `${round.description || ""}\nContinue the same interview conversation naturally. Ask a concise next question that connects to the evidence already collected, then go deeper on the most useful competency gap. Sound like a thoughtful human interviewer, not a rubric or questionnaire.`,
+        },
         state: round.adaptiveState,
         targetCompetency,
         difficulty: evaluation.policy?.difficulty || round.adaptiveState.currentDifficulty,
@@ -400,7 +435,20 @@ export const saveAdaptiveCandidateAnswer = async (req, res, next) => {
         } else {
             // Coding/written and system-design formats keep their fixed question
             // structure. A single optional probe remains available for those modes.
-            if (followUpAnswer !== undefined) item.followUpAnswer = followUpAnswer.toString().trim().slice(0, 5000);
+            if (followUpAnswer !== undefined) {
+                const value = followUpAnswer.toString().trim().slice(0, 5000);
+                if (!value) return res.status(400).json({ message: "Follow-up answer required" });
+                const history = ensureFollowUpHistory(item);
+                const pending = pendingFollowUpFor(item);
+                if (pending) {
+                    pending.answer = value;
+                    pending.answeredAt = new Date();
+                } else if (item.followUpQuestion) {
+                    history.push({ question: item.followUpQuestion, answer: value, answeredAt: new Date() });
+                }
+                item.followUpAnswer = value;
+                syncLegacyFollowUpFields(item);
+            }
             if (assessment.followUpsEnabled && item.answer && !item.followUpQuestion) {
                 try {
                     const decision = await generateFollowUp({
@@ -411,7 +459,13 @@ export const saveAdaptiveCandidateAnswer = async (req, res, next) => {
                         systemDesign: round.deliveryMode === "system-design",
                         competencies: item.competencies || [],
                     });
-                    item.followUpQuestion = decision?.shouldAsk ? decision.followUp || "" : "";
+                    if (decision?.shouldAsk && decision.followUp) {
+                        ensureFollowUpHistory(item).push({ question: decision.followUp, answer: "", reason: decision.reason || "", focus: decision.focus || "" });
+                        syncLegacyFollowUpFields(item);
+                    } else {
+                        item.followUpQuestion = "";
+                        item.followUpAnswer = "";
+                    }
                 } catch { /* save the original response even if follow-up generation fails */ }
             }
         }
