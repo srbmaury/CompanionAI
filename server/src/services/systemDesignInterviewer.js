@@ -28,7 +28,7 @@ const fallbackForcedInterjection = ({ previousInterjections = [], candidateAsked
         });
     }
     const probes = [
-        { kind: "clarify", text: "Before we go further, what scale and traffic assumptions are you designing for?" },
+        { kind: "clarify", text: "Let's get started—what requirements and scale assumptions would you clarify before choosing an architecture?" },
         { kind: "challenge", text: "Walk me through the main request and data flow end to end—where do you expect the first bottleneck?" },
         { kind: "failure", text: "Suppose one of your critical data stores becomes unavailable—how does the system behave?" },
         { kind: "tradeoff", text: "Which consistency guarantees actually matter here, and what are you willing to trade for availability or latency?" },
@@ -56,7 +56,10 @@ export const generateSystemDesignInterjection = async ({
     candidateAskedQuestion = false,
 }) => {
     const recentTranscript = sanitizeText(transcript || "", 5000);
-    if (recentTranscript.length < 20) return normalizeSystemDesignInterjection({ shouldInterrupt: false, reason: "not_enough_context" });
+    if (recentTranscript.length < 20) {
+        if (forceInteraction) return fallbackForcedInterjection({ previousInterjections, candidateAskedQuestion });
+        return normalizeSystemDesignInterjection({ shouldInterrupt: false, reason: "not_enough_context" });
+    }
     if (!forceInteraction && recentTranscript.length < 80) return normalizeSystemDesignInterjection({ shouldInterrupt: false, reason: "not_enough_context" });
 
     const prior = (previousInterjections || [])
