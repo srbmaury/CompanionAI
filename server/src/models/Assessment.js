@@ -13,6 +13,7 @@ const assessmentRoundSchema = new mongoose.Schema({
     description: { type: String, maxlength: 300 },
     deliveryMode: { type: String, enum: ["conversational", "online-assessment", "system-design"], default: "conversational" },
     adaptive: { type: Boolean, default: false },
+    questionCount: { type: Number, min: 1, max: 10, default: 3 },
     questions: { type: [assessmentQuestionSchema], validate: (value) => value.length >= 1 && value.length <= 10 },
 }, { _id: true });
 
