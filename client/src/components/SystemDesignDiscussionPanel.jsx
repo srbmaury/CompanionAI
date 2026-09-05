@@ -53,19 +53,20 @@ export default function SystemDesignDiscussionPanel({
     cameraSlot = null,
 }) {
     const [aiSpeaking, setAiSpeaking] = useState(false);
-    const [currentPrompt, setCurrentPrompt] = useState(problem || "");
+    const [latestInterviewerPrompt, setLatestInterviewerPrompt] = useState("");
     const [showTranscriptEditor, setShowTranscriptEditor] = useState(false);
     const spokenProblemRef = useRef("");
     const mountedRef = useRef(true);
+    const threadEndRef = useRef(null);
     const isListening = listening && listeningTarget === target;
     const discussionWords = countDiscussionWords(transcript || "");
     const canEndDiscussion = discussionWords >= MIN_END_DISCUSSION_WORDS;
 
     useEffect(() => () => { mountedRef.current = false; stopHandsFree?.(); }, [stopHandsFree]);
 
-    const speakInterviewer = useCallback(async (text) => {
+    const speakInterviewer = useCallback(async (text, { remember = true } = {}) => {
         if (!text) return;
-        setCurrentPrompt(text);
+        if (remember) setLatestInterviewerPrompt(text);
         await pauseHandsFree?.();
         if (supportsTTS) {
             setAiSpeaking(true);
@@ -85,19 +86,27 @@ export default function SystemDesignDiscussionPanel({
         headers: checkpointHeaders,
         transcript,
         diagramData,
+        interimText,
+        micLevel,
+        listening: isListening,
+        interviewerSpeaking: aiSpeaking,
         onInterjection,
         skipAuthRedirect,
     });
 
     useEffect(() => {
+        threadEndRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    }, [interjections.length]);
+
+    useEffect(() => {
         if (!problem || spokenProblemRef.current === problem) return;
         spokenProblemRef.current = problem;
+        setLatestInterviewerPrompt("");
         let cancelled = false;
         (async () => {
             if (supportsSTT) await startHandsFree?.(target);
             if (cancelled) return;
-            setCurrentPrompt(problem);
-            if (supportsTTS) await speakInterviewer(problem);
+            if (supportsTTS) await speakInterviewer(problem, { remember: false });
             else if (supportsSTT) await resumeHandsFree?.(target);
         })();
         return () => { cancelled = true; };
@@ -147,25 +156,27 @@ export default function SystemDesignDiscussionPanel({
                                 Live system design discussion
                             </Typography>
                             <Chip size="small" color={status.color} label={status.label} />
-                            {checking && <Chip size="small" variant="outlined" label="Interviewer thinking…" sx={{ color: "rgba(255,255,255,.72)", borderColor: "rgba(255,255,255,.22)" }} />}
                         </Stack>
+                        <Typography variant="caption" sx={{ color: "#93c5fd", fontWeight: 850, letterSpacing: .5 }}>
+                            ORIGINAL PROBLEM
+                        </Typography>
                         <Typography sx={{ fontSize: { xs: "1.05rem", md: "1.3rem" }, lineHeight: 1.55, fontWeight: 700 }}>
-                            {currentPrompt || problem}
+                            {problem}
                         </Typography>
                         <Typography variant="body2" sx={{ color: "rgba(255,255,255,.62)", mt: 1 }}>
-                            Talk through your thinking while you draw. The interviewer will actively clarify requirements, challenge assumptions, and introduce realistic constraints as the discussion develops.
+                            Talk through your thinking while you draw. If you pause for 15 seconds, the interviewer will step in naturally.
                         </Typography>
                     </Box>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
-                        {supportsTTS && currentPrompt && (
+                        {supportsTTS && problem && (
                             <Button
                                 size="small"
                                 variant="outlined"
                                 startIcon={<VolumeUpRoundedIcon />}
-                                onClick={() => speakInterviewer(currentPrompt)}
+                                onClick={() => speakInterviewer(problem, { remember: false })}
                                 sx={{ color: "white", borderColor: "rgba(255,255,255,.28)", "&:hover": { borderColor: "rgba(255,255,255,.55)" } }}
                             >
-                                Replay
+                                Replay problem
                             </Button>
                         )}
                         {!micSessionActive && supportsSTT && (
@@ -178,13 +189,29 @@ export default function SystemDesignDiscussionPanel({
                 {cameraSlot && <Box sx={{ position: "absolute", right: 12, bottom: 12 }}>{cameraSlot}</Box>}
             </Paper>
 
+            {latestInterviewerPrompt && (
+                <Paper variant="outlined" sx={{ px: 2, py: 1.5, borderRadius: 2.5, borderColor: "primary.main", bgcolor: "action.hover" }}>
+                    <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={1} alignItems={{ sm: "center" }}>
+                        <Box>
+                            <Typography variant="caption" color="primary.main" fontWeight={850}>INTERVIEWER</Typography>
+                            <Typography fontWeight={750}>{latestInterviewerPrompt}</Typography>
+                        </Box>
+                        {supportsTTS && (
+                            <Button size="small" onClick={() => speakInterviewer(latestInterviewerPrompt)} startIcon={<VolumeUpRoundedIcon />}>
+                                Replay
+                            </Button>
+                        )}
+                    </Stack>
+                </Paper>
+            )}
+
             {micPermission === "denied" && (
                 <Alert severity="warning">
                     Microphone access is blocked. Allow microphone permission in your browser to get the intended live interview experience; you can type a transcript as a fallback.
                 </Alert>
             )}
 
-            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1fr) 310px" }, gap: 2, alignItems: "start" }}>
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1fr) 320px" }, gap: 2, alignItems: "start" }}>
                 <Paper variant="outlined" sx={{ p: { xs: 1.25, md: 1.75 }, borderRadius: 3, minWidth: 0 }}>
                     <Suspense fallback={<Skeleton variant="rounded" height={620} />}>
                         <SystemDesignCanvas
@@ -238,17 +265,18 @@ export default function SystemDesignDiscussionPanel({
                     <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
                         <Typography fontWeight={850}>Interviewer thread</Typography>
                         <Typography variant="caption" color="text.secondary">
-                            The interviewer participates throughout the round, but lets you finish coherent thoughts before stepping in.
+                            Questions, constraints and challenges from the live interviewer appear here.
                         </Typography>
                         <Stack spacing={1.25} mt={1.5} sx={{ maxHeight: 300, overflow: "auto" }}>
                             {interjections.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary">Start explaining your requirements and assumptions. The interviewer will join once there is enough context to probe.</Typography>
+                                <Typography variant="body2" color="text.secondary">Start discussing your design. The interviewer will participate and will step in after 15 seconds of silence.</Typography>
                             ) : interjections.map((item) => (
                                 <Box key={item.id} sx={{ pl: 1.25, borderLeft: "3px solid", borderColor: "primary.main" }}>
                                     <Typography variant="caption" color="primary.main" fontWeight={800}>{KIND_LABELS[item.kind] || "Interviewer"}</Typography>
                                     <Typography variant="body2" fontWeight={650}>{item.text}</Typography>
                                 </Box>
                             ))}
+                            <Box ref={threadEndRef} />
                         </Stack>
                     </Paper>
                 </Stack>
