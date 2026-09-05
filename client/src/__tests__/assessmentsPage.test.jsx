@@ -56,7 +56,7 @@ describe("assessment workspace hierarchy", () => {
         fireEvent.change(screen.getByLabelText(/Job role/), { target: { value: "Senior frontend engineer" } });
         fireEvent.change(screen.getByLabelText(/Job description and success criteria/), { target: { value: "Own React architecture, accessibility, testing, and web performance." } });
         fireEvent.mouseDown(screen.getByLabelText("Candidate experience"));
-        fireEvent.click(await screen.findByRole("option", { name: "Coding / written assessment" }));
+        fireEvent.click(await screen.findByRole("option", { name: "Coding / written assessment — all questions" }));
         fireEvent.change(screen.getByLabelText("AI question brief"), { target: { value: "Generate 3 questions about React and accessibility" } });
         fireEvent.click(screen.getByRole("button", { name: "Generate with AI" }));
         expect(await screen.findByDisplayValue("Explain how you diagnose a slow React render.")).toBeTruthy();
@@ -83,10 +83,10 @@ describe("assessment workspace hierarchy", () => {
         get.mockResolvedValue({ data: { items: [], totalPages: 1 } });
         renderAssessments("/assessments?create=1");
         await screen.findByRole("heading", { name: "Create assessment" });
-        expect((await screen.findByLabelText(/Number of questions/)).value).toBe("3");
+        expect((await screen.findByLabelText(/Target question count/)).value).toBe("3");
         fireEvent.mouseDown(await screen.findByLabelText("Candidate experience"));
-        fireEvent.click(await screen.findByRole("option", { name: "System design canvas + discussion" }));
-        expect(screen.getByLabelText(/Number of questions/).value).toBe("1");
+        fireEvent.click(await screen.findByRole("option", { name: "System design — canvas + discussion" }));
+        expect(screen.getByLabelText(/Target question count/).value).toBe("1");
         expect(screen.getByText(/Excalidraw architecture canvas/)).toBeTruthy();
     });
 });
