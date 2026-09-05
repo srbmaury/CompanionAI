@@ -10,7 +10,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 describe("assessment candidate preview", () => {
     it("shows candidate-facing setup and allows reviewing every question without starting an attempt", async () => {
         get.mockResolvedValue({ data: { title: "Backend screen", company: "Acme", jobRole: "Backend Engineer", durationMinutes: 30, inviteOnly: true, followUpsEnabled: true, candidateInstructions: "Use a quiet room.", integrity: { enabled: true, requireCamera: true, requireFullscreen: true }, rounds: [{ name: "Technical", deliveryMode: "conversational", questions: [{ text: "Design an API." }, { text: "Secure the API." }] }] } });
-        render(<MemoryRouter initialEntries={["/assessments/a1/preview"]}><Routes><Route path="/assessments/:assessmentId/preview" element={<AssessmentPreviewPage />} /></Routes></MemoryRouter>);
+        render(<MemoryRouter initialEntries={["/hire/assessments/a1/preview"]}><Routes><Route path="/hire/assessments/:assessmentId/preview" element={<AssessmentPreviewPage />} /></Routes></MemoryRouter>);
 
         expect(await screen.findByRole("heading", { name: "Backend screen" })).toBeTruthy();
         expect(screen.getByText(/Nothing entered here is saved/)).toBeTruthy();
