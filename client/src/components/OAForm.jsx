@@ -67,77 +67,35 @@ const OAForm = ({
 
     return (
         <Stack spacing={2} mt={2}>
-            <Paper
-                variant="outlined"
-                sx={{
-                    overflow: "hidden",
-                    borderRadius: 3,
-                    boxShadow: "0 12px 36px rgba(15, 23, 42, 0.06)",
-                }}
-            >
+            <Paper variant="outlined" sx={{ overflow: "hidden", borderRadius: 3, boxShadow: "0 12px 36px rgba(15, 23, 42, 0.06)" }}>
                 <Box sx={{ px: { xs: 2, md: 2.5 }, pt: 2, pb: 1.5, bgcolor: "action.hover" }}>
                     <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={1.5} alignItems={{ sm: "center" }}>
                         <Box>
-                            <Typography variant="overline" color="primary.main" fontWeight={800}>
-                                Online assessment · Problem {safeIndex + 1} of {total}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                                Your work autosaves. Move between problems whenever you need to.
-                            </Typography>
+                            <Typography variant="overline" color="primary.main" fontWeight={800}>Online assessment · Problem {safeIndex + 1} of {total}</Typography>
+                            <Typography variant="body2" color="text.secondary">Your work autosaves. Move between problems whenever you need to.</Typography>
                         </Box>
                         <Stack direction="row" spacing={1} alignItems="center">
                             <Chip size="small" icon={<CheckCircleRoundedIcon />} label={`${answeredCount}/${total} answered`} color={answeredCount === total ? "success" : "default"} variant="outlined" />
-                            <Chip size="small" label={remaining ? `${remaining} remaining` : "Ready to submit"} color={remaining ? "default" : "success"} />
+                            <Chip size="small" label={remaining ? `${remaining} remaining` : "Ready to finish"} color={remaining ? "default" : "success"} />
                         </Stack>
                     </Stack>
                     <LinearProgress variant="determinate" value={progress} sx={{ mt: 1.5, height: 5, borderRadius: 999 }} />
                 </Box>
 
-                <Box
-                    sx={{
-                        display: "grid",
-                        gridTemplateColumns: { xs: "1fr", lg: "minmax(300px, 0.72fr) minmax(0, 1.28fr)" },
-                        minHeight: { lg: 560 },
-                    }}
-                >
+                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(300px, 0.72fr) minmax(0, 1.28fr)" }, minHeight: { lg: 560 } }}>
                     <Box sx={{ p: { xs: 2, md: 2.5 }, borderRight: { lg: "1px solid" }, borderBottom: { xs: "1px solid", lg: 0 }, borderColor: "divider", bgcolor: "background.paper" }}>
                         <Stack spacing={2} sx={{ position: { lg: "sticky" }, top: { lg: 92 } }}>
                             <Box>
                                 <Typography variant="caption" color="text.secondary" fontWeight={800}>PROBLEM STATEMENT</Typography>
-                                <Typography component="h2" variant="h5" fontWeight={800} sx={{ lineHeight: 1.45, mt: .5 }}>
-                                    {activeQuestion?.question?.text || "(question text unavailable)"}
-                                </Typography>
+                                <Typography component="h2" variant="h5" fontWeight={800} sx={{ lineHeight: 1.45, mt: .5 }}>{activeQuestion?.question?.text || "(question text unavailable)"}</Typography>
                             </Box>
-                            <VoiceControls
-                                target={safeIndex}
-                                speakText={activeQuestion?.question?.text}
-                                supportsTTS={supportsTTS}
-                                supportsSTT={supportsSTT}
-                                listening={listening}
-                                listeningTarget={listeningTarget}
-                                onSpeak={onSpeak}
-                                onStartListening={onStartListening}
-                                onStopListening={onStopListening}
-                            />
+                            <VoiceControls target={safeIndex} speakText={activeQuestion?.question?.text} supportsTTS={supportsTTS} supportsSTT={supportsSTT} listening={listening} listeningTarget={listeningTarget} onSpeak={onSpeak} onStartListening={onStartListening} onStopListening={onStopListening} />
                             <Box>
                                 <Typography variant="caption" color="text.secondary" fontWeight={800}>PROBLEM NAVIGATION</Typography>
                                 <Box sx={{ display: "flex", gap: .75, flexWrap: "wrap", mt: 1 }} aria-label="Question navigation">
                                     {questions.map((_question, index) => {
                                         const answered = Boolean(String(answers?.[index] || "").trim() || String(spokenAnswers?.[index] || "").trim());
-                                        return (
-                                            <Button
-                                                key={index}
-                                                size="small"
-                                                variant={index === safeIndex ? "contained" : "outlined"}
-                                                color={answered && index !== safeIndex ? "success" : "primary"}
-                                                onClick={() => setActiveIndex(index)}
-                                                disabled={submitting}
-                                                aria-label={`Go to question ${index + 1}${answered ? ", answered" : ""}`}
-                                                sx={{ minWidth: 40, borderRadius: 2 }}
-                                            >
-                                                {index + 1}
-                                            </Button>
-                                        );
+                                        return <Button key={index} size="small" variant={index === safeIndex ? "contained" : "outlined"} color={answered && index !== safeIndex ? "success" : "primary"} onClick={() => setActiveIndex(index)} disabled={submitting} aria-label={`Go to question ${index + 1}${answered ? ", answered" : ""}`} sx={{ minWidth: 40, borderRadius: 2 }}>{index + 1}</Button>;
                                     })}
                                 </Box>
                             </Box>
@@ -148,30 +106,10 @@ const OAForm = ({
                         <Typography variant="caption" color="text.secondary" fontWeight={800}>WORKSPACE</Typography>
                         <Box sx={{ mt: 1 }}>
                             <Suspense fallback={<Skeleton variant="rectangular" height={430} sx={{ borderRadius: 2 }} />}>
-                                <CodeEditorField
-                                    value={answers?.[safeIndex] || ""}
-                                    onChange={(value) => onChange(safeIndex, value)}
-                                    onModeChange={(enabled) => onCodingModeChange(safeIndex, enabled)}
-                                    draftKey={`${codeDraftPrefix}:${safeIndex}`}
-                                    suggestCode={/\b(code|implement|algorithm|data structure|complexity|function|program)\b/i.test(activeQuestion?.question?.text || "")}
-                                    minRows={16}
-                                    outlinedInputSx={outlinedInputSx}
-                                />
+                                <CodeEditorField value={answers?.[safeIndex] || ""} onChange={(value) => onChange(safeIndex, value)} onModeChange={(enabled) => onCodingModeChange(safeIndex, enabled)} draftKey={`${codeDraftPrefix}:${safeIndex}`} suggestCode={/\b(code|implement|algorithm|data structure|complexity|function|program)\b/i.test(activeQuestion?.question?.text || "")} minRows={16} outlinedInputSx={outlinedInputSx} />
                             </Suspense>
                         </Box>
-
-                        {codingEnabled?.[safeIndex] && (
-                            <TextField
-                                label="Explain your approach"
-                                value={spokenAnswers?.[safeIndex] || ""}
-                                onChange={(event) => onSpokenChange(safeIndex, event.target.value)}
-                                multiline
-                                minRows={3}
-                                fullWidth
-                                sx={{ mt: 2 }}
-                                helperText="Optional: reasoning, complexity, assumptions, or trade-offs."
-                            />
-                        )}
+                        {codingEnabled?.[safeIndex] && <TextField label="Explain your approach" value={spokenAnswers?.[safeIndex] || ""} onChange={(event) => onSpokenChange(safeIndex, event.target.value)} multiline minRows={3} fullWidth sx={{ mt: 2 }} helperText="Optional: reasoning, complexity, assumptions, or trade-offs." />}
                     </Box>
                 </Box>
 
@@ -179,14 +117,10 @@ const OAForm = ({
                     <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" gap={1.5} alignItems={{ md: "center" }}>
                         <Stack direction="row" spacing={1}>
                             <Button startIcon={<ArrowBackRoundedIcon />} onClick={goPrevious} disabled={safeIndex === 0 || submitting}>Previous</Button>
-                            {safeIndex < total - 1 && (
-                                <Button variant="outlined" endIcon={<ArrowForwardRoundedIcon />} onClick={goNext} disabled={submitting}>Next problem</Button>
-                            )}
+                            {safeIndex < total - 1 && <Button variant="outlined" endIcon={<ArrowForwardRoundedIcon />} onClick={goNext} disabled={submitting}>Next problem</Button>}
                         </Stack>
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "center" }}>
-                            <Button variant="contained" onClick={onSubmit} disabled={submitting} sx={{ minWidth: 150 }}>
-                                {submitting ? "Submitting…" : "Submit assessment"}
-                            </Button>
+                            <Button variant="contained" onClick={onSubmit} disabled={submitting} sx={{ minWidth: 170 }}>{submitting ? "Finishing…" : "Finish coding round"}</Button>
                             <SkipRoundButton onSkip={onSkip} />
                         </Stack>
                     </Stack>
