@@ -17,7 +17,7 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage.jsx"));
 const InterviewPage = lazy(() => import("./pages/InterviewPage"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
-const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const ProfilePage = lazy(() => import("./pages/ProfileSettingsPage.jsx"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage"));
 const ResetPasswordPage = lazy(() => import("./pages/ResetPasswordPage.jsx"));
 const VerifyEmailPage = lazy(() => import("./pages/VerifyEmailPage.jsx"));
@@ -71,50 +71,20 @@ const ProductAwareHeader = () => {
 
 function App() {
     const [showSkip, setShowSkip] = useState(false);
-    const hiddenStyle = {
-        position: "absolute",
-        left: "-10000px",
-        top: "auto",
-        width: 1,
-        height: 1,
-        overflow: "hidden",
-        zIndex: 10000,
-    };
-    const visibleStyle = {
-        position: "absolute",
-        left: 8,
-        top: 8,
-        background: "#fff",
-        color: "#000",
-        padding: "8px 12px",
-        borderRadius: 4,
-        boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
-        zIndex: 10000,
-    };
+    const hiddenStyle = { position: "absolute", left: "-10000px", top: "auto", width: 1, height: 1, overflow: "hidden", zIndex: 10000 };
+    const visibleStyle = { position: "absolute", left: 8, top: 8, background: "#fff", color: "#000", padding: "8px 12px", borderRadius: 4, boxShadow: "0 1px 4px rgba(0,0,0,0.2)", zIndex: 10000 };
     return (
         <div className="min-h-screen">
             <SearchIndexPolicy />
-            <a
-                href="#main-content"
-                onFocus={() => setShowSkip(true)}
-                onBlur={() => setShowSkip(false)}
-                style={showSkip ? visibleStyle : hiddenStyle}
-            >
-                Skip to main content
-            </a>
+            <a href="#main-content" onFocus={() => setShowSkip(true)} onBlur={() => setShowSkip(false)} style={showSkip ? visibleStyle : hiddenStyle}>Skip to main content</a>
             <ProductAwareHeader />
             <main id="main-content">
-                <ErrorBoundary>
-                <Suspense fallback={<PageLoader />}>
-                <Routes>
-                {/* Product-family and public routes */}
+                <ErrorBoundary><Suspense fallback={<PageLoader />}><Routes>
                 <Route path="/" element={<GuestOnlyRoute><LandingPage /></GuestOnlyRoute>} />
                 <Route path="/practice" element={<ProductLandingPage surface="practice" />} />
                 <Route path="/hire" element={<ProductLandingPage surface="hiring" />} />
                 <Route path="/interview-practice" element={<CanonicalProductRedirect />} />
                 <Route path="/technical-hiring" element={<CanonicalProductRedirect />} />
-
-                {/* Product-specific authentication. Generic routes remain for old links. */}
                 <Route path="/practice/login" element={<GuestOnlyRoute><LoginPage /></GuestOnlyRoute>} />
                 <Route path="/practice/register" element={<GuestOnlyRoute><RegisterPage /></GuestOnlyRoute>} />
                 <Route path="/hire/login" element={<GuestOnlyRoute><LoginPage /></GuestOnlyRoute>} />
@@ -131,8 +101,6 @@ function App() {
                 <Route path="/docs/hiring/oidc-sso" element={<OidcSsoDocsPage />} />
                 <Route path="/docs/*" element={<PublicDocsPage />} />
                 <Route path="/assessment/:shareToken" element={<CandidateAssessmentPage />} />
-
-                {/* CompanionAI Practice */}
                 <Route path="/practice/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
                 <Route path="/practice/company-insights" element={<ProtectedRoute><ExperiencesPage /></ProtectedRoute>} />
                 <Route path="/practice/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
@@ -146,16 +114,12 @@ function App() {
                 <Route path="/practice/new" element={<ProtectedRoute><CreateInterviewPage /></ProtectedRoute>} />
                 <Route path="/practice/resume-review" element={<ProtectedRoute><ResumeReviewPage /></ProtectedRoute>} />
                 <Route path="/practice/interviews/:interviewId" element={<ProtectedRoute><InterviewPage /></ProtectedRoute>} />
-
-                {/* CompanionAI Hire */}
                 <Route path="/hire/assessments" element={<HiringRoute><AssessmentsPage /></HiringRoute>} />
                 <Route path="/hire/assessments/:assessmentId" element={<HiringRoute><AssessmentReportPage /></HiringRoute>} />
                 <Route path="/hire/assessments/:assessmentId/preview" element={<HiringRoute><AssessmentPreviewPage /></HiringRoute>} />
                 <Route path="/hire/team" element={<HiringRoute><HiringTeamPage /></HiringRoute>} />
                 <Route path="/hire/pilot" element={<HiringRoute><HiringPilotPage /></HiringRoute>} />
                 <Route path="/hire/sso" element={<HiringRoute><SsoSettingsPage /></HiringRoute>} />
-
-                {/* Platform administration */}
                 <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
                 <Route path="/admin/overview" element={<ProtectedRoute><AdminRoute><AdminOverviewPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/admin/jobs" element={<ProtectedRoute><AdminRoute><AdminJobsPage /></AdminRoute></ProtectedRoute>} />
@@ -163,8 +127,6 @@ function App() {
                 <Route path="/admin/feedback" element={<ProtectedRoute><AdminRoute><AdminFeedbackPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/admin/audit" element={<ProtectedRoute><AdminRoute><AdminAuditPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/admin/calibration" element={<ProtectedRoute><AdminRoute><AdminCalibrationPage /></AdminRoute></ProtectedRoute>} />
-
-                {/* Legacy product URLs: preserve old bookmarks and internal links while canonicalizing the browser URL. */}
                 <Route path="/dashboard" element={<CanonicalProductRedirect />} />
                 <Route path="/experiences" element={<CanonicalProductRedirect />} />
                 <Route path="/profile" element={<CanonicalProductRedirect />} />
@@ -183,13 +145,10 @@ function App() {
                 <Route path="/assessments/:assessmentId/preview" element={<CanonicalProductRedirect />} />
                 <Route path="/hiring/team" element={<CanonicalProductRedirect />} />
                 <Route path="/hiring/sso" element={<CanonicalProductRedirect />} />
-
                 <Route path="/practice/*" element={<Navigate to="/practice" replace />} />
                 <Route path="/hire/*" element={<Navigate to="/hire" replace />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-                </Suspense>
-                </ErrorBoundary>
+                </Routes></Suspense></ErrorBoundary>
             </main>
         </div>
     );
