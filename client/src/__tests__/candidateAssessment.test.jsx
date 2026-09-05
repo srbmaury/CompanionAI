@@ -8,11 +8,14 @@ vi.mock("../api/axios", () => ({ default: { get, post, put } }));
 
 afterEach(() => { cleanup(); sessionStorage.clear(); localStorage.clear(); vi.clearAllMocks(); });
 
-const renderCandidate = (entry = "/assessment/share-token-123456789") => render(
-    <MemoryRouter initialEntries={[entry]}>
-        <Routes><Route path="/assessment/:shareToken" element={<CandidateAssessmentPage />} /></Routes>
-    </MemoryRouter>,
-);
+const renderCandidate = (entry = "/assessment/share-token-123456789") => {
+    window.history.replaceState({}, "", entry);
+    return render(
+        <MemoryRouter initialEntries={[entry]}>
+            <Routes><Route path="/assessment/:shareToken" element={<CandidateAssessmentPage />} /></Routes>
+        </MemoryRouter>,
+    );
+};
 
 const begin = async () => {
     fireEvent.change(await screen.findByLabelText(/Full name/), { target: { value: "Candidate" } });
