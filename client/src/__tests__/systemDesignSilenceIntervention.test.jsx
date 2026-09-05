@@ -3,16 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import api from "../api/axios";
 import { useSystemDesignDiscussion } from "../hooks/useSystemDesignDiscussion";
 
-vi.mock("../api/axios", () => ({
-    default: { post: vi.fn() },
-}));
+vi.mock("../api/axios", () => ({ default: { post: vi.fn() } }));
 
-const Harness = ({ onInterjection }) => {
+const Harness = ({ onInterjection, micLevel = 0, listening = true, interimText = "", interviewerSpeaking = false }) => {
     useSystemDesignDiscussion({
         enabled: true,
         endpoint: "/system-design/checkpoint",
         transcript: "",
         diagramData: "",
+        interimText,
+        micLevel,
+        listening,
+        interviewerSpeaking,
         intervalMs: 7000,
         onInterjection,
     });
@@ -41,20 +43,42 @@ describe("system design silence intervention", () => {
         const onInterjection = vi.fn();
         render(<Harness onInterjection={onInterjection} />);
 
-        await act(async () => {
-            vi.advanceTimersByTime(14999);
-            await Promise.resolve();
-        });
+        await act(async () => { vi.advanceTimersByTime(14999); await Promise.resolve(); });
         expect(api.post).not.toHaveBeenCalled();
 
-        await act(async () => {
-            vi.advanceTimersByTime(1);
-            await Promise.resolve();
-            await Promise.resolve();
-        });
-
+        await act(async () => { vi.advanceTimersByTime(1); await Promise.resolve(); await Promise.resolve(); });
         expect(api.post).toHaveBeenCalledTimes(1);
         expect(api.post.mock.calls[0][1]).toMatchObject({ forceInteraction: true });
         expect(onInterjection).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not interrupt while microphone activity shows the candidate is still speaking", async () => {
+        const onInterjection = vi.fn();
+        const view = render(<Harness onInterjection={onInterjection} micLevel={0} />);
+
+        await act(async () => { vi.advanceTimersByTime(14000); });
+        view.rerender(<Harness onInterjection={onInterjection} micLevel={0.2} />);
+        await act(async () => { vi.advanceTimersByTime(14999); await Promise.resolve(); });
+        expect(api.post).not.toHaveBeenCalled();
+
+        await act(async () => { vi.advanceTimersByTime(1); await Promise.resolve(); await Promise.resolve(); });
+        expect(api.post).toHaveBeenCalledTimes(1);
+    });
+
+    it("starts a fresh 15-second candidate window after interviewer speech finishes", async () => {
+        const onInterjection = vi.fn();
+        const view = render(<Harness onInterjection={onInterjection} />);
+
+        await act(async () => { vi.advanceTimersByTime(14000); });
+        view.rerender(<Harness onInterjection={onInterjection} interviewerSpeaking />);
+        await act(async () => { vi.advanceTimersByTime(5000); });
+        expect(api.post).not.toHaveBeenCalled();
+
+        view.rerender(<Harness onInterjection={onInterjection} interviewerSpeaking={false} />);
+        await act(async () => { vi.advanceTimersByTime(14999); await Promise.resolve(); });
+        expect(api.post).not.toHaveBeenCalled();
+
+        await act(async () => { vi.advanceTimersByTime(1); await Promise.resolve(); await Promise.resolve(); });
+        expect(api.post).toHaveBeenCalledTimes(1);
     });
 });
