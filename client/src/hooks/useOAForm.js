@@ -65,8 +65,6 @@ export const useOAForm = ({
         });
     }, [interviewId, isConversational, oaAnswers, selectedRound?._id, setInterview]);
 
-    // Server autosave makes Next/Previous navigation safe even if the browser or
-    // device disappears before the candidate submits the round.
     useEffect(() => {
         clearTimeout(autosaveTimerRef.current);
         if (!selectedRound || isConversational || selectedRound.status === "completed" || oaSubmitting) return undefined;
@@ -80,7 +78,6 @@ export const useOAForm = ({
                 await api.post(`/questions/${selectedRound._id}/answers`, { answers: snapshot });
                 lastServerSnapshotRef.current = serialized;
             } catch (error) {
-                // Local recovery remains authoritative if the network is briefly unavailable.
                 console.debug("OA autosave deferred", error?.message || error);
             }
         }, 850);
@@ -116,18 +113,19 @@ export const useOAForm = ({
             clearTimeout(autosaveTimerRef.current);
             setOaSubmitting(true);
             trackEvent("first_answer_submitted");
-            setOaFeedbackProgress(0);
             const outgoing = Array.from({ length: selectedRound.questions.length }, (_, i) => (answersToSubmit?.[i] ?? "").toString());
             await api.post(`/questions/${selectedRound._id}/answers`, { answers: outgoing });
             lastServerSnapshotRef.current = JSON.stringify(outgoing);
 
+            // Feedback may generate in the background, but it must not block the
+            // interview or coach the candidate before later rounds.
             try {
                 const answered = (selectedRound.questions || [])
                     .map((q, i) => ({ index: i, questionId: q.question?._id, answer: (outgoing[i] || "").toString().trim() }))
                     .filter((it) => it.questionId && it.answer.length > 0);
                 if (answered.length > 0) {
                     const { data: job } = await api.post(`/jobs/bulk-feedback`, { roundId: selectedRound._id, items: answered, attach: true });
-                    if (job?.jobId) await pollJobStatus("bulk-feedback", job.jobId, setOaFeedbackProgress);
+                    if (job?.jobId) pollJobStatus("bulk-feedback", job.jobId, setOaFeedbackProgress).catch(() => {});
                 }
             } catch (e) {
                 console.error("bulk feedback enqueue error", e);
@@ -136,10 +134,12 @@ export const useOAForm = ({
             await api.post(`/questions/${selectedRound._id}/complete`);
             const { data } = await api.get(`/interviews/${interviewId}`);
             setInterview(data);
-            const updated = data.rounds.find((r) => r.round._id === selectedRound._id)?.round;
-            if (updated) selectRound(updated);
+            const index = data.rounds.findIndex((r) => r.round._id === selectedRound._id);
+            const nextRound = index >= 0 ? data.rounds[index + 1]?.round : null;
+            const updated = index >= 0 ? data.rounds[index]?.round : null;
+            selectRound(nextRound || updated || null);
             clearDraftsForRound(selectedRound);
-            showToast("success", "Assessment submitted successfully.");
+            showToast("success", nextRound ? `Round complete. Next: ${nextRound.name}.` : "Interview complete. Your debrief is ready when feedback finishes.");
             trackEvent("round_completed");
         } catch (e) {
             console.error("OA submit error", e);
