@@ -52,8 +52,9 @@ describe("assessment workspace hierarchy", () => {
         expect(screen.getByText("0–3 follow-ups per question")).toBeTruthy();
         expect(screen.getByText(/may ask 0–3 follow-ups per question/)).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: "Add manual question" }));
+        fireEvent.change(screen.getByLabelText(/Question 1/), { target: { value: "Explain a reliability decision you made and the trade-off." } });
         expect(screen.getByText("Required recruiter question")).toBeTruthy();
-        expect(screen.getByText(/1 configured · 0 required|1 configured · 1 required/)).toBeTruthy();
+        expect(screen.getByText("1 configured · 1 required · up to 3 total")).toBeTruthy();
     });
 
     it("supports a reviewed hybrid question set before publishing", async () => {
