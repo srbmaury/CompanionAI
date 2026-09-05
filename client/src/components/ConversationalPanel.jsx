@@ -1,13 +1,12 @@
-import { useState, useEffect, lazy, memo, Suspense, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, lazy, memo, Suspense, useMemo, useCallback } from "react";
 import SoundWave from "./SoundWave";
 import { useElapsed } from "../hooks/useElapsed";
 import {
     Box, Button, Chip, CircularProgress, Dialog, DialogActions,
-    DialogContent, DialogContentText, DialogTitle, IconButton, Paper,
+    DialogContent, DialogContentText, DialogTitle, Paper,
     Skeleton, Stack, TextField, Tooltip, Typography,
 } from "@mui/material";
 import MicIcon from "@mui/icons-material/Mic";
-import MicOffIcon from "@mui/icons-material/MicOff";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import PersonRoundedIcon from "@mui/icons-material/PersonRounded";
 import SendIcon from "@mui/icons-material/Send";
@@ -38,18 +37,21 @@ const ConversationalPanel = ({
     listeningTarget,
     interimText,
     onSpeak,
-    onStartListening,
-    onStopListening,
     outlinedInputSx,
     savedAt,
     pendingFollowUp,
     onFollowUpDone,
+    micSessionActive,
+    handsFreePaused,
+    onStartHandsFree,
+    onPauseHandsFree,
+    onResumeHandsFree,
+    onStopHandsFree,
 }) => {
     const [clarifyText, setClarifyText] = useState("");
     const [submitRoundOpen, setSubmitRoundOpen] = useState(false);
     const [aiSpeaking, setAiSpeaking] = useState(false);
     const [showTypedAnswer, setShowTypedAnswer] = useState(false);
-    const speakCheckRef = useRef(null);
     const elapsedLabel = useElapsed();
 
     const questionNumber = useMemo(() => (convState?.index ?? 0) + 1, [convState?.index]);
@@ -72,51 +74,46 @@ const ConversationalPanel = ({
         if (isDone) return { label: "Round complete", color: "success" };
         if (convSubmitting || convRoundSubmitting) return { label: "Interviewer is thinking…", color: "info" };
         if (aiSpeaking) return { label: "Interviewer speaking", color: "primary" };
-        if (isRecording) return { label: "Listening to you", color: "error" };
-        return { label: "Your turn", color: "success" };
-    }, [aiSpeaking, convRoundSubmitting, convSubmitting, isDone, isRecording]);
+        if (isRecording) return { label: "Listening to you", color: "success" };
+        if (micSessionActive) return { label: "Mic ready", color: "success" };
+        return { label: supportsSTT ? "Connecting mic…" : "Your turn", color: supportsSTT ? "default" : "success" };
+    }, [aiSpeaking, convRoundSubmitting, convSubmitting, isDone, isRecording, micSessionActive, supportsSTT]);
 
-    const triggerSpeak = useCallback((text) => {
-        onSpeak?.(text);
-        setAiSpeaking(true);
-        if (speakCheckRef.current) clearInterval(speakCheckRef.current);
-        const poll = setTimeout(() => {
-            speakCheckRef.current = setInterval(() => {
-                if (typeof window === "undefined" || !window.speechSynthesis?.speaking) {
-                    setAiSpeaking(false);
-                    if (speakCheckRef.current) {
-                        clearInterval(speakCheckRef.current);
-                        speakCheckRef.current = null;
-                    }
-                }
-            }, 400);
-        }, 700);
-        return () => {
-            clearTimeout(poll);
-            if (speakCheckRef.current) {
-                clearInterval(speakCheckRef.current);
-                speakCheckRef.current = null;
-            }
-        };
-    }, [onSpeak]);
+    const triggerSpeak = useCallback(async (text) => {
+        if (!text) return;
+        await onPauseHandsFree?.();
+        if (supportsTTS) {
+            setAiSpeaking(true);
+            await onSpeak?.(text);
+            setAiSpeaking(false);
+        }
+        if (!isDone && !convSubmitting && !convRoundSubmitting) await onResumeHandsFree?.("conv");
+    }, [convRoundSubmitting, convSubmitting, isDone, onPauseHandsFree, onResumeHandsFree, onSpeak, supportsTTS]);
+
+    useEffect(() => {
+        if (!supportsSTT || !activeText || isDone || convRoundSubmitting) return;
+        let cancelled = false;
+        (async () => {
+            if (!micSessionActive) await onStartHandsFree?.("conv");
+            else if (handsFreePaused && !aiSpeaking && !convSubmitting) await onResumeHandsFree?.("conv");
+            if (cancelled) return;
+        })();
+        return () => { cancelled = true; };
+    }, [activeText, aiSpeaking, convRoundSubmitting, convSubmitting, handsFreePaused, isDone, micSessionActive, onResumeHandsFree, onStartHandsFree, supportsSTT]);
 
     useEffect(() => {
         if (!supportsTTS || !questionText) return;
-        let cleanup;
-        const timer = setTimeout(() => { cleanup = triggerSpeak(questionText); }, 400);
-        return () => { clearTimeout(timer); cleanup?.(); };
+        const timer = setTimeout(() => { triggerSpeak(questionText); }, 400);
+        return () => clearTimeout(timer);
     }, [questionText]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (!supportsTTS || !pendingFollowUp?.question) return;
-        let cleanup;
-        const timer = setTimeout(() => { cleanup = triggerSpeak(pendingFollowUp.question); }, 400);
-        return () => { clearTimeout(timer); cleanup?.(); };
+        const timer = setTimeout(() => { triggerSpeak(pendingFollowUp.question); }, 400);
+        return () => clearTimeout(timer);
     }, [pendingFollowUp?.question]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    useEffect(() => () => {
-        if (speakCheckRef.current) clearInterval(speakCheckRef.current);
-    }, []);
+    useEffect(() => () => { onStopHandsFree?.(); }, [onStopHandsFree]);
 
     const submitClarify = () => {
         const value = clarifyText.trim();
@@ -124,6 +121,27 @@ const ConversationalPanel = ({
             onClarify(value);
             setClarifyText("");
         }
+    };
+
+    const submitAnswerTurn = async () => {
+        await onPauseHandsFree?.();
+        await onSubmitAnswer?.();
+    };
+
+    const submitFollowUpTurn = async (skip = false) => {
+        await onPauseHandsFree?.();
+        await onFollowUpDone?.({ skip });
+    };
+
+    const endRound = async () => {
+        setSubmitRoundOpen(false);
+        onStopHandsFree?.();
+        await onCompleteRound?.();
+    };
+
+    const skipRound = async () => {
+        onStopHandsFree?.();
+        await onSkip?.();
     };
 
     const RoomContent = () => {
@@ -270,7 +288,7 @@ const ConversationalPanel = ({
                             width: 8,
                             height: 8,
                             borderRadius: "50%",
-                            bgcolor: isDone ? "success.main" : isRecording ? "error.main" : "success.main",
+                            bgcolor: isDone ? "success.main" : isRecording ? "success.main" : "warning.main",
                             animation: isRecording ? "blink 1.4s ease-in-out infinite" : "none",
                             "@keyframes blink": { "0%,100%": { opacity: 1 }, "50%": { opacity: .35 } },
                         }} />
@@ -291,14 +309,14 @@ const ConversationalPanel = ({
                         )}
                         {supportsTTS && activeText && !isDone && (
                             <Tooltip title="Replay question">
-                                <IconButton
+                                <Button
                                     size="small"
                                     onClick={() => triggerSpeak(activeText)}
-                                    sx={{ color: "rgba(255,255,255,.65)", "&:hover": { color: "white" } }}
-                                    aria-label="Replay question"
+                                    startIcon={<VolumeUpIcon sx={{ fontSize: 18 }} />}
+                                    sx={{ color: "rgba(255,255,255,.72)", minWidth: 0 }}
                                 >
-                                    <VolumeUpIcon sx={{ fontSize: 18 }} />
-                                </IconButton>
+                                    Replay
+                                </Button>
                             </Tooltip>
                         )}
                         <Box sx={{ px: 1, py: .35, bgcolor: "rgba(0,0,0,.4)", borderRadius: 1.5, border: "1px solid rgba(255,255,255,.1)" }}>
@@ -318,13 +336,23 @@ const ConversationalPanel = ({
                     <Stack spacing={2.25}>
                         <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ md: "center" }}>
                             <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: .7, minWidth: { md: 150 } }}>
-                                <Box sx={{ position: "relative" }}>
+                                <Box sx={{
+                                    position: "relative",
+                                    borderRadius: "50%",
+                                    width: 76,
+                                    height: 76,
+                                    display: "grid",
+                                    placeItems: "center",
+                                    bgcolor: isRecording ? "success.main" : micSessionActive ? "success.light" : "action.hover",
+                                    color: isRecording ? "white" : "text.secondary",
+                                    boxShadow: isRecording ? 8 : 1,
+                                }}>
                                     {isRecording && (
                                         <Box sx={{
                                             position: "absolute",
                                             inset: -10,
                                             borderRadius: "50%",
-                                            bgcolor: "error.light",
+                                            bgcolor: "success.light",
                                             animation: "micRipple 1.4s ease-out infinite",
                                             "@keyframes micRipple": {
                                                 "0%": { transform: "scale(1)", opacity: .3 },
@@ -332,36 +360,22 @@ const ConversationalPanel = ({
                                             },
                                         }} />
                                     )}
-                                    <Button
-                                        variant="contained"
-                                        color={isRecording ? "error" : "primary"}
-                                        onClick={() => isRecording ? onStopListening() : onStartListening("conv")}
-                                        disabled={!supportsSTT || convSubmitting}
-                                        sx={{
-                                            borderRadius: "50%",
-                                            width: 76,
-                                            height: 76,
-                                            minWidth: 0,
-                                            position: "relative",
-                                            zIndex: 1,
-                                            boxShadow: isRecording ? 8 : 3,
-                                        }}
-                                        aria-label={isRecording ? "Stop recording" : "Start recording"}
-                                    >
-                                        {isRecording ? <MicOffIcon sx={{ fontSize: 34 }} /> : <MicIcon sx={{ fontSize: 34 }} />}
-                                    </Button>
+                                    <MicIcon sx={{ fontSize: 34, position: "relative", zIndex: 1 }} />
                                 </Box>
-                                <Typography variant="caption" color={isRecording ? "error.main" : "text.secondary"} fontWeight={isRecording ? 700 : 500} textAlign="center">
-                                    {isRecording ? "Listening — tap when finished" : supportsSTT ? "Answer out loud" : "Voice unavailable"}
+                                <Typography variant="caption" color={isRecording ? "success.main" : "text.secondary"} fontWeight={isRecording ? 700 : 500} textAlign="center">
+                                    {isRecording ? "Mic live" : micSessionActive ? "Mic stays ready" : supportsSTT ? "Connecting mic" : "Voice unavailable"}
                                 </Typography>
+                                {!micSessionActive && supportsSTT && (
+                                    <Button size="small" onClick={() => onStartHandsFree?.("conv")}>Enable mic</Button>
+                                )}
                             </Box>
 
                             <Box sx={{ flex: 1, minWidth: 0, width: "100%" }}>
                                 <Typography fontWeight={800}>
-                                    {isRecording ? "Keep going — I’m listening" : "Your response"}
+                                    {isRecording ? "Speak naturally — I’m listening" : aiSpeaking ? "The interviewer has the floor" : "Your response"}
                                 </Typography>
                                 <Typography variant="body2" color="text.secondary" mt={.25}>
-                                    Speak naturally as you would to an interviewer. You can also type notes or code when you need them.
+                                    The microphone stays available throughout the interview and pauses automatically while the interviewer speaks. Submit only when you have finished this answer.
                                 </Typography>
                                 {isRecording && interimText && (
                                     <Typography variant="body2" sx={{ mt: 1, fontStyle: "italic", color: "text.secondary" }}>
@@ -416,10 +430,10 @@ const ConversationalPanel = ({
 
                         {pendingFollowUp ? (
                             <Stack direction={{ xs: "column", sm: "row" }} spacing={1} justifyContent="flex-end">
-                                <Button variant="outlined" onClick={() => onFollowUpDone({ skip: true })}>
+                                <Button variant="outlined" onClick={() => submitFollowUpTurn(true)}>
                                     Move to next question
                                 </Button>
-                                <Button variant="contained" startIcon={<SendIcon />} onClick={() => onFollowUpDone()} sx={{ minWidth: 170 }}>
+                                <Button variant="contained" startIcon={<SendIcon />} onClick={() => submitFollowUpTurn(false)} sx={{ minWidth: 170 }}>
                                     Submit follow-up
                                 </Button>
                             </Stack>
@@ -428,7 +442,7 @@ const ConversationalPanel = ({
                                 <Button
                                     variant="contained"
                                     startIcon={convSubmitting ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
-                                    onClick={onSubmitAnswer}
+                                    onClick={submitAnswerTurn}
                                     disabled={convSubmitting}
                                     sx={{ minWidth: 170, order: { xs: 1, lg: 3 } }}
                                 >
@@ -459,7 +473,7 @@ const ConversationalPanel = ({
                                     >
                                         {convRoundSubmitting ? "Evaluating…" : "End round"}
                                     </Button>
-                                    <SkipRoundButton onSkip={onSkip} />
+                                    <SkipRoundButton onSkip={skipRound} />
                                 </Stack>
                             </Stack>
                         )}
@@ -504,7 +518,7 @@ const ConversationalPanel = ({
                     </DialogContent>
                     <DialogActions>
                         <Button onClick={() => setSubmitRoundOpen(false)}>Keep interviewing</Button>
-                        <Button variant="contained" onClick={() => { setSubmitRoundOpen(false); onCompleteRound(); }}>
+                        <Button variant="contained" onClick={endRound}>
                             End round
                         </Button>
                     </DialogActions>
