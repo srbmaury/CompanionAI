@@ -33,6 +33,8 @@ const SavedExperiencesPage = lazy(() => import("./pages/SavedExperiencesPage.jsx
 const ResumesPage = lazy(() => import("./pages/ResumesPage.jsx"));
 const PricingPage = lazy(() => import("./pages/PricingPage.jsx"));
 const BillingSuccessPage = lazy(() => import("./pages/BillingSuccessPage.jsx"));
+const AdminOverviewPage = lazy(() => import("./pages/AdminOverviewPage.jsx"));
+const AdminJobsPage = lazy(() => import("./pages/AdminJobsPage.jsx"));
 const AdminFeedbackPage = lazy(() => import("./pages/AdminFeedbackPage.jsx"));
 const AdminAuditPage = lazy(() => import("./pages/AdminAuditPage.jsx"));
 const AdminCalibrationPage = lazy(() => import("./pages/AdminCalibrationPage.jsx"));
@@ -154,7 +156,9 @@ function App() {
                 <Route path="/hire/sso" element={<HiringRoute><SsoSettingsPage /></HiringRoute>} />
 
                 {/* Platform administration */}
-                <Route path="/admin" element={<Navigate to="/admin/commercial" replace />} />
+                <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
+                <Route path="/admin/overview" element={<ProtectedRoute><AdminRoute><AdminOverviewPage /></AdminRoute></ProtectedRoute>} />
+                <Route path="/admin/jobs" element={<ProtectedRoute><AdminRoute><AdminJobsPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/admin/commercial" element={<ProtectedRoute><AdminRoute><AdminCommercialAccessPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/admin/feedback" element={<ProtectedRoute><AdminRoute><AdminFeedbackPage /></AdminRoute></ProtectedRoute>} />
                 <Route path="/admin/audit" element={<ProtectedRoute><AdminRoute><AdminAuditPage /></AdminRoute></ProtectedRoute>} />
