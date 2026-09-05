@@ -70,6 +70,8 @@ const publicAttempt = (attempt) => ({
         deliveryMode: round.deliveryMode || "conversational",
         adaptive: Boolean(round.adaptiveState?.enabled),
         adaptiveComplete: Boolean(round.adaptiveComplete),
+        maxQuestions: Number(round.adaptiveState?.maxQuestions) || round.questions.length,
+        questionsAsked: Number(round.adaptiveState?.questionsAsked) || round.questions.filter((question) => question.answer).length,
         questions: round.questions.map((question) => {
             const history = followUpList(question);
             const pending = pendingFollowUpFor(question);
@@ -225,14 +227,44 @@ const makeAttemptRound = async (assessment, round) => {
         skills,
         maxQuestions: Number(round.questionCount) || round.questions.length,
     });
-    const first = round.questions.find((question) => question.required) || round.questions[0];
+    const requiredCount = round.questions.filter((question) => question.required).length;
+    const openingTarget = chooseNextCompetency(state);
+    let first;
+    if (Number(state.maxQuestions || 1) > requiredCount) {
+        const opening = await generateNextAdaptiveQuestion({
+            interview: { jobRole: assessment.jobRole, jobDescription: assessment.jobDescription, company: "" },
+            round: {
+                name: round.name,
+                description: `${round.description || ""}\nThis is the opening question for the round. Start broad and conversational: briefly invite the candidate to introduce their relevant experience or walk through one representative example before moving into narrower technical depth. Keep it high-signal and role-relevant, not generic small talk.`,
+            },
+            state,
+            targetCompetency: openingTarget,
+            difficulty: Math.min(Number(state.currentDifficulty) || 3, 3),
+            sourceClaim: "",
+            excludeTexts: [],
+        });
+        first = {
+            text: opening.text,
+            weight: 1,
+            competencies: opening.competencies?.length ? opening.competencies : [openingTarget],
+            knockout: false,
+            required: false,
+            difficulty: opening.difficulty,
+            sourceType: "opening",
+            sourceClaim: "",
+            followUps: [],
+        };
+    } else {
+        const plannedFirst = round.questions.find((question) => question.required) || round.questions[0];
+        first = asAttemptQuestion(plannedFirst, state, openingTarget);
+    }
     return {
         name: round.name,
         description: round.description,
         deliveryMode: round.deliveryMode || "conversational",
         adaptiveState: state,
         adaptiveComplete: false,
-        questions: [asAttemptQuestion(first, state, chooseNextCompetency(state))],
+        questions: [first],
     };
 };
 
