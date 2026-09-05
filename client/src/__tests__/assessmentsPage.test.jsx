@@ -43,18 +43,27 @@ describe("assessment workspace hierarchy", () => {
         expect(screen.getByText("3 submitted")).toBeTruthy();
     });
 
-    it("describes conversational Hire as adaptive with a maximum question budget and 0-3 follow-ups", async () => {
+    it("lets recruiters choose adaptive primary questions or a fixed reviewed question set independently of follow-ups", async () => {
         get.mockResolvedValue({ data: { items: [], totalPages: 1 } });
         renderAssessments("/hire/assessments?create=1");
         await screen.findByRole("heading", { name: "Create assessment" });
         expect(screen.getByLabelText("Maximum questions").value).toBe("3");
-        expect(screen.getByText(/Required recruiter questions are always asked/)).toBeTruthy();
+        const aiQuestionToggle = screen.getByLabelText("Allow AI to generate additional interview questions");
+        expect(aiQuestionToggle.checked).toBe(true);
+        expect(screen.getByText("Adaptive primary questions")).toBeTruthy();
         expect(screen.getByText("0–3 follow-ups per question")).toBeTruthy();
-        expect(screen.getByText(/may ask 0–3 follow-ups per question/)).toBeTruthy();
+        expect(screen.getByText(/may ask 0–3 follow-ups per primary question/)).toBeTruthy();
         fireEvent.click(screen.getByRole("button", { name: "Add manual question" }));
         fireEvent.change(screen.getByLabelText(/Question 1/), { target: { value: "Explain a reliability decision you made and the trade-off." } });
         expect(screen.getByText("Required recruiter question")).toBeTruthy();
         expect(screen.getByText("1 configured · 1 required · up to 3 total")).toBeTruthy();
+        fireEvent.click(aiQuestionToggle);
+        expect(screen.getByLabelText("Question count").disabled).toBe(true);
+        expect(screen.getByLabelText("Question count").value).toBe("1");
+        expect(screen.getByText("Recruiter question set only")).toBeTruthy();
+        expect(screen.getByText("Fixed interview question")).toBeTruthy();
+        expect(screen.getByText("1 configured · fixed interview set")).toBeTruthy();
+        expect(screen.getByLabelText("AI contextual follow-ups").checked).toBe(true);
     });
 
     it("supports a reviewed hybrid question set before publishing", async () => {
