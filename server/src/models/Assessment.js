@@ -5,6 +5,7 @@ const assessmentQuestionSchema = new mongoose.Schema({
     weight: { type: Number, min: 0.1, max: 10, default: 1 },
     competencies: [{ type: String, maxlength: 80 }],
     knockout: { type: Boolean, default: false },
+    required: { type: Boolean, default: false },
 }, { _id: true });
 
 const assessmentRoundSchema = new mongoose.Schema({
