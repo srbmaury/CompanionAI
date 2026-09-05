@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import api from "../api/axios";
 
-const DEFAULT_INTERVAL_MS = 9000;
-const MIN_CONTEXT_CHARS = 120;
-const MIN_NEW_CHARS = 70;
+const DEFAULT_INTERVAL_MS = 7000;
+const MIN_CONTEXT_CHARS = 80;
+const MIN_NEW_CHARS = 35;
+const FIRST_INTERACTION_CONTEXT_CHARS = 140;
+const MAX_SILENT_MS = 45000;
 
 /**
  * Periodically gives the AI interviewer a chance to interject during a system
- * design discussion. Most checkpoints intentionally produce no interruption.
+ * design discussion. The first meaningful probe is guaranteed once the
+ * candidate has established enough context, and long silent stretches trigger
+ * another interviewer turn without turning the discussion into a checklist.
  */
 export const useSystemDesignDiscussion = ({
     enabled,
@@ -24,6 +28,7 @@ export const useSystemDesignDiscussion = ({
     const busyRef = useRef(false);
     const lastCheckedLengthRef = useRef(0);
     const lastCheckedAtRef = useRef(0);
+    const lastInterjectionAtRef = useRef(0);
     const transcriptRef = useRef(transcript);
     const diagramRef = useRef(diagramData);
     const interjectionsRef = useRef(interjections);
@@ -40,10 +45,17 @@ export const useSystemDesignDiscussion = ({
         const currentTranscript = (transcriptRef.current || "").trim();
         const now = Date.now();
         const newChars = currentTranscript.length - lastCheckedLengthRef.current;
-        if (!force) {
+        const previousInterjections = interjectionsRef.current;
+        const needsFirstInteraction = previousInterjections.length === 0 && currentTranscript.length >= FIRST_INTERACTION_CONTEXT_CHARS;
+        const silentTooLong = previousInterjections.length > 0
+            && currentTranscript.length >= MIN_CONTEXT_CHARS
+            && now - lastInterjectionAtRef.current >= MAX_SILENT_MS;
+        const forceInteraction = force || needsFirstInteraction || silentTooLong;
+
+        if (!forceInteraction) {
             if (currentTranscript.length < MIN_CONTEXT_CHARS) return null;
             if (newChars < MIN_NEW_CHARS) return null;
-            if (now - lastCheckedAtRef.current < Math.max(4000, intervalMs - 1500)) return null;
+            if (now - lastCheckedAtRef.current < Math.max(3500, intervalMs - 1500)) return null;
         }
 
         busyRef.current = true;
@@ -54,7 +66,8 @@ export const useSystemDesignDiscussion = ({
             const { data } = await api.post(endpoint, {
                 transcript: currentTranscript.slice(-20000),
                 diagramData: (diagramRef.current || "").slice(0, 500000),
-                previousInterjections: interjectionsRef.current.map((item) => item.text).slice(-8),
+                previousInterjections: previousInterjections.map((item) => item.text).slice(-8),
+                forceInteraction,
             }, { headers, skipAuthRedirect });
             if (data?.shouldInterrupt && data?.interjection) {
                 const item = {
@@ -63,14 +76,14 @@ export const useSystemDesignDiscussion = ({
                     kind: data.kind || "challenge",
                     at: new Date().toISOString(),
                 };
+                lastInterjectionAtRef.current = Date.now();
                 setInterjections((current) => [...current, item].slice(-12));
                 await onInterjectionRef.current?.(item);
                 return item;
             }
             return null;
         } catch (error) {
-            // A live-interviewer checkpoint is opportunistic. Network/provider
-            // failure must never block the candidate's design session.
+            // A live-interviewer checkpoint must never block the design session.
             console.debug("System design checkpoint skipped", error?.message || error);
             return null;
         } finally {
@@ -90,6 +103,7 @@ export const useSystemDesignDiscussion = ({
             setInterjections([]);
             lastCheckedLengthRef.current = 0;
             lastCheckedAtRef.current = 0;
+            lastInterjectionAtRef.current = 0;
         }
     }, [enabled]);
 
