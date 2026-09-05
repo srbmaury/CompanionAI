@@ -80,7 +80,7 @@ export default function SystemDesignDiscussionPanel({
         await speakInterviewer(item.text);
     }, [speakInterviewer]);
 
-    const { interjections, checking } = useSystemDesignDiscussion({
+    const { interjections } = useSystemDesignDiscussion({
         enabled: Boolean(problem && checkpointEndpoint),
         endpoint: checkpointEndpoint,
         headers: checkpointHeaders,
