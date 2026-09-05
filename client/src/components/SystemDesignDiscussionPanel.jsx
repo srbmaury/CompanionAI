@@ -10,6 +10,7 @@ import VolumeUpRoundedIcon from "@mui/icons-material/VolumeUpRounded";
 import { useSystemDesignDiscussion } from "../hooks/useSystemDesignDiscussion";
 
 const SystemDesignCanvas = lazy(() => import("./SystemDesignCanvas"));
+const MIN_END_DISCUSSION_WORDS = 30;
 
 const KIND_LABELS = {
     clarify: "Clarification",
@@ -21,6 +22,8 @@ const KIND_LABELS = {
     security: "Security",
     observability: "Observability",
 };
+
+export const countDiscussionWords = (value = "") => value.trim().split(/\s+/).filter(Boolean).length;
 
 export default function SystemDesignDiscussionPanel({
     problem,
@@ -57,6 +60,8 @@ export default function SystemDesignDiscussionPanel({
     const spokenProblemRef = useRef("");
     const mountedRef = useRef(true);
     const isListening = listening && listeningTarget === target;
+    const discussionWords = countDiscussionWords(transcript || "");
+    const canEndDiscussion = discussionWords >= MIN_END_DISCUSSION_WORDS;
 
     useEffect(() => () => { mountedRef.current = false; stopHandsFree?.(); }, [stopHandsFree]);
 
@@ -144,13 +149,13 @@ export default function SystemDesignDiscussionPanel({
                                 Live system design discussion
                             </Typography>
                             <Chip size="small" color={status.color} label={status.label} />
-                            {checking && <Chip size="small" variant="outlined" label="Interviewer listening…" sx={{ color: "rgba(255,255,255,.72)", borderColor: "rgba(255,255,255,.22)" }} />}
+                            {checking && <Chip size="small" variant="outlined" label="Interviewer thinking…" sx={{ color: "rgba(255,255,255,.72)", borderColor: "rgba(255,255,255,.22)" }} />}
                         </Stack>
                         <Typography sx={{ fontSize: { xs: "1.05rem", md: "1.3rem" }, lineHeight: 1.55, fontWeight: 700 }}>
                             {currentPrompt || problem}
                         </Typography>
                         <Typography variant="body2" sx={{ color: "rgba(255,255,255,.62)", mt: 1 }}>
-                            Talk through your thinking while you draw. The interviewer may pause you naturally to clarify an assumption, change a requirement, or probe a trade-off.
+                            Talk through your thinking while you draw. The interviewer will actively clarify requirements, challenge assumptions, and introduce realistic constraints as the discussion develops.
                         </Typography>
                     </Box>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
@@ -235,11 +240,11 @@ export default function SystemDesignDiscussionPanel({
                     <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
                         <Typography fontWeight={850}>Interviewer thread</Typography>
                         <Typography variant="caption" color="text.secondary">
-                            Interjections happen only when a real interviewer would have a useful reason to step in.
+                            The interviewer participates throughout the round, but lets you finish coherent thoughts before stepping in.
                         </Typography>
                         <Stack spacing={1.25} mt={1.5} sx={{ maxHeight: 300, overflow: "auto" }}>
                             {interjections.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary">The interviewer is listening. Keep driving the design.</Typography>
+                                <Typography variant="body2" color="text.secondary">Start explaining your requirements and assumptions. The interviewer will join once there is enough context to probe.</Typography>
                             ) : interjections.map((item) => (
                                 <Box key={item.id} sx={{ pl: 1.25, borderLeft: "3px solid", borderColor: "primary.main" }}>
                                     <Typography variant="caption" color="primary.main" fontWeight={800}>{KIND_LABELS[item.kind] || "Interviewer"}</Typography>
@@ -255,13 +260,17 @@ export default function SystemDesignDiscussionPanel({
                 <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} gap={1.5}>
                     <Box>
                         <Typography fontWeight={800}>Finished with the design?</Typography>
-                        <Typography variant="body2" color="text.secondary">End the discussion when you have covered the design and the trade-offs you want the interviewer to evaluate.</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            {canEndDiscussion
+                                ? "You can end the discussion whenever you feel you have covered the design and its key trade-offs."
+                                : `End discussion unlocks after you have explained a little more (${discussionWords}/${MIN_END_DISCUSSION_WORDS} words). This only prevents accidental early endings.`}
+                        </Typography>
                     </Box>
                     <Button
                         variant="contained"
                         color="primary"
                         startIcon={ending ? <CircularProgress size={17} color="inherit" /> : <StopCircleRoundedIcon />}
-                        disabled={ending || !transcript?.trim()}
+                        disabled={ending || !canEndDiscussion}
                         onClick={endDiscussion}
                         sx={{ minWidth: 180 }}
                     >
