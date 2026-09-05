@@ -120,6 +120,8 @@ const roundSchema = new mongoose.Schema({
     questions: [{
         question: { type: mongoose.Schema.Types.ObjectId, ref: "Question" },
         answerGiven: { type: String },
+        diagramData: { type: String, maxlength: 500000, default: "" },
+        diagramSummary: { type: String, maxlength: 10000, default: "" },
         followUps: { type: [followUpSchema], default: [] },
         difficulty: { type: Number, min: 1, max: 5, default: 3 },
         competencies: [{ type: String, maxlength: 80 }],
