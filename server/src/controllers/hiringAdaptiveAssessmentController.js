@@ -100,10 +100,39 @@ export const createAdaptiveAssessment = async (req, res, next) => {
         const generatedRounds = [];
         const excludeTexts = [];
         for (const input of rounds) {
-            const count = Math.min(Math.max(Number(input.questionCount) || 3, 1), 10);
-            const supplied = (input.questions || []).filter((item) => item?.text?.trim()).slice(0, count);
+            const deliveryMode = input.deliveryMode || "conversational";
+            const adaptive = deliveryMode === "conversational" && input.adaptive !== false;
+            const requestedCount = Math.min(Math.max(Number(input.questionCount) || 3, 1), 10);
+            const supplied = (input.questions || []).filter((item) => item?.text?.trim()).slice(0, 10);
+
+            // Recruiters can explicitly choose a fixed conversational script. In
+            // that mode we never silently generate or backfill live interview
+            // questions: the reviewed questions below are the complete script.
+            if (deliveryMode === "conversational" && !adaptive) {
+                if (!supplied.length) return res.status(400).json({ message: `Add at least one reviewed question to ${input.name} when AI-generated interview questions are disabled.` });
+                const questions = supplied.map((item) => ({
+                    text: item.text.trim(),
+                    weight: Number(item.weight) || 1,
+                    competencies: Array.isArray(item.competencies) ? item.competencies : [],
+                    knockout: Boolean(item.knockout),
+                    required: Boolean(item.required),
+                }));
+                excludeTexts.push(...questions.map((item) => item.text));
+                generatedRounds.push({
+                    name: input.name,
+                    description: input.description || "",
+                    deliveryMode,
+                    adaptive: false,
+                    questionCount: questions.length,
+                    questions,
+                });
+                continue;
+            }
+
+            const count = requestedCount;
+            const planned = supplied.slice(0, count);
             let generated = [];
-            if (supplied.length < count) {
+            if (planned.length < count) {
                 try {
                     generated = await generateQuestionsForRound({
                         company: req.organization?.name || "",
@@ -112,16 +141,16 @@ export const createAdaptiveAssessment = async (req, res, next) => {
                         resumeText: "",
                         roundName: input.name,
                         roundDescription: [input.description, input.aiPrompt ? `Interviewer generation request: ${input.aiPrompt}` : ""].filter(Boolean).join("\n"),
-                        deliveryMode: input.deliveryMode || "conversational",
-                        count: count - supplied.length,
-                        excludeTexts: [...excludeTexts, ...supplied.map((item) => item.text)],
+                        deliveryMode,
+                        count: count - planned.length,
+                        excludeTexts: [...excludeTexts, ...planned.map((item) => item.text)],
                     });
                 } catch { /* deterministic fill below keeps draft creation usable */ }
             }
             const generatedItems = (Array.isArray(generated) ? generated : [])
                 .map((item) => ({ text: typeof item === "string" ? item : item?.text, required: false }))
                 .filter((item) => item.text?.trim());
-            const questions = [...supplied, ...generatedItems].slice(0, count).map((item) => ({
+            const questions = [...planned, ...generatedItems].slice(0, count).map((item) => ({
                 text: item.text.trim(),
                 weight: Number(item.weight) || 1,
                 competencies: Array.isArray(item.competencies) ? item.competencies : [],
@@ -133,8 +162,8 @@ export const createAdaptiveAssessment = async (req, res, next) => {
             generatedRounds.push({
                 name: input.name,
                 description: input.description || "",
-                deliveryMode: input.deliveryMode || "conversational",
-                adaptive: (input.deliveryMode || "conversational") === "conversational" && input.adaptive !== false,
+                deliveryMode,
+                adaptive,
                 questionCount: count,
                 questions,
             });
@@ -353,7 +382,8 @@ export const saveAdaptiveCandidateAnswer = async (req, res, next) => {
             item.diagramSummary = summarizeSystemDesignDiagram(item.diagramData);
         }
 
-        if (round.adaptiveState?.enabled) {
+        const conversational = round.deliveryMode === "conversational";
+        if (conversational) {
             if (followUpAnswer !== undefined) {
                 const pending = pendingFollowUpFor(item);
                 if (!pending) return res.status(409).json({ message: "No follow-up is waiting for an answer" });
@@ -362,14 +392,14 @@ export const saveAdaptiveCandidateAnswer = async (req, res, next) => {
                 pending.answeredAt = new Date();
                 syncLegacyFollowUpFields(item);
                 const nextFollowUp = assessment.followUpsEnabled ? await decideNextAdaptiveFollowUp({ assessment, round, item }) : null;
-                if (!nextFollowUp) await advanceAdaptiveRound({ assessment, attempt, roundIndex, questionIndex });
+                if (!nextFollowUp && round.adaptiveState?.enabled) await advanceAdaptiveRound({ assessment, attempt, roundIndex, questionIndex });
             } else if (item.answer) {
                 const nextFollowUp = assessment.followUpsEnabled ? await decideNextAdaptiveFollowUp({ assessment, round, item }) : null;
-                if (!nextFollowUp) await advanceAdaptiveRound({ assessment, attempt, roundIndex, questionIndex });
+                if (!nextFollowUp && round.adaptiveState?.enabled) await advanceAdaptiveRound({ assessment, attempt, roundIndex, questionIndex });
             }
         } else {
-            // Fixed Hire formats retain a single optional probe. The 0-3 loop is
-            // specific to adaptive conversational interviews, matching Practice.
+            // Coding/written and system-design formats keep their fixed question
+            // structure. A single optional probe remains available for those modes.
             if (followUpAnswer !== undefined) item.followUpAnswer = followUpAnswer.toString().trim().slice(0, 5000);
             if (assessment.followUpsEnabled && item.answer && !item.followUpQuestion) {
                 try {
