@@ -7,11 +7,18 @@ const MIN_NEW_CHARS = 35;
 const FIRST_INTERACTION_CONTEXT_CHARS = 140;
 const MAX_SILENT_MS = 45000;
 
+const looksLikeCandidateQuestion = (value = "") => {
+    const tail = value.trim().slice(-180);
+    if (tail.length < 12) return false;
+    if (tail.endsWith("?")) return true;
+    return /\b(what|which|how|when|where|who)\b|\b(should|can|could|would)\s+(i|we)\b|\b(do|are|is)\s+(we|there|it)\b/i.test(tail);
+};
+
 /**
- * Periodically gives the AI interviewer a chance to interject during a system
- * design discussion. The first meaningful probe is guaranteed once the
- * candidate has established enough context, and long silent stretches trigger
- * another interviewer turn without turning the discussion into a checklist.
+ * Periodically gives the AI interviewer a chance to participate during a
+ * system-design discussion. Candidate clarification questions are handled
+ * immediately; otherwise the first meaningful probe is guaranteed once enough
+ * context exists, and long silent stretches trigger another interviewer turn.
  */
 export const useSystemDesignDiscussion = ({
     enabled,
@@ -46,11 +53,12 @@ export const useSystemDesignDiscussion = ({
         const now = Date.now();
         const newChars = currentTranscript.length - lastCheckedLengthRef.current;
         const previousInterjections = interjectionsRef.current;
+        const candidateAskedQuestion = newChars >= 12 && looksLikeCandidateQuestion(currentTranscript);
         const needsFirstInteraction = previousInterjections.length === 0 && currentTranscript.length >= FIRST_INTERACTION_CONTEXT_CHARS;
         const silentTooLong = previousInterjections.length > 0
             && currentTranscript.length >= MIN_CONTEXT_CHARS
             && now - lastInterjectionAtRef.current >= MAX_SILENT_MS;
-        const forceInteraction = force || needsFirstInteraction || silentTooLong;
+        const forceInteraction = force || candidateAskedQuestion || needsFirstInteraction || silentTooLong;
 
         if (!forceInteraction) {
             if (currentTranscript.length < MIN_CONTEXT_CHARS) return null;
@@ -68,6 +76,7 @@ export const useSystemDesignDiscussion = ({
                 diagramData: (diagramRef.current || "").slice(0, 500000),
                 previousInterjections: previousInterjections.map((item) => item.text).slice(-8),
                 forceInteraction,
+                candidateAskedQuestion,
             }, { headers, skipAuthRedirect });
             if (data?.shouldInterrupt && data?.interjection) {
                 const item = {
