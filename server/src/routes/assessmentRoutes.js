@@ -33,6 +33,7 @@ const systemDesignCandidateBody = z.object({
     diagramData: z.string().max(500000).optional().default(""),
     previousInterjections: z.array(z.string().max(600)).max(8).optional().default([]),
     forceInteraction: z.boolean().optional().default(false),
+    candidateAskedQuestion: z.boolean().optional().default(false),
 });
 
 router.get("/public/:shareToken", validate(z.object({ shareToken: z.string().min(20).max(100) }), "params"), validate(z.object({ invite: ObjectIdString.optional() }), "query"), getPublicAssessment);
