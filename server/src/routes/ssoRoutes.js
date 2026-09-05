@@ -41,10 +41,10 @@ const DOMAIN_PATTERN = /^(?=.{1,253}$)(?!-)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9]
 const clientOrigin = () => (process.env.CLIENT_ORIGIN || "http://localhost:5173").replace(/\/+$/, "");
 const serverOrigin = (req) => (process.env.SERVER_ORIGIN || `${req.protocol}://${req.get("host")}`).replace(/\/+$/, "");
 const callbackUri = (req) => `${serverOrigin(req)}/api/sso/callback`;
-const refreshCookieOptions = () => ({
+export const refreshCookieOptions = () => ({
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.COOKIE_SAMESITE || (process.env.NODE_ENV === "production" ? "strict" : "lax"),
+    sameSite: process.env.COOKIE_SAMESITE || (process.env.NODE_ENV === "production" ? "none" : "lax"),
     domain: process.env.COOKIE_DOMAIN || undefined,
     path: "/api/auth",
 });
@@ -113,14 +113,6 @@ const provisionSsoAccess = async ({ organization, metadata, claims, email }) => 
         await session.endSession();
     }
 };
-
-router.post("/discover", validate(emailSchema), async (req, res, next) => {
-    try {
-        const organization = await findSsoOrganizationForEmail(req.body.email);
-        if (!organization || !ssoAvailableFor(organization)) return res.json({ available: false });
-        return res.json({ available: true, organization: { _id: organization._id, name: organization.name } });
-    } catch (error) { return next(error); }
-});
 
 router.post("/start", validate(emailSchema), async (req, res, next) => {
     try {
