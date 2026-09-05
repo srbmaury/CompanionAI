@@ -68,6 +68,8 @@ const router = express.Router();
  *         description: Interview
  */
 
+const isSystemDesignInput = (round = {}) => /system\s*design|architecture/i.test(`${round.roundName || ""} ${round.description || ""} ${(round.skills || []).join(" ")}`);
+
 const RoundInput = z.object({
     roundName: z.string().min(2).max(60),
     description: z.string().min(4).max(260),
@@ -76,7 +78,9 @@ const RoundInput = z.object({
     skills: z.array(z.string().min(1).max(80)).max(6).optional().default([]),
     rationale: z.string().max(300).optional().default(""),
     recommended: z.boolean().optional().default(true),
-});
+}).transform((round) => isSystemDesignInput(round)
+    ? { ...round, deliveryMode: "conversational", questionLimit: 1 }
+    : round);
 
 const CreateInterviewSchema = z.object({
     resumeId: z.union([z.string().min(1), z.literal(""), z.null()]).optional().default(""),
