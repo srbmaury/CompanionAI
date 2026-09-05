@@ -97,7 +97,8 @@ describe("candidate assessment interview UX", () => {
         await begin();
         expect(await screen.findByRole("heading", { name: "Tell me about a backend system you owned." })).toBeTruthy();
         expect(screen.getByText(/remaining/)).toBeTruthy();
-        expect(screen.queryByText(/adaptive/i)).toBeNull();
+        expect(screen.queryByText("Adaptive")).toBeNull();
+        expect(screen.queryByText(/up to 5 primary questions/i)).toBeNull();
         expect(screen.getByRole("button", { name: "I’m done" })).toBeTruthy();
     });
 
