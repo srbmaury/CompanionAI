@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useContext, useEffect, useRef } from "react";
 import api from "../api/axios";
+import { AuthContext } from "../context/AuthContext";
 import { chooseInterviewerGender, interviewerPitchForGender, selectInterviewerVoice } from "../utils/interviewerVoice";
 
 const SpeechRecognitionCtor =
@@ -22,6 +23,7 @@ export const composeLiveTranscript = (finalText, interimText) => `${finalText ||
  * browser did not already produce usable speech for that segment.
  */
 export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcribe", transcribeHeaders = {}, enableServerTranscription = true, skipAuthRedirect = false }) => {
+    const { user } = useContext(AuthContext);
     const [listening, setListening] = useState(false);
     const [listeningTarget, setListeningTarget] = useState(null);
     const [interimText, setInterimText] = useState("");
@@ -457,7 +459,10 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.rate = 0.95;
-            const gender = interviewerGenderRef.current || chooseInterviewerGender();
+            const preference = ["male", "female"].includes(user?.interviewerVoicePreference)
+                ? user.interviewerVoicePreference
+                : "random";
+            const gender = interviewerGenderRef.current || (preference === "random" ? chooseInterviewerGender() : preference);
             interviewerGenderRef.current = gender;
             utterance.pitch = interviewerPitchForGender(gender);
             const voices = window.speechSynthesis.getVoices();
@@ -476,7 +481,7 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
             console.warn("speakNow error", error);
             resolve(false);
         }
-    }), [supportsTTS]);
+    }), [supportsTTS, user?.interviewerVoicePreference]);
 
     useEffect(() => () => {
         handsFreeRef.current = false;
