@@ -12,6 +12,13 @@ const followUpSchema = new mongoose.Schema({
     answeredAt: { type: Date },
 }, { _id: false });
 
+const discussionTurnSchema = new mongoose.Schema({
+    speaker: { type: String, enum: ["candidate", "interviewer"], required: true },
+    text: { type: String, maxlength: 20000, required: true },
+    kind: { type: String, maxlength: 40, default: "" },
+    at: { type: Date, default: Date.now },
+}, { _id: false });
+
 const evidenceSchema = new mongoose.Schema({
     text: { type: String, maxlength: 500, default: "" },
     score: { type: Number, min: 0, max: 10 },
@@ -122,6 +129,7 @@ const roundSchema = new mongoose.Schema({
         answerGiven: { type: String },
         diagramData: { type: String, maxlength: 500000, default: "" },
         diagramSummary: { type: String, maxlength: 10000, default: "" },
+        discussionTurns: { type: [discussionTurnSchema], default: [], validate: (value) => value.length <= 80 },
         followUps: { type: [followUpSchema], default: [] },
         difficulty: { type: Number, min: 1, max: 5, default: 3 },
         competencies: [{ type: String, maxlength: 80 }],
@@ -135,7 +143,6 @@ const roundSchema = new mongoose.Schema({
         feedback: { type: mongoose.Schema.Types.ObjectId, ref: "Feedback" },
     }],
 });
-
 
 const coverageOf = (state) => {
     const competencies = Array.isArray(state?.competencies) ? state.competencies : [];
