@@ -44,12 +44,12 @@ describe("SystemDesignDiscussionPanel", () => {
         const shortTranscript = "I would start by clarifying requirements and then identify the main APIs, storage needs, traffic assumptions, and the critical read and write paths.";
         const { rerender } = render(<SystemDesignDiscussionPanel {...baseProps} transcript={shortTranscript} />);
 
-        expect(screen.getByRole("button", { name: "End discussion" })).toBeDisabled();
+        expect(screen.getByRole("button", { name: "End discussion" }).disabled).toBe(true);
         expect(screen.getByText(/End discussion unlocks/)).toBeTruthy();
 
         const longTranscript = Array.from({ length: 30 }, (_, index) => `word${index + 1}`).join(" ");
         rerender(<SystemDesignDiscussionPanel {...baseProps} transcript={longTranscript} />);
 
-        expect(screen.getByRole("button", { name: "End discussion" })).not.toBeDisabled();
+        expect(screen.getByRole("button", { name: "End discussion" }).disabled).toBe(false);
     });
 });
