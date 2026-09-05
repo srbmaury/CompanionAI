@@ -6,6 +6,7 @@ import { useConversational } from "../hooks/useConversational";
 import { useOAForm } from "../hooks/useOAForm";
 import { useVoiceInput } from "../hooks/useVoiceInput";
 import { useResumePdf } from "../hooks/useResumePdf";
+import api from "../api/axios";
 
 import {
     Alert, Box, Button, Chip, CircularProgress, Divider, Drawer, IconButton,
@@ -17,6 +18,7 @@ import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import HelpPopover from "../components/HelpPopover";
 
 import ConversationalPanel from "../components/ConversationalPanel";
+import SystemDesignDiscussionPanel from "../components/SystemDesignDiscussionPanel";
 import FeedbackPanel from "../components/FeedbackPanel";
 import OAForm from "../components/OAForm";
 import RoundList from "../components/RoundList";
@@ -43,6 +45,8 @@ const InterviewPage = () => {
 
     const [roundsOpen, setRoundsOpen] = useState(false);
     const [resumeOpen, setResumeOpen] = useState(false);
+    const [systemDesignDiagram, setSystemDesignDiagram] = useState("");
+    const [systemDesignEnding, setSystemDesignEnding] = useState(false);
 
     const {
         interview, setInterview,
@@ -58,6 +62,9 @@ const InterviewPage = () => {
         () => selectedRound?.deliveryMode === "conversational",
         [selectedRound],
     );
+    const isSystemDesign = useMemo(() => Boolean(
+        isConversational && /system\s*design|architecture/i.test(`${selectedRound?.name || ""} ${selectedRound?.description || ""}`),
+    ), [isConversational, selectedRound?.description, selectedRound?.name]);
 
     const hasAnsweredMissingFeedback = useMemo(() => {
         const questions = selectedRound?.questions || [];
@@ -73,7 +80,7 @@ const InterviewPage = () => {
 
     const onTranscript = useCallback((target, text) => {
         if (target === "conv") {
-            if (convCodingEnabled) setConvSpokenAnswer((previous) => (previous ? `${previous} ${text}` : text));
+            if (convCodingEnabled && !isSystemDesign) setConvSpokenAnswer((previous) => (previous ? `${previous} ${text}` : text));
             else convAnswerSetterRef.current?.((previous) => (previous ? `${previous} ${text}` : text));
         } else if (typeof target === "number") {
             const setter = oaCodingEnabled[target] ? setOaSpokenAnswers : oaAnswersSetterRef.current;
@@ -83,14 +90,15 @@ const InterviewPage = () => {
                 return next;
             });
         }
-    }, [convCodingEnabled, oaCodingEnabled]);
+    }, [convCodingEnabled, isSystemDesign, oaCodingEnabled]);
 
     const {
         listening, listeningTarget, interimText,
-        micLevel, micPermission,
+        micLevel, micPermission, micSessionActive, handsFreePaused,
         inputDevices, selectedDeviceId, setSelectedDeviceId,
         supportsSTT, supportsTTS,
         startListening, stopListening, speakNow,
+        startHandsFree, pauseHandsFree, resumeHandsFree, stopHandsFree,
     } = useVoiceInput({ onTranscript });
 
     const {
@@ -122,8 +130,8 @@ const InterviewPage = () => {
         if (!selectedRound?._id || !isConversational || convViewState.done) return;
         const index = convViewState.index || 0;
         setConvSpokenAnswer(storage.get(storageKeys.convVoice(interviewId, selectedRound._id, index)) || "");
-        setConvCodingEnabled(Boolean(storage.get(storageKeys.convCoding(interviewId, selectedRound._id, index))));
-    }, [interviewId, selectedRound?._id, isConversational, convViewState.index, convViewState.done]);
+        setConvCodingEnabled(isSystemDesign ? false : Boolean(storage.get(storageKeys.convCoding(interviewId, selectedRound._id, index))));
+    }, [interviewId, selectedRound?._id, isConversational, isSystemDesign, convViewState.index, convViewState.done]);
 
     useEffect(() => {
         if (!selectedRound?._id || !isConversational || convViewState.done) return;
@@ -144,13 +152,29 @@ const InterviewPage = () => {
         storage.set(storageKeys.oaCoding(interviewId, selectedRound._id), oaCodingEnabled);
     }, [interviewId, selectedRound?._id, isConversational, oaSpokenAnswers, oaCodingEnabled]);
 
+    const systemDesignStorageKey = useMemo(() => selectedRound?._id ? `system-design-canvas:${interviewId}:${selectedRound._id}` : "", [interviewId, selectedRound?._id]);
+    useEffect(() => {
+        if (!isSystemDesign || !systemDesignStorageKey) { setSystemDesignDiagram(""); return; }
+        const currentItem = selectedRound?.questions?.[convViewState.index || 0];
+        let local = "";
+        try { local = window.localStorage?.getItem(systemDesignStorageKey) || ""; } catch { void 0; }
+        setSystemDesignDiagram(local || currentItem?.diagramData || "");
+    }, [convViewState.index, isSystemDesign, selectedRound?.questions, systemDesignStorageKey]);
+
+    const updateSystemDesignDiagram = useCallback((value) => {
+        setSystemDesignDiagram(value);
+        if (!systemDesignStorageKey) return;
+        try { window.localStorage?.setItem(systemDesignStorageKey, value); } catch { void 0; }
+    }, [systemDesignStorageKey]);
+
     const changeConversationalCodingMode = useCallback((enabled) => {
+        if (isSystemDesign) return;
         setConvCodingEnabled(enabled);
         if (!enabled && convSpokenAnswer.trim()) {
             setConvAnswer((current) => `${current}${current ? "\n\n" : ""}${convSpokenAnswer}`);
             setConvSpokenAnswer("");
         }
-    }, [convSpokenAnswer, setConvAnswer]);
+    }, [convSpokenAnswer, isSystemDesign, setConvAnswer]);
 
     const changeOaCodingMode = useCallback((index, enabled) => {
         setOaCodingEnabled((current) => {
@@ -182,6 +206,26 @@ const InterviewPage = () => {
         setConvSpokenAnswer("");
     }, [convAnswer, convSpokenAnswer, handleFollowUpDone]);
 
+    const endSystemDesignDiscussion = useCallback(async () => {
+        if (!selectedRound?._id || !convAnswer.trim()) return false;
+        setSystemDesignEnding(true);
+        try {
+            await api.post(`/questions/${selectedRound._id}/system-design/complete`, {
+                transcript: convAnswer,
+                diagramData: systemDesignDiagram,
+                previousInterjections: [],
+            });
+            try { if (systemDesignStorageKey) window.localStorage?.removeItem(systemDesignStorageKey); } catch { void 0; }
+            await handleCompleteRound();
+            return true;
+        } catch (error) {
+            showToast("error", error?.response?.data?.message || "Could not save the system-design discussion.");
+            return false;
+        } finally {
+            setSystemDesignEnding(false);
+        }
+    }, [convAnswer, handleCompleteRound, selectedRound?._id, showToast, systemDesignDiagram, systemDesignStorageKey]);
+
     const submitOaAnswers = useCallback(async () => {
         const combined = Array.from(
             { length: Math.max(oaAnswers.length, oaSpokenAnswers.length) },
@@ -202,15 +246,20 @@ const InterviewPage = () => {
         onSpeak: speakNow,
         onStartListening: startListening,
         onStopListening: stopListening,
-        micPermission, micLevel,
+        micPermission, micLevel, micSessionActive, handsFreePaused,
         inputDevices, selectedDeviceId,
         onChangeDevice: setSelectedDeviceId,
+        onStartHandsFree: startHandsFree,
+        onPauseHandsFree: pauseHandsFree,
+        onResumeHandsFree: resumeHandsFree,
+        onStopHandsFree: stopHandsFree,
         pushToTalk: false,
         outlinedInputSx,
     }), [
         supportsTTS, supportsSTT, listening, listeningTarget, interimText, speakNow,
-        startListening, stopListening, micPermission, micLevel, inputDevices,
-        selectedDeviceId, setSelectedDeviceId,
+        startListening, stopListening, micPermission, micLevel, micSessionActive, handsFreePaused,
+        inputDevices, selectedDeviceId, setSelectedDeviceId, startHandsFree, pauseHandsFree,
+        resumeHandsFree, stopHandsFree,
     ]);
 
     const roundMeta = useMemo(() => {
@@ -225,10 +274,10 @@ const InterviewPage = () => {
         };
     }, [interview?.rounds, selectedRound?._id]);
 
-    const modeLabel = selectedRound?.deliveryMode === "conversational"
-        ? "Conversation"
-        : selectedRound?.deliveryMode === "system-design"
-            ? "System design"
+    const modeLabel = isSystemDesign
+        ? "System design"
+        : selectedRound?.deliveryMode === "conversational"
+            ? "Conversation"
             : "Online assessment";
 
     if (!interview) {
@@ -362,7 +411,7 @@ const InterviewPage = () => {
                             </Box>
                         </Drawer>
 
-                        <Box component="main" sx={{ flex: 1, minWidth: 0, maxWidth: 1220, mx: "auto" }}>
+                        <Box component="main" sx={{ flex: 1, minWidth: 0, maxWidth: isSystemDesign ? 1380 : 1220, mx: "auto" }}>
                             {!selectedRound ? (
                                 <Paper variant="outlined" sx={{ p: 4, textAlign: "center", borderRadius: 3 }}>
                                     <Typography fontWeight={800}>Choose an interview round to begin.</Typography>
@@ -395,6 +444,33 @@ const InterviewPage = () => {
                                             </Stack>
                                         </Paper>
                                     ) : <FeedbackPanel round={selectedRound} />
+                                ) : isSystemDesign ? (
+                                    <SystemDesignDiscussionPanel
+                                        problem={convViewState.current?.text || ""}
+                                        transcript={convAnswer}
+                                        onTranscriptChange={setConvAnswer}
+                                        diagramData={systemDesignDiagram}
+                                        onDiagramChange={updateSystemDesignDiagram}
+                                        target="conv"
+                                        checkpointEndpoint={`/questions/${selectedRound._id}/system-design/checkpoint`}
+                                        supportsSTT={supportsSTT}
+                                        supportsTTS={supportsTTS}
+                                        listening={listening}
+                                        listeningTarget={listeningTarget}
+                                        interimText={interimText}
+                                        micLevel={micLevel}
+                                        micPermission={micPermission}
+                                        micSessionActive={micSessionActive}
+                                        handsFreePaused={handsFreePaused}
+                                        startHandsFree={startHandsFree}
+                                        pauseHandsFree={pauseHandsFree}
+                                        resumeHandsFree={resumeHandsFree}
+                                        stopHandsFree={stopHandsFree}
+                                        speakNow={speakNow}
+                                        onEnd={endSystemDesignDiscussion}
+                                        ending={systemDesignEnding || convRoundSubmitting}
+                                        savedLabel={convSavedAt ? "Transcript recovery is active" : "Transcript and whiteboard recover automatically"}
+                                    />
                                 ) : (
                                     <>
                                         <ConversationalPanel
