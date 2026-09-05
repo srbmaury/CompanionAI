@@ -3,8 +3,9 @@ import Assessment from "../models/Assessment.js";
 import CandidateAttempt from "../models/CandidateAttempt.js";
 import { reserveCandidateInterview, releaseOrganizationUsage } from "../services/organizationUsage.js";
 import { generateQuestionsForRound } from "../utils/generateQuestions.js";
-import { generateFollowUp } from "../utils/generateQuestions/followUp.js";
+import { generateFollowUp, MAX_FOLLOW_UPS } from "../utils/generateQuestions/followUp.js";
 import { isValidSystemDesignDiagram, summarizeSystemDesignDiagram } from "../utils/systemDesignDiagram.js";
+import metrics from "../metrics/index.js";
 import {
     initializeAdaptiveInterviewState,
     evaluateAdaptiveAnswer,
@@ -20,6 +21,41 @@ const findPublicAssessment = (shareToken) => Assessment.findOne({ shareToken, st
 const findAttempt = async (assessmentId, attemptId, rawToken) => rawToken
     ? CandidateAttempt.findOne({ _id: attemptId, assessment: assessmentId, accessTokenHash: tokenHash(rawToken) }).select("+accessTokenHash")
     : null;
+const followupLabel = (assessment) => assessment == null ? "unknown" : assessment.followUpsEnabled ? "enabled" : "disabled";
+const observeCandidateAction = (action, outcome, assessment) => { try { metrics.candidateAssessmentActionsTotal.labels(action, outcome, followupLabel(assessment)).inc(); } catch {} };
+
+const followUpList = (item) => Array.isArray(item?.followUps) ? item.followUps : [];
+const pendingFollowUpFor = (item) => [...followUpList(item)].reverse().find((followUp) => followUp?.question && !followUp?.answer) || null;
+const ensureFollowUpHistory = (item) => {
+    if (!item) return [];
+    if (!Array.isArray(item.followUps)) item.followUps = [];
+    if (!item.followUps.length && item.followUpQuestion) {
+        item.followUps.push({
+            question: item.followUpQuestion,
+            answer: item.followUpAnswer || "",
+            answeredAt: item.followUpAnswer ? new Date() : undefined,
+        });
+    }
+    return item.followUps;
+};
+const syncLegacyFollowUpFields = (item) => {
+    const history = ensureFollowUpHistory(item);
+    const pending = pendingFollowUpFor(item);
+    const current = pending || history.at(-1);
+    item.followUpQuestion = current?.question || "";
+    item.followUpAnswer = pending ? "" : current?.answer || "";
+};
+const baseAnswer = (item) => [
+    item.answer,
+    item.diagramSummary,
+    item.spokenExplanation ? `Spoken explanation:\n${item.spokenExplanation}` : "",
+].filter(Boolean).join("\n\n");
+const combinedAnswer = (item) => [
+    baseAnswer(item),
+    ...followUpList(item)
+        .filter((followUp) => followUp?.question && followUp?.answer)
+        .map((followUp, index) => `Follow-up ${index + 1}: ${followUp.question}\nCandidate: ${followUp.answer}`),
+].filter(Boolean).join("\n\n");
 
 const publicAttempt = (attempt) => ({
     _id: attempt._id,
@@ -34,16 +70,24 @@ const publicAttempt = (attempt) => ({
         deliveryMode: round.deliveryMode || "conversational",
         adaptive: Boolean(round.adaptiveState?.enabled),
         adaptiveComplete: Boolean(round.adaptiveComplete),
-        questions: round.questions.map((question) => ({
-            _id: question._id,
-            text: question.text,
-            answer: question.answer,
-            spokenExplanation: question.spokenExplanation,
-            diagramData: question.diagramData,
-            diagramSummary: question.diagramSummary,
-            followUpQuestion: question.followUpQuestion,
-            followUpAnswer: question.followUpAnswer,
-        })),
+        questions: round.questions.map((question) => {
+            const history = followUpList(question);
+            const pending = pendingFollowUpFor(question);
+            const current = pending || history.at(-1);
+            return {
+                _id: question._id,
+                text: question.text,
+                answer: question.answer,
+                spokenExplanation: question.spokenExplanation,
+                diagramData: question.diagramData,
+                diagramSummary: question.diagramSummary,
+                followUps: history.map((followUp) => ({ question: followUp.question, answer: followUp.answer || "" })),
+                followUpQuestion: current?.question || question.followUpQuestion || "",
+                followUpAnswer: pending ? "" : current?.answer || question.followUpAnswer || "",
+                followUpNumber: pending ? history.length : 0,
+                remainingFollowUps: pending ? Math.max(0, MAX_FOLLOW_UPS - history.length) : Math.max(0, MAX_FOLLOW_UPS - history.length),
+            };
+        }),
     })),
 });
 
@@ -129,6 +173,7 @@ const asAttemptQuestion = (question, state, fallbackCompetency = "") => ({
     required: Boolean(question.required),
     difficulty: state?.currentDifficulty || 3,
     sourceType: "planned",
+    followUps: [],
 });
 
 const makeAttemptRound = async (assessment, round) => {
@@ -138,7 +183,7 @@ const makeAttemptRound = async (assessment, round) => {
         description: round.description,
         deliveryMode: round.deliveryMode || "conversational",
         adaptiveComplete: true,
-        questions: round.questions.map((question) => ({ text: question.text, weight: question.weight, competencies: question.competencies, knockout: question.knockout, required: Boolean(question.required) })),
+        questions: round.questions.map((question) => ({ text: question.text, weight: question.weight, competencies: question.competencies, knockout: question.knockout, required: Boolean(question.required), followUps: [] })),
     };
 
     const skills = [...new Set(round.questions.flatMap((question) => question.competencies || []))];
@@ -166,17 +211,17 @@ export const startAdaptiveCandidateAttempt = async (req, res, next) => {
     let attemptSaved = false;
     try {
         const assessment = await findPublicAssessment(req.params.shareToken);
-        if (!assessment) return res.status(404).json({ message: "Assessment unavailable" });
+        if (!assessment) { observeCandidateAction("start", "unavailable", null); return res.status(404).json({ message: "Assessment unavailable" }); }
         const candidateEmail = req.body.email.toLowerCase().trim();
         if (assessment.integrity?.enabled && req.body.integrityConsent !== true) return res.status(400).json({ message: "Consent to the configured integrity signals is required before starting this assessment." });
         const activeInvitation = req.body.invitationId ? assessment.invitations?.id(req.body.invitationId) : null;
         const validInvitation = activeInvitation && activeInvitation.status !== "revoked" && activeInvitation.email === candidateEmail ? activeInvitation : null;
         if (assessment.inviteOnly && !validInvitation) return res.status(403).json({ message: "This assessment is invitation-only. Open the invitation link sent to your email and use that invited email address." });
         const existing = await CandidateAttempt.findOne({ assessment: assessment._id, candidateEmail });
-        if (existing) return res.status(409).json({ message: existing.status === "submitted" ? "This email has already submitted an attempt" : "An attempt for this email is already in progress. Continue from the browser where it was started or contact the recruiting team." });
+        if (existing) { observeCandidateAction("start", "duplicate", assessment); return res.status(409).json({ message: existing.status === "submitted" ? "This email has already submitted an attempt" : "An attempt for this email is already in progress. Continue from the browser where it was started or contact the recruiting team." }); }
 
         const usage = await reserveCandidateInterview(assessment.organization);
-        if (!usage.ok) return res.status(429).json({ message: "This assessment is temporarily unavailable because the hiring team has reached its candidate interview capacity. Contact the recruiting team if you need help.", code: "HIRING_CAPACITY_REACHED" });
+        if (!usage.ok) { observeCandidateAction("start", "capacity", assessment); return res.status(429).json({ message: "This assessment is temporarily unavailable because the hiring team has reached its candidate interview capacity. Contact the recruiting team if you need help.", code: "HIRING_CAPACITY_REACHED" }); }
         usageReservation = usage.reservation;
 
         const rawToken = crypto.randomBytes(32).toString("base64url");
@@ -197,30 +242,46 @@ export const startAdaptiveCandidateAttempt = async (req, res, next) => {
         await attempt.save();
         attemptSaved = true;
         if (validInvitation) { try { await assessment.save(); } catch {} }
+        observeCandidateAction("start", "success", assessment);
         return res.status(201).json({ attemptToken: rawToken, attempt: publicAttempt(attempt) });
     } catch (error) {
         if (usageReservation && !attemptSaved) await releaseOrganizationUsage(usageReservation);
+        observeCandidateAction("start", "failure", null);
         return next(error);
     }
 };
-
-const combinedAnswer = (item) => [
-    item.answer,
-    item.diagramSummary,
-    item.spokenExplanation ? `Spoken explanation:\n${item.spokenExplanation}` : "",
-    item.followUpQuestion && item.followUpAnswer ? `Interviewer follow-up: ${item.followUpQuestion}\nCandidate: ${item.followUpAnswer}` : "",
-].filter(Boolean).join("\n\n");
 
 const nextRequiredQuestion = (assessmentRound, attemptRound) => {
     const asked = new Set((attemptRound.questions || []).filter((question) => question.required).map((question) => question.text.trim()));
     return (assessmentRound?.questions || []).find((question) => question.required && !asked.has(question.text.trim())) || null;
 };
 
+const decideNextAdaptiveFollowUp = async ({ assessment, round, item }) => {
+    const history = ensureFollowUpHistory(item);
+    const pending = pendingFollowUpFor(item);
+    if (pending) { syncLegacyFollowUpFields(item); return pending; }
+    if (history.length >= MAX_FOLLOW_UPS) { syncLegacyFollowUpFields(item); return null; }
+    const decision = await generateFollowUp({
+        questionText: item.text,
+        userAnswer: baseAnswer(item),
+        followUps: history,
+        jobRole: assessment.jobRole,
+        roundName: round.name,
+        systemDesign: round.deliveryMode === "system-design",
+        competencies: item.competencies || [],
+        sourceClaim: item.sourceClaim || "",
+    });
+    if (!decision?.shouldAsk || !decision.followUp) { syncLegacyFollowUpFields(item); return null; }
+    history.push({ question: decision.followUp, answer: "", reason: decision.reason || "", focus: decision.focus || "" });
+    syncLegacyFollowUpFields(item);
+    return pendingFollowUpFor(item);
+};
+
 const advanceAdaptiveRound = async ({ assessment, attempt, roundIndex, questionIndex }) => {
     const round = attempt.rounds[roundIndex];
     const item = round?.questions?.[questionIndex];
     if (!round?.adaptiveState?.enabled || !item || item.adaptiveEvaluated) return;
-    if (!item.answer?.trim() || (item.followUpQuestion && !item.followUpAnswer?.trim())) return;
+    if (!item.answer?.trim() || pendingFollowUpFor(item)) return;
 
     const evaluation = await evaluateAdaptiveAnswer({
         questionText: item.text,
@@ -268,19 +329,21 @@ const advanceAdaptiveRound = async ({ assessment, attempt, roundIndex, questionI
         difficulty: next.difficulty,
         sourceType: next.sourceType || "adaptive",
         sourceClaim: next.sourceClaim || "",
+        followUps: [],
     });
 };
 
 export const saveAdaptiveCandidateAnswer = async (req, res, next) => {
     try {
         const assessment = await findPublicAssessment(req.params.shareToken);
-        if (!assessment) return res.status(404).json({ message: "Assessment unavailable" });
+        if (!assessment) { observeCandidateAction("answer", "unavailable", null); return res.status(404).json({ message: "Assessment unavailable" }); }
         const attempt = await findAttempt(assessment._id, req.params.attemptId, req.get("x-attempt-token"));
-        if (!attempt || attempt.status !== "started") return res.status(401).json({ message: "Attempt unavailable" });
+        if (!attempt || attempt.status !== "started") { observeCandidateAction("answer", "unauthorized", assessment); return res.status(401).json({ message: "Attempt unavailable" }); }
         const { roundIndex, questionIndex, answer, spokenExplanation, followUpAnswer, diagramData } = req.body;
         const round = attempt.rounds?.[roundIndex];
         const item = round?.questions?.[questionIndex];
-        if (!item) return res.status(400).json({ message: "Invalid question" });
+        if (!item) { observeCandidateAction("answer", "invalid_question", assessment); return res.status(400).json({ message: "Invalid question" }); }
+        ensureFollowUpHistory(item);
         if (answer !== undefined) item.answer = answer.toString().trim().slice(0, 20000);
         if (spokenExplanation !== undefined) item.spokenExplanation = spokenExplanation.toString().trim().slice(0, 5000);
         if (diagramData !== undefined) {
@@ -288,35 +351,42 @@ export const saveAdaptiveCandidateAnswer = async (req, res, next) => {
             item.diagramData = diagramData.slice(0, 500000);
             item.diagramSummary = summarizeSystemDesignDiagram(item.diagramData);
         }
-        if (followUpAnswer !== undefined) item.followUpAnswer = followUpAnswer.toString().trim().slice(0, 5000);
 
         if (round.adaptiveState?.enabled) {
             if (followUpAnswer !== undefined) {
-                await advanceAdaptiveRound({ assessment, attempt, roundIndex, questionIndex });
-            } else if (item.answer && assessment.followUpsEnabled && !item.followUpQuestion) {
+                const pending = pendingFollowUpFor(item);
+                if (!pending) return res.status(409).json({ message: "No follow-up is waiting for an answer" });
+                pending.answer = followUpAnswer.toString().trim().slice(0, 5000);
+                if (!pending.answer) return res.status(400).json({ message: "Follow-up answer required" });
+                pending.answeredAt = new Date();
+                syncLegacyFollowUpFields(item);
+                const nextFollowUp = assessment.followUpsEnabled ? await decideNextAdaptiveFollowUp({ assessment, round, item }) : null;
+                if (!nextFollowUp) await advanceAdaptiveRound({ assessment, attempt, roundIndex, questionIndex });
+            } else if (item.answer) {
+                const nextFollowUp = assessment.followUpsEnabled ? await decideNextAdaptiveFollowUp({ assessment, round, item }) : null;
+                if (!nextFollowUp) await advanceAdaptiveRound({ assessment, attempt, roundIndex, questionIndex });
+            }
+        } else {
+            // Fixed Hire formats retain a single optional probe. The 0-3 loop is
+            // specific to adaptive conversational interviews, matching Practice.
+            if (followUpAnswer !== undefined) item.followUpAnswer = followUpAnswer.toString().trim().slice(0, 5000);
+            if (assessment.followUpsEnabled && item.answer && !item.followUpQuestion) {
                 try {
                     const decision = await generateFollowUp({
                         questionText: item.text,
-                        userAnswer: combinedAnswer(item),
+                        userAnswer: baseAnswer(item),
                         jobRole: assessment.jobRole,
                         roundName: round.name,
+                        systemDesign: round.deliveryMode === "system-design",
                         competencies: item.competencies || [],
-                        sourceClaim: item.sourceClaim || "",
                     });
-                    if (decision?.shouldAsk && decision.followUp) item.followUpQuestion = decision.followUp;
-                    else await advanceAdaptiveRound({ assessment, attempt, roundIndex, questionIndex });
-                } catch { await advanceAdaptiveRound({ assessment, attempt, roundIndex, questionIndex }); }
-            } else if (item.answer && !assessment.followUpsEnabled) {
-                await advanceAdaptiveRound({ assessment, attempt, roundIndex, questionIndex });
+                    item.followUpQuestion = decision?.shouldAsk ? decision.followUp || "" : "";
+                } catch { /* save the original response even if follow-up generation fails */ }
             }
-        } else if (assessment.followUpsEnabled && item.answer && !item.followUpQuestion) {
-            try {
-                const decision = await generateFollowUp({ questionText: item.text, userAnswer: combinedAnswer(item), jobRole: assessment.jobRole, roundName: round.name, systemDesign: round.deliveryMode === "system-design", competencies: item.competencies || [] });
-                item.followUpQuestion = decision?.shouldAsk ? decision.followUp || "" : "";
-            } catch { /* save the original response even if follow-up generation fails */ }
         }
 
         await attempt.save();
+        observeCandidateAction("answer", "success", assessment);
         return res.json({ attempt: publicAttempt(attempt) });
-    } catch (error) { return next(error); }
+    } catch (error) { observeCandidateAction("answer", "failure", null); return next(error); }
 };
