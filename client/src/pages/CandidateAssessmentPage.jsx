@@ -1,10 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link as RouterLink, useParams } from "react-router-dom";
 import { Alert, Box, Button, Card, CardContent, Checkbox, Chip, CircularProgress, Container, FormControlLabel, LinearProgress, Link, Paper, Stack, TextField, Typography } from "@mui/material";
 import { CheckCircleOutlineRounded, ErrorOutlineRounded } from "@mui/icons-material";
 import api from "../api/axios";
 import CodeEditorField from "../components/CodeEditorField";
 import VoiceControls from "../components/VoiceControls";
+import SystemDesignDiscussionPanel from "../components/SystemDesignDiscussionPanel";
 import { useVoiceInput } from "../hooks/useVoiceInput";
 import WebcamPreview from "../components/WebcamPreview";
 import { useNotify } from "../context/NotificationContext";
@@ -15,9 +16,9 @@ const removeSavedAttempt = (key) => { try { window.localStorage?.removeItem(key)
 const questionHasPendingFollowUp = (round, question) => {
     if (!question) return false;
     if (round?.deliveryMode === "conversational") return Number(question.followUpNumber || 0) > 0;
+    if (round?.deliveryMode === "system-design") return false;
     return Boolean(question.followUpQuestion && !question.followUpAnswer);
 };
-const SystemDesignCanvas = lazy(() => import("../components/SystemDesignCanvas"));
 
 export default function CandidateAssessmentPage() {
     const { shareToken } = useParams(); const storageKey = `assessment-attempt:${shareToken}`;
@@ -31,6 +32,7 @@ export default function CandidateAssessmentPage() {
     const [activeRoundIndex, setActiveRoundIndex] = useState(0); const [activeQuestionIndex, setActiveQuestionIndex] = useState(0); const [codingEnabled, setCodingEnabled] = useState(false); const [spokenNotes, setSpokenNotes] = useState({}); const [focusedField, setFocusedField] = useState("answer");
     const [roundTransition, setRoundTransition] = useState(null);
     const focusedVoiceTargetRef = useRef(""); const diagramSaveTimerRef = useRef(null); const diagramSceneRef = useRef("");
+
     const onTranscript = useCallback((target, text) => {
         if (window.speechSynthesis?.speaking) return;
         target = focusedVoiceTargetRef.current || target;
@@ -38,40 +40,162 @@ export default function CandidateAssessmentPage() {
         if (prefix !== "candidate") return;
         const roundIndex = Number(roundValue); const questionIndex = Number(questionValue);
         const baseTarget = `candidate:${roundIndex}:${questionIndex}`;
-        if (field === "spoken") { setSpokenNotes((current) => ({ ...current, [baseTarget]: `${current[baseTarget] || ""}${current[baseTarget] ? " " : ""}${text}` })); setDirty((current) => ({ ...current, [`${roundIndex}:${questionIndex}:answer`]: true })); return; }
+        if (field === "spoken") {
+            setSpokenNotes((current) => ({ ...current, [baseTarget]: `${current[baseTarget] || ""}${current[baseTarget] ? " " : ""}${text}` }));
+            setDirty((current) => ({ ...current, [`${roundIndex}:${questionIndex}:answer`]: true }));
+            return;
+        }
         setDirty((current) => ({ ...current, [`${roundIndex}:${questionIndex}:${field === "followup" ? "followup" : "answer"}`]: true }));
-        setAttempt((current) => current ? ({ ...current, rounds: current.rounds.map((round, ri) => ri === roundIndex ? { ...round, questions: round.questions.map((question, qi) => { if (qi !== questionIndex) return question; const key = field === "followup" ? "followUpAnswer" : "answer"; return { ...question, [key]: `${question[key] || ""}${question[key] ? " " : ""}${text}` }; }) } : round) }) : current);
+        setAttempt((current) => current ? ({
+            ...current,
+            rounds: current.rounds.map((round, ri) => ri === roundIndex ? {
+                ...round,
+                questions: round.questions.map((question, qi) => {
+                    if (qi !== questionIndex) return question;
+                    const key = field === "followup" ? "followUpAnswer" : "answer";
+                    return { ...question, [key]: `${question[key] || ""}${question[key] ? " " : ""}${text}` };
+                }),
+            } : round),
+        }) : current);
     }, []);
+
     const candidateToolHeaders = useMemo(() => attemptToken ? { "X-Attempt-Token": attemptToken } : {}, [attemptToken]);
     const candidateToolBase = attempt ? `/assessments/public/${shareToken}/attempts/${attempt._id}` : "";
-    const { listening, listeningTarget, interimText, micLevel, micPermission, inputDevices, selectedDeviceId, setSelectedDeviceId, supportsSTT, supportsTTS, startListening, stopListening, retargetListening, speakNow } = useVoiceInput({ onTranscript, transcribeEndpoint: candidateToolBase ? `${candidateToolBase}/transcribe` : "/stt/transcribe", transcribeHeaders: candidateToolHeaders, enableServerTranscription: assessment?.capabilities?.transcription !== false, skipAuthRedirect: true });
-    useEffect(() => { (async () => { try { const { data } = await api.get(`/assessments/public/${shareToken}`, { params: invitationId ? { invite: invitationId } : undefined }); setAssessment(data); const saved = readSavedAttempt(storageKey); if (saved?.attempt && saved?.attemptToken) { setAttempt(saved.attempt); setAttemptToken(saved.attemptToken); setDirty(saved.dirty || {}); setLastSavedAt(saved.savedAt || null); setActiveRoundIndex(Math.max(0, Number(saved.navigation?.activeRoundIndex) || 0)); setActiveQuestionIndex(Math.max(0, Number(saved.navigation?.activeQuestionIndex) || 0)); setRoundTransition(saved.navigation?.roundTransition || null); } } catch { setError("This assessment link is invalid, closed, or expired."); } finally { setLoading(false); } })(); }, [invitationId, shareToken, storageKey]);
-    const persist = (nextAttempt, token = attemptToken) => { const savedAt = new Date().toISOString(); setAttempt(nextAttempt); setLastSavedAt(savedAt); writeSavedAttempt(storageKey, { attempt: nextAttempt, attemptToken: token, dirty, savedAt, navigation: { activeRoundIndex, activeQuestionIndex, roundTransition } }); };
-    useEffect(() => { if (attempt && attemptToken) { const savedAt = new Date().toISOString(); writeSavedAttempt(storageKey, { attempt, attemptToken, dirty, savedAt, navigation: { activeRoundIndex, activeQuestionIndex, roundTransition } }); setLastSavedAt(savedAt); } }, [activeQuestionIndex, activeRoundIndex, attempt, attemptToken, dirty, roundTransition, storageKey]);
-    useEffect(() => { const update = () => setOnline(navigator.onLine); window.addEventListener("online", update); window.addEventListener("offline", update); return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); }; }, []);
+    const {
+        listening, listeningTarget, interimText, micLevel, micPermission, micSessionActive, handsFreePaused,
+        inputDevices, selectedDeviceId, setSelectedDeviceId, supportsSTT, supportsTTS,
+        startListening, stopListening, retargetListening, speakNow,
+        startHandsFree, pauseHandsFree, resumeHandsFree, stopHandsFree,
+    } = useVoiceInput({
+        onTranscript,
+        transcribeEndpoint: candidateToolBase ? `${candidateToolBase}/transcribe` : "/stt/transcribe",
+        transcribeHeaders: candidateToolHeaders,
+        enableServerTranscription: assessment?.capabilities?.transcription !== false,
+        skipAuthRedirect: true,
+    });
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const { data } = await api.get(`/assessments/public/${shareToken}`, { params: invitationId ? { invite: invitationId } : undefined });
+                setAssessment(data);
+                const saved = readSavedAttempt(storageKey);
+                if (saved?.attempt && saved?.attemptToken) {
+                    setAttempt(saved.attempt);
+                    setAttemptToken(saved.attemptToken);
+                    setDirty(saved.dirty || {});
+                    setLastSavedAt(saved.savedAt || null);
+                    setActiveRoundIndex(Math.max(0, Number(saved.navigation?.activeRoundIndex) || 0));
+                    setActiveQuestionIndex(Math.max(0, Number(saved.navigation?.activeQuestionIndex) || 0));
+                    setRoundTransition(saved.navigation?.roundTransition || null);
+                }
+            } catch { setError("This assessment link is invalid, closed, or expired."); }
+            finally { setLoading(false); }
+        })();
+    }, [invitationId, shareToken, storageKey]);
+
+    const persist = (nextAttempt, token = attemptToken) => {
+        const savedAt = new Date().toISOString();
+        setAttempt(nextAttempt);
+        setLastSavedAt(savedAt);
+        writeSavedAttempt(storageKey, { attempt: nextAttempt, attemptToken: token, dirty, savedAt, navigation: { activeRoundIndex, activeQuestionIndex, roundTransition } });
+    };
+    useEffect(() => {
+        if (attempt && attemptToken) {
+            const savedAt = new Date().toISOString();
+            writeSavedAttempt(storageKey, { attempt, attemptToken, dirty, savedAt, navigation: { activeRoundIndex, activeQuestionIndex, roundTransition } });
+            setLastSavedAt(savedAt);
+        }
+    }, [activeQuestionIndex, activeRoundIndex, attempt, attemptToken, dirty, roundTransition, storageKey]);
+    useEffect(() => {
+        const update = () => setOnline(navigator.onLine);
+        window.addEventListener("online", update); window.addEventListener("offline", update);
+        return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); };
+    }, []);
+
     const enterFullscreen = useCallback(async () => {
         if (document.fullscreenElement) { setFullscreenActive(true); return true; }
         if (!document.documentElement.requestFullscreen) { setFullscreenActive(false); return false; }
-        try { await document.documentElement.requestFullscreen(); setFullscreenActive(true); return true; } catch { setFullscreenActive(false); return false; }
+        try { await document.documentElement.requestFullscreen(); setFullscreenActive(true); return true; }
+        catch { setFullscreenActive(false); return false; }
     }, []);
-    const start = async (event) => { event.preventDefault(); setBusy(true); setError(""); const fullscreenRequest = assessment.integrity?.requireFullscreen ? enterFullscreen() : Promise.resolve(true); try { const { data } = await api.post(`/assessments/public/${shareToken}/start`, { ...identity, privacyConsent: consent, integrityConsent, ...(invitationId ? { invitationId } : {}) }, { skipAuthRedirect: true }); setAttemptToken(data.attemptToken); setActiveRoundIndex(0); setActiveQuestionIndex(0); setRoundTransition(null); persist(data.attempt, data.attemptToken); if (!(await fullscreenRequest)) { const message = "Assessment started, but fullscreen could not be enabled. Use Enter fullscreen before continuing."; setError(message); notify(message, "warning"); } } catch (err) { if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {}); const message = err?.response?.data?.message || "We couldn’t start your assessment."; setError(message); notify(message, "error"); } finally { setBusy(false); } };
-    const checkCamera = async () => { try { const stream = await navigator.mediaDevices.getUserMedia({ video: true }); stream.getTracks().forEach((track) => track.stop()); setCameraReady(true); setError(""); notify("Camera is ready.", "success"); } catch { const message = "Camera access is required for this assessment. Allow camera permission and try again."; setCameraReady(false); setError(message); notify(message, "error"); } };
-    const checkMicrophone = async () => { try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); stream.getTracks().forEach((track) => track.stop()); setMicReady(true); notify("Microphone is ready.", "success"); } catch { setMicReady(false); notify("Microphone access is unavailable. You can still type your answers.", "warning"); } };
+
+    const start = async (event) => {
+        event.preventDefault(); setBusy(true); setError("");
+        const fullscreenRequest = assessment.integrity?.requireFullscreen ? enterFullscreen() : Promise.resolve(true);
+        try {
+            const { data } = await api.post(`/assessments/public/${shareToken}/start`, { ...identity, privacyConsent: consent, integrityConsent, ...(invitationId ? { invitationId } : {}) }, { skipAuthRedirect: true });
+            setAttemptToken(data.attemptToken); setActiveRoundIndex(0); setActiveQuestionIndex(0); setRoundTransition(null); persist(data.attempt, data.attemptToken);
+            if (!(await fullscreenRequest)) {
+                const message = "Assessment started, but fullscreen could not be enabled. Use Enter fullscreen before continuing.";
+                setError(message); notify(message, "warning");
+            }
+        } catch (err) {
+            if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+            const message = err?.response?.data?.message || "We couldn’t start your assessment.";
+            setError(message); notify(message, "error");
+        } finally { setBusy(false); }
+    };
+    const checkCamera = async () => {
+        try { const stream = await navigator.mediaDevices.getUserMedia({ video: true }); stream.getTracks().forEach((track) => track.stop()); setCameraReady(true); setError(""); notify("Camera is ready.", "success"); }
+        catch { const message = "Camera access is required for this assessment. Allow camera permission and try again."; setCameraReady(false); setError(message); notify(message, "error"); }
+    };
+    const checkMicrophone = async () => {
+        try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); stream.getTracks().forEach((track) => track.stop()); setMicReady(true); notify("Microphone is ready.", "success"); }
+        catch { setMicReady(false); notify("Microphone access is unavailable. You can still type your answers.", "warning"); }
+    };
     const recordIntegrityEvent = useCallback((type, metadata = {}) => {
         if (!attempt?._id || !attemptToken || !assessment?.integrity?.enabled) return;
         api.post(`/assessments/public/${shareToken}/attempts/${attempt._id}/integrity-events`, { type, metadata }, { headers: { "X-Attempt-Token": attemptToken }, skipAuthRedirect: true }).catch(() => {});
     }, [assessment?.integrity?.enabled, attempt?._id, attemptToken, shareToken]);
-    useEffect(() => { if (!attempt || !attemptToken || !assessment?.integrity?.enabled) return undefined; const visibility = () => { if (document.hidden && assessment.integrity.trackFocus) recordIntegrityEvent("tab_hidden"); }; const blur = () => assessment.integrity.trackFocus && recordIntegrityEvent("window_blur"); const fullscreen = () => { const active = Boolean(document.fullscreenElement); setFullscreenActive(active); if (assessment.integrity.requireFullscreen && !active) recordIntegrityEvent("fullscreen_exit"); }; const copy = () => assessment.integrity.trackClipboard && recordIntegrityEvent("copy"); const paste = () => assessment.integrity.trackClipboard && recordIntegrityEvent("paste"); const offline = () => recordIntegrityEvent("offline"); const online = () => recordIntegrityEvent("online"); document.addEventListener("visibilitychange", visibility); document.addEventListener("fullscreenchange", fullscreen); document.addEventListener("copy", copy); document.addEventListener("paste", paste); window.addEventListener("blur", blur); window.addEventListener("offline", offline); window.addEventListener("online", online); return () => { document.removeEventListener("visibilitychange", visibility); document.removeEventListener("fullscreenchange", fullscreen); document.removeEventListener("copy", copy); document.removeEventListener("paste", paste); window.removeEventListener("blur", blur); window.removeEventListener("offline", offline); window.removeEventListener("online", online); }; }, [assessment?.integrity, attempt, attemptToken, recordIntegrityEvent]);
-    useEffect(() => { const warn = (event) => { if (!Object.keys(dirty).length) return; event.preventDefault(); event.returnValue = ""; }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [dirty]);
+    useEffect(() => {
+        if (!attempt || !attemptToken || !assessment?.integrity?.enabled) return undefined;
+        const visibility = () => { if (document.hidden && assessment.integrity.trackFocus) recordIntegrityEvent("tab_hidden"); };
+        const blur = () => assessment.integrity.trackFocus && recordIntegrityEvent("window_blur");
+        const fullscreen = () => { const active = Boolean(document.fullscreenElement); setFullscreenActive(active); if (assessment.integrity.requireFullscreen && !active) recordIntegrityEvent("fullscreen_exit"); };
+        const copy = () => assessment.integrity.trackClipboard && recordIntegrityEvent("copy");
+        const paste = () => assessment.integrity.trackClipboard && recordIntegrityEvent("paste");
+        const offline = () => recordIntegrityEvent("offline"); const onlineEvent = () => recordIntegrityEvent("online");
+        document.addEventListener("visibilitychange", visibility); document.addEventListener("fullscreenchange", fullscreen); document.addEventListener("copy", copy); document.addEventListener("paste", paste); window.addEventListener("blur", blur); window.addEventListener("offline", offline); window.addEventListener("online", onlineEvent);
+        return () => { document.removeEventListener("visibilitychange", visibility); document.removeEventListener("fullscreenchange", fullscreen); document.removeEventListener("copy", copy); document.removeEventListener("paste", paste); window.removeEventListener("blur", blur); window.removeEventListener("offline", offline); window.removeEventListener("online", onlineEvent); };
+    }, [assessment?.integrity, attempt, attemptToken, recordIntegrityEvent]);
+    useEffect(() => {
+        const warn = (event) => { if (!Object.keys(dirty).length) return; event.preventDefault(); event.returnValue = ""; };
+        window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn);
+    }, [dirty]);
+
     const answerKey = (roundIndex, questionIndex, followUp = false) => `${roundIndex}:${questionIndex}:${followUp ? "followup" : "answer"}`;
-    const updateLocal = (roundIndex, questionIndex, key, value) => { setDirty((current) => ({ ...current, [answerKey(roundIndex, questionIndex, key === "followUpAnswer")]: true })); setAttempt((current) => ({ ...current, rounds: current.rounds.map((round, ri) => ri === roundIndex ? { ...round, questions: round.questions.map((question, qi) => qi === questionIndex ? { ...question, [key]: value } : question) } : round) })); };
-    const saveAnswer = async (roundIndex, questionIndex, followUp = false, spokenExplanation) => { const question = attempt.rounds[roundIndex].questions[questionIndex]; const value = followUp ? question.followUpAnswer : question.answer; if (!value?.trim()) { notify("Write an answer before saving.", "warning"); return null; } setBusy(true); setError(""); try { const body = followUp ? { roundIndex, questionIndex, followUpAnswer: value } : { roundIndex, questionIndex, answer: value, spokenExplanation: spokenExplanation || "", diagramData: question.diagramData || "" }; const { data } = await api.put(`/assessments/public/${shareToken}/attempts/${attempt._id}/answer`, body, { headers: { "X-Attempt-Token": attemptToken }, skipAuthRedirect: true }); persist(data.attempt); const key = answerKey(roundIndex, questionIndex, followUp); setDirty((current) => { const next = { ...current }; delete next[key]; return next; }); notify(followUp ? "Follow-up saved." : "Answer saved.", "success"); return data.attempt; } catch (err) { notify(err?.response?.data?.message || "Your answer could not be saved.", "error"); return null; } finally { setBusy(false); } };
+    const updateLocal = (roundIndex, questionIndex, key, value) => {
+        setDirty((current) => ({ ...current, [answerKey(roundIndex, questionIndex, key === "followUpAnswer")]: true }));
+        setAttempt((current) => ({ ...current, rounds: current.rounds.map((round, ri) => ri === roundIndex ? { ...round, questions: round.questions.map((question, qi) => qi === questionIndex ? { ...question, [key]: value } : question) } : round) }));
+    };
+    const saveAnswer = async (roundIndex, questionIndex, followUp = false, spokenExplanation) => {
+        const round = attempt.rounds[roundIndex]; const question = round.questions[questionIndex];
+        const value = followUp ? question.followUpAnswer : question.answer;
+        if (!value?.trim()) { notify("Write an answer before saving.", "warning"); return null; }
+        if (round.deliveryMode === "conversational") await pauseHandsFree();
+        setBusy(true); setError("");
+        try {
+            const body = followUp ? { roundIndex, questionIndex, followUpAnswer: value } : { roundIndex, questionIndex, answer: value, spokenExplanation: spokenExplanation || "", diagramData: question.diagramData || "" };
+            const { data } = await api.put(`/assessments/public/${shareToken}/attempts/${attempt._id}/answer`, body, { headers: { "X-Attempt-Token": attemptToken }, skipAuthRedirect: true });
+            persist(data.attempt);
+            const key = answerKey(roundIndex, questionIndex, followUp);
+            setDirty((current) => { const next = { ...current }; delete next[key]; return next; });
+            notify(followUp ? "Follow-up saved." : "Answer saved.", "success");
+            return data.attempt;
+        } catch (err) {
+            notify(err?.response?.data?.message || "Your answer could not be saved.", "error");
+            if (round.deliveryMode === "conversational") await resumeHandsFree(focusedVoiceTargetRef.current);
+            return null;
+        } finally { setBusy(false); }
+    };
     const updateDiagram = (value) => {
         if (value === diagramSceneRef.current) return;
         diagramSceneRef.current = value;
         updateLocal(activeRoundIndex, activeQuestionIndex, "diagramData", value);
         clearTimeout(diagramSaveTimerRef.current);
         const roundIndex = activeRoundIndex; const questionIndex = activeQuestionIndex;
+        if (attempt?.rounds?.[roundIndex]?.deliveryMode === "system-design") return;
         diagramSaveTimerRef.current = setTimeout(async () => {
             try {
                 await api.put(`/assessments/public/${shareToken}/attempts/${attempt._id}/answer`, { roundIndex, questionIndex, diagramData: value }, { headers: { "X-Attempt-Token": attemptToken }, skipAuthRedirect: true });
@@ -80,6 +204,7 @@ export default function CandidateAssessmentPage() {
         }, 1200);
     };
     useEffect(() => () => clearTimeout(diagramSaveTimerRef.current), []);
+
     const questions = useMemo(() => attempt?.rounds?.flatMap((round) => round.questions) || [], [attempt]);
     const roundProgress = useMemo(() => attempt?.rounds?.map((round, roundIndex) => {
         const answered = round.questions.filter((question, questionIndex) => {
@@ -88,7 +213,7 @@ export default function CandidateAssessmentPage() {
             return answerSaved && followUpSaved;
         }).length;
         const configuredBudget = Number(assessment?.rounds?.[roundIndex]?.questionCount) || round.questions.length || 1;
-        const total = round.adaptive ? Math.max(Number(round.maxQuestions) || configuredBudget, 1) : Math.max(round.questions.length, 1);
+        const total = round.deliveryMode === "system-design" ? 1 : round.adaptive ? Math.max(Number(round.maxQuestions) || configuredBudget, 1) : Math.max(round.questions.length, 1);
         const units = round.adaptive && round.adaptiveComplete ? total : Math.min(answered, total);
         return { answered, total, units };
     }) || [], [assessment?.rounds, attempt, dirty]);
@@ -96,16 +221,54 @@ export default function CandidateAssessmentPage() {
     const progressUnits = useMemo(() => roundProgress.reduce((sum, item) => sum + item.units, 0), [roundProgress]);
     const totalProgressUnits = useMemo(() => Math.max(roundProgress.reduce((sum, item) => sum + item.total, 0), 1), [roundProgress]);
     const hasAdaptiveRounds = useMemo(() => Boolean(attempt?.rounds?.some((round) => round.adaptive)), [attempt]);
-    const activeRound = attempt?.rounds?.[activeRoundIndex]; const activeQuestion = activeRound?.questions?.[activeQuestionIndex]; const activePendingFollowUp = questionHasPendingFollowUp(activeRound, activeQuestion); const explanationEnabled = codingEnabled || activeRound?.deliveryMode === "system-design"; const answerTarget = `candidate:${activeRoundIndex}:${activeQuestionIndex}`; const voiceTarget = `${answerTarget}:${focusedField}`;
+
+    const activeRound = attempt?.rounds?.[activeRoundIndex];
+    const activeQuestion = activeRound?.questions?.[activeQuestionIndex];
+    const isActiveSystemDesign = activeRound?.deliveryMode === "system-design";
+    const isActiveConversation = activeRound?.deliveryMode === "conversational";
+    const activePendingFollowUp = questionHasPendingFollowUp(activeRound, activeQuestion);
+    const explanationEnabled = codingEnabled && !isActiveSystemDesign;
+    const answerTarget = `candidate:${activeRoundIndex}:${activeQuestionIndex}`;
+    const voiceTarget = isActiveSystemDesign ? `${answerTarget}:answer` : `${answerTarget}:${focusedField}`;
+
     useEffect(() => { diagramSceneRef.current = activeQuestion?.diagramData || ""; }, [activeQuestion?._id, activeQuestion?.diagramData]);
     useEffect(() => { focusedVoiceTargetRef.current = voiceTarget; retargetListening(voiceTarget); }, [retargetListening, voiceTarget]);
-    useEffect(() => { setCodingEnabled(activeRound?.deliveryMode === "online-assessment" || /\b(code|implement|algorithm|data structure|complexity|function|program)\b/i.test(activeQuestion?.text || "")); }, [activeQuestion?._id, activeQuestion?.text, activeRound?.deliveryMode]);
+    useEffect(() => { setCodingEnabled(activeRound?.deliveryMode === "online-assessment" || (!isActiveSystemDesign && /\b(code|implement|algorithm|data structure|complexity|function|program)\b/i.test(activeQuestion?.text || ""))); }, [activeQuestion?._id, activeQuestion?.text, activeRound?.deliveryMode, isActiveSystemDesign]);
     useEffect(() => { setFocusedField(activePendingFollowUp ? "followup" : explanationEnabled ? "spoken" : "answer"); }, [activePendingFollowUp, activeQuestion?._id, explanationEnabled]);
-    useEffect(() => { const spokenText = activePendingFollowUp ? activeQuestion?.followUpQuestion : activeQuestion?.text; if (roundTransition || !supportsTTS || !spokenText) return undefined; const timer = setTimeout(() => speakNow(spokenText), 400); return () => { clearTimeout(timer); try { window.speechSynthesis?.cancel(); } catch { /* no-op */ } }; }, [activePendingFollowUp, activeQuestion?.followUpQuestion, activeQuestion?.text, roundTransition, speakNow, supportsTTS]);
-    useEffect(() => { if (!supportsTTS || !roundTransition?.message) return undefined; const timer = setTimeout(() => speakNow(roundTransition.message), 250); return () => { clearTimeout(timer); try { window.speechSynthesis?.cancel(); } catch { /* no-op */ } }; }, [roundTransition, speakNow, supportsTTS]);
+
+    useEffect(() => {
+        if (!attempt || !activeQuestion || !supportsSTT || !isActiveConversation || roundTransition) return;
+        if (!micSessionActive) startHandsFree(voiceTarget);
+        else if (handsFreePaused && !window.speechSynthesis?.speaking && !busy) resumeHandsFree(voiceTarget);
+    }, [activeQuestion, attempt, busy, handsFreePaused, isActiveConversation, micSessionActive, resumeHandsFree, roundTransition, startHandsFree, supportsSTT, voiceTarget]);
+    useEffect(() => {
+        if (micSessionActive && activeRound && !isActiveConversation && !isActiveSystemDesign) stopHandsFree();
+    }, [activeRound, isActiveConversation, isActiveSystemDesign, micSessionActive, stopHandsFree]);
+    useEffect(() => () => stopHandsFree(), [stopHandsFree]);
+
+    const speakInterviewText = useCallback(async (text) => {
+        if (!text) return;
+        if (isActiveConversation) await pauseHandsFree();
+        if (supportsTTS) await speakNow(text);
+        if (isActiveConversation && !roundTransition) await resumeHandsFree(voiceTarget);
+    }, [isActiveConversation, pauseHandsFree, resumeHandsFree, roundTransition, speakNow, supportsTTS, voiceTarget]);
+
+    useEffect(() => {
+        const spokenText = activePendingFollowUp ? activeQuestion?.followUpQuestion : activeQuestion?.text;
+        if (isActiveSystemDesign || roundTransition || !supportsTTS || !spokenText) return undefined;
+        const timer = setTimeout(() => { speakInterviewText(spokenText); }, 400);
+        return () => { clearTimeout(timer); try { window.speechSynthesis?.cancel(); } catch { /* no-op */ } };
+    }, [activePendingFollowUp, activeQuestion?.followUpQuestion, activeQuestion?.text, isActiveSystemDesign, roundTransition, speakInterviewText, supportsTTS]);
+    useEffect(() => {
+        if (!roundTransition?.message) return undefined;
+        pauseHandsFree();
+        if (!supportsTTS) return undefined;
+        const timer = setTimeout(() => { speakNow(roundTransition.message); }, 250);
+        return () => { clearTimeout(timer); try { window.speechSynthesis?.cancel(); } catch { /* no-op */ } };
+    }, [pauseHandsFree, roundTransition, speakNow, supportsTTS]);
+
     const finishRoundSoftly = (nextAttempt, roundIndex) => {
-        const currentRound = nextAttempt?.rounds?.[roundIndex];
-        const nextRound = nextAttempt?.rounds?.[roundIndex + 1];
+        const currentRound = nextAttempt?.rounds?.[roundIndex]; const nextRound = nextAttempt?.rounds?.[roundIndex + 1];
         if (!currentRound) return;
         setRoundTransition({
             roundIndex,
@@ -116,46 +279,205 @@ export default function CandidateAssessmentPage() {
                 : "That gives me what I need from the interview. Take a moment to review anything you want, then submit when you’re ready.",
         });
     };
-    const goToNextQuestion = (nextAttempt = attempt) => { if (!nextAttempt) return; const round = nextAttempt.rounds?.[activeRoundIndex]; if (activeQuestionIndex + 1 < (round?.questions?.length || 0)) { setActiveQuestionIndex(activeQuestionIndex + 1); setRoundTransition(null); } else finishRoundSoftly(nextAttempt, activeRoundIndex); };
+    const goToNextQuestion = (nextAttempt = attempt) => {
+        if (!nextAttempt) return;
+        const round = nextAttempt.rounds?.[activeRoundIndex];
+        if (activeQuestionIndex + 1 < (round?.questions?.length || 0)) { setActiveQuestionIndex(activeQuestionIndex + 1); setRoundTransition(null); }
+        else finishRoundSoftly(nextAttempt, activeRoundIndex);
+    };
     const continueAfterRound = () => {
         if (roundTransition?.nextRoundIndex != null) {
-            setActiveRoundIndex(roundTransition.nextRoundIndex);
-            setActiveQuestionIndex(0);
-            setRoundTransition(null);
-            return;
+            setActiveRoundIndex(roundTransition.nextRoundIndex); setActiveQuestionIndex(0); setRoundTransition(null); return;
         }
         setRoundTransition(null);
         window.setTimeout(() => document.getElementById("assessment-submit")?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
     };
-    const submit = async () => { setBusy(true); setError(""); try { await api.post(`/assessments/public/${shareToken}/attempts/${attempt._id}/submit`, {}, { headers: { "X-Attempt-Token": attemptToken }, skipAuthRedirect: true }); removeSavedAttempt(storageKey); setSubmitted(true); notify("Assessment submitted successfully.", "success"); } catch (err) { notify(err?.response?.data?.message || "Your assessment could not be submitted.", "error"); } finally { setBusy(false); } };
+    const completeSystemDesign = async () => {
+        if (!activeQuestion?.answer?.trim()) { notify("Explain your design before ending the discussion.", "warning"); return false; }
+        setBusy(true); setError("");
+        try {
+            const { data } = await api.put(`${candidateToolBase}/system-design/complete`, {
+                roundIndex: activeRoundIndex,
+                questionIndex: activeQuestionIndex,
+                transcript: activeQuestion.answer,
+                diagramData: activeQuestion.diagramData || "",
+            }, { headers: candidateToolHeaders, skipAuthRedirect: true });
+            persist(data.attempt);
+            setDirty((current) => { const next = { ...current }; delete next[answerKey(activeRoundIndex, activeQuestionIndex)]; delete next[answerKey(activeRoundIndex, activeQuestionIndex, true)]; return next; });
+            goToNextQuestion(data.attempt);
+            return true;
+        } catch (err) {
+            notify(err?.response?.data?.message || "Your system-design discussion could not be saved.", "error");
+            return false;
+        } finally { setBusy(false); }
+    };
+    const submit = async () => {
+        stopHandsFree(); setBusy(true); setError("");
+        try {
+            await api.post(`/assessments/public/${shareToken}/attempts/${attempt._id}/submit`, {}, { headers: { "X-Attempt-Token": attemptToken }, skipAuthRedirect: true });
+            removeSavedAttempt(storageKey); setSubmitted(true); notify("Assessment submitted successfully.", "success");
+        } catch (err) { notify(err?.response?.data?.message || "Your assessment could not be submitted.", "error"); }
+        finally { setBusy(false); }
+    };
+
     if (loading) return <Stack minHeight="70vh" justifyContent="center" alignItems="center"><CircularProgress /></Stack>;
     if (!assessment) return <Container maxWidth="sm" sx={{ py: 8 }}><Alert severity="error">{error}</Alert></Container>;
     if (submitted) return <Container maxWidth="sm" sx={{ py: 8 }}><Paper variant="outlined" sx={{ p: 5, textAlign: "center" }}><Typography component="h1" variant="h4" fontWeight={850}>Assessment submitted</Typography><Typography color="text.secondary" mt={2}>Your responses were sent to the recruiting team. You can safely close this page.</Typography></Paper></Container>;
+
+    const plannedUnits = assessment.rounds.reduce((sum, round) => sum + (round.deliveryMode === "system-design" ? 1 : round.questionCount), 0);
     return <Container maxWidth="lg" sx={{ py: { xs: 3, md: 5 } }}>
-        <Typography variant="overline" color="primary" fontWeight={800}>{assessment.organizationName || "Candidate assessment"}</Typography><Typography component="h1" variant="h3" sx={{ fontSize: { xs: "2.45rem", sm: "3rem" } }} fontWeight={850}>{assessment.title}</Typography><Typography color="text.secondary" mt={1}>{assessment.jobRole} · up to {assessment.rounds.reduce((sum, round) => sum + round.questionCount, 0)} {assessment.rounds.reduce((sum, round) => sum + round.questionCount, 0) === 1 ? "question" : "questions"} · about {assessment.durationMinutes || 30} minutes{assessment.followUpsEnabled ? " · contextual follow-ups enabled" : ""}</Typography>
+        <Typography variant="overline" color="primary" fontWeight={800}>{assessment.organizationName || "Candidate assessment"}</Typography>
+        <Typography component="h1" variant="h3" sx={{ fontSize: { xs: "2.45rem", sm: "3rem" } }} fontWeight={850}>{assessment.title}</Typography>
+        <Typography color="text.secondary" mt={1}>{assessment.jobRole} · up to {plannedUnits} {plannedUnits === 1 ? "question" : "questions"} · about {assessment.durationMinutes || 30} minutes{assessment.followUpsEnabled ? " · contextual follow-ups enabled" : ""}</Typography>
         {assessment.expiresAt && <Typography variant="body2" color="text.secondary" mt={1}>Submit by {new Date(assessment.expiresAt).toLocaleString()}</Typography>}
         {assessment.candidateInstructions && <Alert severity="info" sx={{ mt: 3 }}>{assessment.candidateInstructions}</Alert>}{error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
-        {!attempt ? <Paper component="form" onSubmit={start} variant="outlined" sx={{ p: { xs: 2, md: 4 }, mt: 3 }}><Typography component="h2" variant="h5" fontWeight={800}>Before you begin</Typography><Typography color="text.secondary" mt={1} mb={3}>Your identity, answers, and AI-generated evaluation will be shared with the recruiting team. Scores and private feedback are not shown to candidates.</Typography><Stack spacing={2}><Paper variant="outlined" sx={{ p: 2 }}><Typography fontWeight={800}>Device readiness</Typography><Typography variant="body2" color="text.secondary" mb={1.5}>Check your setup before the timer starts. Voice is optional—you can always type.</Typography><Stack direction={{ xs: "column", sm: "row" }} gap={1} flexWrap="wrap"><Chip icon={online ? <CheckCircleOutlineRounded /> : <ErrorOutlineRounded />} color={online ? "success" : "error"} variant="outlined" label={online ? "Internet connected" : "Offline"} /><Chip icon={supportsSTT ? <CheckCircleOutlineRounded /> : <ErrorOutlineRounded />} color={supportsSTT ? "success" : "default"} variant="outlined" label={supportsSTT ? "Voice input supported" : "Type answers instead"} /><Chip icon={supportsTTS ? <CheckCircleOutlineRounded /> : <ErrorOutlineRounded />} color={supportsTTS ? "success" : "default"} variant="outlined" label={supportsTTS ? "Audio playback supported" : "Read questions on screen"} />{micReady ? <Chip icon={<CheckCircleOutlineRounded />} color="success" variant="outlined" label="Microphone ready" /> : <Button type="button" size="small" variant="outlined" onClick={checkMicrophone}>Check microphone</Button>}{assessment.integrity?.requireCamera && (cameraReady ? <Chip icon={<CheckCircleOutlineRounded />} color="success" variant="outlined" label="Camera ready" /> : <Button type="button" size="small" variant="outlined" onClick={checkCamera}>Check camera</Button>)}</Stack></Paper><TextField required label="Full name" value={identity.name} onChange={(e) => setIdentity({ ...identity, name: e.target.value })} /><TextField required type="email" label="Email address" value={identity.email} onChange={(e) => setIdentity({ ...identity, email: e.target.value })} /><FormControlLabel control={<Checkbox required checked={consent} onChange={(event) => setConsent(event.target.checked)} />} label={<span>I understand how my assessment data is processed and shared. <Link component={RouterLink} to="/privacy" target="_blank">Privacy notice</Link></span>} />{assessment.integrity?.enabled && <Alert severity="warning"><Typography fontWeight={750}>Integrity signals are enabled</Typography><Typography variant="body2">The recruiting team may review tab visibility, window focus, fullscreen, clipboard, connectivity{assessment.integrity.monitorFacePresence ? ", and sustained face-presence" : ""} events. Camera frames stay in your browser and are not saved or uploaded. These signals are context—not automatic cheating findings—and are retained for {assessment.integrity.retentionDays || 30} days.</Typography><FormControlLabel control={<Checkbox required checked={integrityConsent} onChange={(event) => setIntegrityConsent(event.target.checked)} />} label="I consent to these integrity signals" /></Alert>}{assessment.contactEmail && <Typography variant="body2" color="text.secondary">Need an accommodation or technical help? Contact <Link href={`mailto:${assessment.contactEmail}`}>{assessment.contactEmail}</Link>.</Typography>}<Box><Button type="submit" variant="contained" disabled={busy || !online || !consent || (assessment.integrity?.enabled && !integrityConsent) || (assessment.integrity?.requireCamera && !cameraReady)}>{busy ? <CircularProgress size={22} color="inherit" /> : "Start assessment"}</Button></Box></Stack></Paper> : <Box mt={4}>
+
+        {!attempt ? <Paper component="form" onSubmit={start} variant="outlined" sx={{ p: { xs: 2, md: 4 }, mt: 3 }}>
+            <Typography component="h2" variant="h5" fontWeight={800}>Before you begin</Typography>
+            <Typography color="text.secondary" mt={1} mb={3}>Your identity, answers, and AI-generated evaluation will be shared with the recruiting team. Scores and private feedback are not shown to candidates.</Typography>
+            <Stack spacing={2}>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Typography fontWeight={800}>Device readiness</Typography>
+                    <Typography variant="body2" color="text.secondary" mb={1.5}>Check your setup before the timer starts. Voice is optional—you can always type.</Typography>
+                    <Stack direction={{ xs: "column", sm: "row" }} gap={1} flexWrap="wrap">
+                        <Chip icon={online ? <CheckCircleOutlineRounded /> : <ErrorOutlineRounded />} color={online ? "success" : "error"} variant="outlined" label={online ? "Internet connected" : "Offline"} />
+                        <Chip icon={supportsSTT ? <CheckCircleOutlineRounded /> : <ErrorOutlineRounded />} color={supportsSTT ? "success" : "default"} variant="outlined" label={supportsSTT ? "Voice input supported" : "Type answers instead"} />
+                        <Chip icon={supportsTTS ? <CheckCircleOutlineRounded /> : <ErrorOutlineRounded />} color={supportsTTS ? "success" : "default"} variant="outlined" label={supportsTTS ? "Audio playback supported" : "Read questions on screen"} />
+                        {micReady ? <Chip icon={<CheckCircleOutlineRounded />} color="success" variant="outlined" label="Microphone ready" /> : <Button type="button" size="small" variant="outlined" onClick={checkMicrophone}>Check microphone</Button>}
+                        {assessment.integrity?.requireCamera && (cameraReady ? <Chip icon={<CheckCircleOutlineRounded />} color="success" variant="outlined" label="Camera ready" /> : <Button type="button" size="small" variant="outlined" onClick={checkCamera}>Check camera</Button>)}
+                    </Stack>
+                </Paper>
+                <TextField required label="Full name" value={identity.name} onChange={(e) => setIdentity({ ...identity, name: e.target.value })} />
+                <TextField required type="email" label="Email address" value={identity.email} onChange={(e) => setIdentity({ ...identity, email: e.target.value })} />
+                <FormControlLabel control={<Checkbox required checked={consent} onChange={(event) => setConsent(event.target.checked)} />} label={<span>I understand how my assessment data is processed and shared. <Link component={RouterLink} to="/privacy" target="_blank">Privacy notice</Link></span>} />
+                {assessment.integrity?.enabled && <Alert severity="warning"><Typography fontWeight={750}>Integrity signals are enabled</Typography><Typography variant="body2">The recruiting team may review tab visibility, window focus, fullscreen, clipboard, connectivity{assessment.integrity.monitorFacePresence ? ", and sustained face-presence" : ""} events. Camera frames stay in your browser and are not saved or uploaded. These signals are context—not automatic cheating findings—and are retained for {assessment.integrity.retentionDays || 30} days.</Typography><FormControlLabel control={<Checkbox required checked={integrityConsent} onChange={(event) => setIntegrityConsent(event.target.checked)} />} label="I consent to these integrity signals" /></Alert>}
+                {assessment.contactEmail && <Typography variant="body2" color="text.secondary">Need an accommodation or technical help? Contact <Link href={`mailto:${assessment.contactEmail}`}>{assessment.contactEmail}</Link>.</Typography>}
+                <Box><Button type="submit" variant="contained" disabled={busy || !online || !consent || (assessment.integrity?.enabled && !integrityConsent) || (assessment.integrity?.requireCamera && !cameraReady)}>{busy ? <CircularProgress size={22} color="inherit" /> : "Start assessment"}</Button></Box>
+            </Stack>
+        </Paper> : <Box mt={4}>
             {assessment.integrity?.requireFullscreen && !fullscreenActive && <Alert severity="warning" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={enterFullscreen}>Enter fullscreen</Button>}>Fullscreen is required for this assessment. If you exited it or your browser blocked the initial request, enter fullscreen before continuing.</Alert>}
-            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" mb={1} gap={.5}><Typography fontWeight={750}>Interview progress</Typography><Stack direction="row" gap={1} alignItems="center"><Typography variant="caption" color={online ? "success.main" : "error.main"}>{online ? lastSavedAt ? `Saved locally at ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Local recovery active" : "Offline · changes remain on this device"}</Typography><Typography>{hasAdaptiveRounds ? `${completed} ${completed === 1 ? "response" : "responses"} saved · adaptive interview` : `${completed} of ${questions.length} complete`}</Typography></Stack></Stack><LinearProgress variant="determinate" value={Math.min(100, progressUnits / totalProgressUnits * 100)} sx={{ mb: 3, height: 8, borderRadius: 4 }} />
+            <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" mb={1} gap={.5}>
+                <Typography fontWeight={750}>Interview progress</Typography>
+                <Stack direction="row" gap={1} alignItems="center"><Typography variant="caption" color={online ? "success.main" : "error.main"}>{online ? lastSavedAt ? `Saved locally at ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Local recovery active" : "Offline · changes remain on this device"}</Typography><Typography>{hasAdaptiveRounds ? `${completed} ${completed === 1 ? "response" : "responses"} saved · adaptive interview` : `${completed} of ${questions.length} complete`}</Typography></Stack>
+            </Stack>
+            <LinearProgress variant="determinate" value={Math.min(100, progressUnits / totalProgressUnits * 100)} sx={{ mb: 3, height: 8, borderRadius: 4 }} />
             <Box sx={{ display: "flex", gap: 3, flexDirection: { xs: "column", md: "row" } }}>
-                <Stack spacing={1.5} sx={{ width: { xs: "100%", md: 250 }, flexShrink: 0 }}>{attempt.rounds.map((round, roundIndex) => { const progress = roundProgress[roundIndex] || { answered: 0, total: round.questions.length || 1, units: 0 }; return <Paper variant="outlined" key={round._id} sx={{ overflow: "hidden", borderColor: activeRoundIndex === roundIndex ? "primary.main" : "divider", borderWidth: activeRoundIndex === roundIndex ? 2 : 1 }}><Button fullWidth onClick={() => { setActiveRoundIndex(roundIndex); setActiveQuestionIndex(0); setRoundTransition(null); }} sx={{ p: 2, display: "block", textAlign: "left", color: "text.primary" }}><Stack direction="row" justifyContent="space-between"><Typography fontWeight={800}>{round.name}</Typography><Typography variant="caption">{round.adaptive ? `${progress.answered} answered` : `${progress.answered}/${round.questions.length}`}</Typography></Stack><LinearProgress variant="determinate" value={Math.min(100, progress.units / progress.total * 100)} sx={{ mt: 1 }} /><Typography variant="caption" color="text.secondary">{round.deliveryMode === "online-assessment" ? "Coding / written" : round.deliveryMode === "system-design" ? "System design" : round.adaptive ? `Adaptive conversation · up to ${progress.total}` : "Conversational"}</Typography></Button></Paper>; })}</Stack>
-                <Box sx={{ flex: 1, minWidth: 0 }}>{roundTransition ? <Paper variant="outlined" sx={{ p: { xs: 3, md: 5 }, minHeight: 320, display: "grid", alignContent: "center" }}><Stack spacing={2} alignItems="flex-start"><Typography variant="overline" color="primary.main" fontWeight={800}>Interviewer</Typography><Typography component="h2" variant="h4" fontWeight={850}>{roundTransition.title}</Typography><Typography color="text.secondary" sx={{ maxWidth: 680 }}>{roundTransition.message}</Typography><Button variant="contained" onClick={continueAfterRound}>{roundTransition.nextRoundIndex != null ? `Continue to ${attempt.rounds[roundTransition.nextRoundIndex]?.name || "next round"}` : "Review and submit"}</Button></Stack></Paper> : activeQuestion && <Card variant="outlined"><CardContent sx={{ p: { xs: 2, md: 3 } }}><Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={1}><Box><Typography variant="overline" color="primary" fontWeight={800}>{activeRound.name} · {activeRound.adaptive ? `Question ${activeQuestionIndex + 1}` : `Question ${activeQuestionIndex + 1} of ${activeRound.questions.length}`}</Typography><Typography component="h2" variant="h5" fontWeight={800}>{activeQuestion.text}</Typography>{activeRound.adaptive && <Typography variant="caption" color="text.secondary">Adaptive interview · up to {roundProgress[activeRoundIndex]?.total || activeRound.maxQuestions || activeRound.questions.length} primary questions. The interviewer may finish earlier when enough evidence is collected.</Typography>}</Box>{activeQuestion.answer && <Chip label={dirty[answerKey(activeRoundIndex, activeQuestionIndex)] ? "Unsaved changes" : "Saved"} size="small" color={dirty[answerKey(activeRoundIndex, activeQuestionIndex)] ? "warning" : "success"} />}</Stack>
-                    {activeRound.deliveryMode === "conversational" && activeQuestionIndex === 0 && !activeQuestion.answer && <Paper variant="outlined" sx={{ p: 1.5, mt: 2, bgcolor: "action.hover" }}><Typography fontWeight={750}>Let’s start with {activeRound.name}.</Typography><Typography variant="body2" color="text.secondary">We’ll begin broadly, then I’ll go deeper only where it helps me understand your experience and decisions.</Typography></Paper>}
-                    <Box sx={{ position: "relative", minHeight: 150, mt: 2, borderRadius: 2, bgcolor: "#111827", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", px: { xs: 2, sm: 6, md: 12 } }}><Typography color="rgba(255,255,255,.65)" textAlign="center">Interview in progress</Typography>{assessment.integrity?.monitorFacePresence && <Chip size="small" label={faceStatus === "present" ? "Face detected" : faceStatus === "loading" ? "Loading face monitor…" : faceStatus === "checking" ? "Checking face…" : faceStatus === "missing" ? "Face not detected" : faceStatus === "multiple" ? "Multiple faces" : faceStatus === "unavailable" ? "Monitor unavailable" : "Camera interrupted"} color={faceStatus === "present" ? "success" : ["missing", "multiple", "camera_interrupted"].includes(faceStatus) ? "warning" : "default"} sx={{ position: "absolute", top: 12, left: 12 }} />}<WebcamPreview autoStart required={assessment.integrity?.requireCamera} monitorFaces={assessment.integrity?.enabled && assessment.integrity?.monitorFacePresence} onIntegrityEvent={recordIntegrityEvent} onFaceStatusChange={setFaceStatus} /></Box>
-                    {assessment.integrity?.monitorFacePresence && ["missing", "multiple", "camera_interrupted", "unavailable"].includes(faceStatus) && <Alert severity={faceStatus === "unavailable" ? "info" : "warning"} sx={{ mt: 1 }}>{faceStatus === "missing" ? "We can’t clearly see your face. Please return to the camera view." : faceStatus === "multiple" ? "More than one face is visible. Please ensure only you are in frame." : faceStatus === "camera_interrupted" ? "Your camera stopped. Restore camera access to continue the monitored interview." : "Face detection is unavailable in this browser. The interviewer will see this as a technical event, not a misconduct finding."}</Alert>}
-                    <Box mt={2}><VoiceControls target={voiceTarget} speakText={activePendingFollowUp ? activeQuestion.followUpQuestion : activeQuestion.text} supportsTTS={supportsTTS} supportsSTT={supportsSTT} listening={listening} listeningTarget={listeningTarget} onSpeak={speakNow} onStartListening={startListening} onStopListening={stopListening} micPermission={micPermission} micLevel={micLevel} inputDevices={inputDevices} selectedDeviceId={selectedDeviceId} onChangeDevice={setSelectedDeviceId} /><Typography variant="caption" color="text.secondary">Voice will fill: {focusedField === "spoken" ? "Spoken explanation" : focusedField === "followup" ? "Follow-up answer" : "Answer"}. Pauses insert completed speech while the microphone stays on.</Typography></Box>
-                    {listening && listeningTarget === voiceTarget && interimText && <Alert severity="info" sx={{ mt: 1 }}>Listening: {interimText}</Alert>}
-                    {activeRound.deliveryMode === "system-design" && <Box mt={2}><Alert severity="info" sx={{ mb: 2 }}><Typography fontWeight={750}>Your diagram is part of the interview</Typography><Typography variant="body2">Build your architecture and explain requirements, scale, data flow, trade-offs, reliability, security, and observability. The AI interviewer reads component labels and bound connections together with your written and spoken explanation. It may ask one neutral probe after you save; it cannot edit your canvas or provide the solution.</Typography></Alert><Suspense fallback={<Box height={430} display="grid" sx={{ placeItems: "center" }}><Stack alignItems="center" spacing={1}><CircularProgress /><Typography variant="body2" color="text.secondary">Loading architecture canvas…</Typography></Stack></Box>}><SystemDesignCanvas key={activeQuestion._id} value={activeQuestion.diagramData} onChange={updateDiagram} /></Suspense></Box>}
-                    <Box mt={2}><CodeEditorField value={activeQuestion.answer || ""} onChange={(value) => updateLocal(activeRoundIndex, activeQuestionIndex, "answer", value)} onFocus={() => setFocusedField("answer")} minRows={6} draftKey={`candidate:${attempt._id}:${activeRound._id}:${activeQuestion._id}`} suggestCode={activeRound.deliveryMode === "online-assessment" && /\b(code|coding|implement|algorithm|function|class|program)\b/i.test(activeQuestion.text)} onModeChange={setCodingEnabled} executionEndpoint={`${candidateToolBase}/run-code`} executionHeaders={candidateToolHeaders} skipAuthRedirect canRun={assessment.capabilities?.codeExecution !== false} /></Box>
-                    {explanationEnabled && <TextField fullWidth multiline minRows={3} sx={{ mt: 2 }} label="Spoken explanation" helperText="Focus this field, then stop recording to place speech here." value={spokenNotes[answerTarget] ?? activeQuestion.spokenExplanation ?? ""} onFocus={() => setFocusedField("spoken")} onChange={(event) => { setSpokenNotes((current) => ({ ...current, [answerTarget]: event.target.value })); setDirty((current) => ({ ...current, [answerKey(activeRoundIndex, activeQuestionIndex)]: true })); }} />}
-                    {codingEnabled && assessment.capabilities?.codeExecution === false && <Alert severity="info" sx={{ mt: 1 }}>Code execution is unavailable, but you can still write and submit code.</Alert>}
-                    {assessment.capabilities?.transcription === false && <Alert severity="info" sx={{ mt: 1 }}>Server transcription is unavailable. Browser voice input will be used when supported.</Alert>}
-                    <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={1} mt={2}><Button disabled={activeRoundIndex === 0 && activeQuestionIndex === 0} onClick={() => { setRoundTransition(null); if (activeQuestionIndex > 0) setActiveQuestionIndex(activeQuestionIndex - 1); else { const previousRound = activeRoundIndex - 1; setActiveRoundIndex(previousRound); setActiveQuestionIndex(attempt.rounds[previousRound].questions.length - 1); } }}>Previous</Button><Button variant="contained" disabled={busy || !activeQuestion.answer?.trim() || !dirty[answerKey(activeRoundIndex, activeQuestionIndex)]} onClick={async () => { const nextAttempt = await saveAnswer(activeRoundIndex, activeQuestionIndex, false, spokenNotes[answerTarget] ?? activeQuestion.spokenExplanation); const nextRound = nextAttempt?.rounds?.[activeRoundIndex]; const nextQuestion = nextRound?.questions?.[activeQuestionIndex]; if (nextAttempt && !questionHasPendingFollowUp(nextRound, nextQuestion)) goToNextQuestion(nextAttempt); }}>{busy ? <Stack direction="row" gap={1} alignItems="center"><CircularProgress size={18} color="inherit" />Evaluating…</Stack> : activeRound.deliveryMode === "system-design" && assessment.followUpsEnabled && !activePendingFollowUp ? "Save design and get AI probe" : activeRound.adaptive ? "Save answer" : `Save answer${assessment.followUpsEnabled && !activePendingFollowUp ? " and get follow-up" : ""}`}</Button></Stack>
-                    {activePendingFollowUp && <Box sx={{ mt: 3, pl: 2, borderLeft: "3px solid", borderColor: "primary.main" }}><Typography variant="overline" color="primary.main" fontWeight={800}>{activeRound.deliveryMode === "system-design" ? "AI interviewer probe" : activeRound.deliveryMode === "conversational" ? `Follow-up ${activeQuestion.followUpNumber} of up to 3` : "Follow-up"}</Typography><Typography fontWeight={750}>{activeQuestion.followUpQuestion}</Typography>{activeRound.deliveryMode === "conversational" && <Typography variant="caption" color="text.secondary" display="block" mt={.5}>I’ll either ask one more focused question or move on when there’s enough evidence.</Typography>}<TextField fullWidth multiline minRows={3} sx={{ mt: 1 }} label="Your follow-up answer" value={activeQuestion.followUpAnswer || ""} onFocus={() => setFocusedField("followup")} onChange={(e) => updateLocal(activeRoundIndex, activeQuestionIndex, "followUpAnswer", e.target.value)} /><Button sx={{ mt: 1 }} variant="outlined" disabled={busy || !activeQuestion.followUpAnswer?.trim() || !dirty[answerKey(activeRoundIndex, activeQuestionIndex, true)]} onClick={async () => { const nextAttempt = await saveAnswer(activeRoundIndex, activeQuestionIndex, true); const nextRound = nextAttempt?.rounds?.[activeRoundIndex]; const nextQuestion = nextRound?.questions?.[activeQuestionIndex]; if (nextAttempt && !questionHasPendingFollowUp(nextRound, nextQuestion)) goToNextQuestion(nextAttempt); }}>{busy ? <Stack direction="row" gap={1} alignItems="center"><CircularProgress size={18} />Evaluating…</Stack> : activeRound.deliveryMode === "conversational" ? "Save follow-up" : "Save follow-up and continue"}</Button></Box>}
-                </CardContent></Card>}</Box>
+                <Stack spacing={1.5} sx={{ width: { xs: "100%", md: 250 }, flexShrink: 0 }}>
+                    {attempt.rounds.map((round, roundIndex) => {
+                        const progress = roundProgress[roundIndex] || { answered: 0, total: round.questions.length || 1, units: 0 };
+                        return <Paper variant="outlined" key={round._id} sx={{ overflow: "hidden", borderColor: activeRoundIndex === roundIndex ? "primary.main" : "divider", borderWidth: activeRoundIndex === roundIndex ? 2 : 1 }}>
+                            <Button fullWidth onClick={() => { stopHandsFree(); setActiveRoundIndex(roundIndex); setActiveQuestionIndex(0); setRoundTransition(null); }} sx={{ p: 2, display: "block", textAlign: "left", color: "text.primary" }}>
+                                <Stack direction="row" justifyContent="space-between"><Typography fontWeight={800}>{round.name}</Typography><Typography variant="caption">{round.deliveryMode === "system-design" ? `${progress.answered}/1` : round.adaptive ? `${progress.answered} answered` : `${progress.answered}/${round.questions.length}`}</Typography></Stack>
+                                <LinearProgress variant="determinate" value={Math.min(100, progress.units / progress.total * 100)} sx={{ mt: 1 }} />
+                                <Typography variant="caption" color="text.secondary">{round.deliveryMode === "online-assessment" ? "Coding / written" : round.deliveryMode === "system-design" ? "Live system design discussion" : round.adaptive ? `Adaptive conversation · up to ${progress.total}` : "Conversational"}</Typography>
+                            </Button>
+                        </Paper>;
+                    })}
+                </Stack>
+
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                    {roundTransition ? <Paper variant="outlined" sx={{ p: { xs: 3, md: 5 }, minHeight: 320, display: "grid", alignContent: "center" }}>
+                        <Stack spacing={2} alignItems="flex-start">
+                            <Typography variant="overline" color="primary.main" fontWeight={800}>Interviewer</Typography>
+                            <Typography component="h2" variant="h4" fontWeight={850}>{roundTransition.title}</Typography>
+                            <Typography color="text.secondary" sx={{ maxWidth: 680 }}>{roundTransition.message}</Typography>
+                            <Button variant="contained" onClick={continueAfterRound}>{roundTransition.nextRoundIndex != null ? `Continue to ${attempt.rounds[roundTransition.nextRoundIndex]?.name || "next round"}` : "Review and submit"}</Button>
+                        </Stack>
+                    </Paper> : activeQuestion && isActiveSystemDesign ? <>
+                        <SystemDesignDiscussionPanel
+                            problem={activeQuestion.text}
+                            transcript={activeQuestion.answer || ""}
+                            onTranscriptChange={(value) => updateLocal(activeRoundIndex, activeQuestionIndex, "answer", value)}
+                            diagramData={activeQuestion.diagramData || ""}
+                            onDiagramChange={updateDiagram}
+                            target={voiceTarget}
+                            checkpointEndpoint={`${candidateToolBase}/system-design/checkpoint`}
+                            checkpointHeaders={candidateToolHeaders}
+                            skipAuthRedirect
+                            supportsSTT={supportsSTT}
+                            supportsTTS={supportsTTS}
+                            listening={listening}
+                            listeningTarget={listeningTarget}
+                            interimText={interimText}
+                            micLevel={micLevel}
+                            micPermission={micPermission}
+                            micSessionActive={micSessionActive}
+                            handsFreePaused={handsFreePaused}
+                            startHandsFree={startHandsFree}
+                            pauseHandsFree={pauseHandsFree}
+                            resumeHandsFree={resumeHandsFree}
+                            stopHandsFree={stopHandsFree}
+                            speakNow={speakNow}
+                            onEnd={completeSystemDesign}
+                            ending={busy}
+                            savedLabel={lastSavedAt ? `Recovery saved at ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Local recovery active"}
+                            cameraSlot={<WebcamPreview autoStart required={assessment.integrity?.requireCamera} monitorFaces={assessment.integrity?.enabled && assessment.integrity?.monitorFacePresence} onIntegrityEvent={recordIntegrityEvent} onFaceStatusChange={setFaceStatus} />}
+                        />
+                        {assessment.integrity?.monitorFacePresence && ["missing", "multiple", "camera_interrupted", "unavailable"].includes(faceStatus) && <Alert severity={faceStatus === "unavailable" ? "info" : "warning"} sx={{ mt: 1 }}>{faceStatus === "missing" ? "We can’t clearly see your face. Please return to the camera view." : faceStatus === "multiple" ? "More than one face is visible. Please ensure only you are in frame." : faceStatus === "camera_interrupted" ? "Your camera stopped. Restore camera access to continue the monitored interview." : "Face detection is unavailable in this browser. The interviewer will see this as a technical event, not a misconduct finding."}</Alert>}
+                    </> : activeQuestion && <Card variant="outlined"><CardContent sx={{ p: { xs: 2, md: 3 } }}>
+                        <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={1}>
+                            <Box>
+                                <Typography variant="overline" color="primary" fontWeight={800}>{activeRound.name} · {activeRound.adaptive ? `Question ${activeQuestionIndex + 1}` : `Question ${activeQuestionIndex + 1} of ${activeRound.questions.length}`}</Typography>
+                                <Typography component="h2" variant="h5" fontWeight={800}>{activeQuestion.text}</Typography>
+                                {activeRound.adaptive && <Typography variant="caption" color="text.secondary">Adaptive interview · up to {roundProgress[activeRoundIndex]?.total || activeRound.maxQuestions || activeRound.questions.length} primary questions. The interviewer may finish earlier when enough evidence is collected.</Typography>}
+                            </Box>
+                            {activeQuestion.answer && <Chip label={dirty[answerKey(activeRoundIndex, activeQuestionIndex)] ? "Unsaved changes" : "Saved"} size="small" color={dirty[answerKey(activeRoundIndex, activeQuestionIndex)] ? "warning" : "success"} />}
+                        </Stack>
+                        {activeRound.deliveryMode === "conversational" && activeQuestionIndex === 0 && !activeQuestion.answer && <Paper variant="outlined" sx={{ p: 1.5, mt: 2, bgcolor: "action.hover" }}><Typography fontWeight={750}>Let’s start with {activeRound.name}.</Typography><Typography variant="body2" color="text.secondary">We’ll begin broadly, then I’ll go deeper only where it helps me understand your experience and decisions.</Typography></Paper>}
+                        <Box sx={{ position: "relative", minHeight: 150, mt: 2, borderRadius: 2, bgcolor: "#111827", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", px: { xs: 2, sm: 6, md: 12 } }}>
+                            <Typography color="rgba(255,255,255,.65)" textAlign="center">Interview in progress</Typography>
+                            {assessment.integrity?.monitorFacePresence && <Chip size="small" label={faceStatus === "present" ? "Face detected" : faceStatus === "loading" ? "Loading face monitor…" : faceStatus === "checking" ? "Checking face…" : faceStatus === "missing" ? "Face not detected" : faceStatus === "multiple" ? "Multiple faces" : faceStatus === "unavailable" ? "Monitor unavailable" : "Camera interrupted"} color={faceStatus === "present" ? "success" : ["missing", "multiple", "camera_interrupted"].includes(faceStatus) ? "warning" : "default"} sx={{ position: "absolute", top: 12, left: 12 }} />}
+                            <WebcamPreview autoStart required={assessment.integrity?.requireCamera} monitorFaces={assessment.integrity?.enabled && assessment.integrity?.monitorFacePresence} onIntegrityEvent={recordIntegrityEvent} onFaceStatusChange={setFaceStatus} />
+                        </Box>
+                        {assessment.integrity?.monitorFacePresence && ["missing", "multiple", "camera_interrupted", "unavailable"].includes(faceStatus) && <Alert severity={faceStatus === "unavailable" ? "info" : "warning"} sx={{ mt: 1 }}>{faceStatus === "missing" ? "We can’t clearly see your face. Please return to the camera view." : faceStatus === "multiple" ? "More than one face is visible. Please ensure only you are in frame." : faceStatus === "camera_interrupted" ? "Your camera stopped. Restore camera access to continue the monitored interview." : "Face detection is unavailable in this browser. The interviewer will see this as a technical event, not a misconduct finding."}</Alert>}
+                        <Box mt={2}>
+                            <VoiceControls
+                                target={voiceTarget}
+                                speakText={activePendingFollowUp ? activeQuestion.followUpQuestion : activeQuestion.text}
+                                supportsTTS={supportsTTS}
+                                supportsSTT={supportsSTT}
+                                listening={listening}
+                                listeningTarget={listeningTarget}
+                                onSpeak={speakInterviewText}
+                                onStartListening={startListening}
+                                onStopListening={stopListening}
+                                micPermission={micPermission}
+                                micLevel={micLevel}
+                                inputDevices={inputDevices}
+                                selectedDeviceId={selectedDeviceId}
+                                onChangeDevice={setSelectedDeviceId}
+                                handsFree={isActiveConversation}
+                                micSessionActive={micSessionActive}
+                                handsFreePaused={handsFreePaused}
+                                onStartHandsFree={startHandsFree}
+                            />
+                            <Typography variant="caption" color="text.secondary">{isActiveConversation ? "The microphone stays available throughout the interview and automatically pauses while the interviewer speaks." : `Voice will fill: ${focusedField === "spoken" ? "Spoken explanation" : focusedField === "followup" ? "Follow-up answer" : "Answer"}.`}</Typography>
+                        </Box>
+                        {listening && listeningTarget === voiceTarget && interimText && <Alert severity="info" sx={{ mt: 1 }}>Listening: {interimText}</Alert>}
+                        <Box mt={2}><CodeEditorField value={activeQuestion.answer || ""} onChange={(value) => updateLocal(activeRoundIndex, activeQuestionIndex, "answer", value)} onFocus={() => setFocusedField("answer")} minRows={6} draftKey={`candidate:${attempt._id}:${activeRound._id}:${activeQuestion._id}`} suggestCode={activeRound.deliveryMode === "online-assessment" && /\b(code|coding|implement|algorithm|function|class|program)\b/i.test(activeQuestion.text)} onModeChange={setCodingEnabled} executionEndpoint={`${candidateToolBase}/run-code`} executionHeaders={candidateToolHeaders} skipAuthRedirect canRun={assessment.capabilities?.codeExecution !== false} /></Box>
+                        {explanationEnabled && <TextField fullWidth multiline minRows={3} sx={{ mt: 2 }} label="Spoken explanation" helperText="Your voice transcript is placed here while you explain the code." value={spokenNotes[answerTarget] ?? activeQuestion.spokenExplanation ?? ""} onFocus={() => setFocusedField("spoken")} onChange={(event) => { setSpokenNotes((current) => ({ ...current, [answerTarget]: event.target.value })); setDirty((current) => ({ ...current, [answerKey(activeRoundIndex, activeQuestionIndex)]: true })); }} />}
+                        {codingEnabled && assessment.capabilities?.codeExecution === false && <Alert severity="info" sx={{ mt: 1 }}>Code execution is unavailable, but you can still write and submit code.</Alert>}
+                        {assessment.capabilities?.transcription === false && <Alert severity="info" sx={{ mt: 1 }}>Server transcription is unavailable. Browser voice input will be used when supported.</Alert>}
+                        <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={1} mt={2}>
+                            <Button disabled={activeRoundIndex === 0 && activeQuestionIndex === 0} onClick={() => { stopHandsFree(); setRoundTransition(null); if (activeQuestionIndex > 0) setActiveQuestionIndex(activeQuestionIndex - 1); else { const previousRound = activeRoundIndex - 1; setActiveRoundIndex(previousRound); setActiveQuestionIndex(attempt.rounds[previousRound].questions.length - 1); } }}>Previous</Button>
+                            <Button variant="contained" disabled={busy || !activeQuestion.answer?.trim() || !dirty[answerKey(activeRoundIndex, activeQuestionIndex)]} onClick={async () => { const nextAttempt = await saveAnswer(activeRoundIndex, activeQuestionIndex, false, spokenNotes[answerTarget] ?? activeQuestion.spokenExplanation); const nextRound = nextAttempt?.rounds?.[activeRoundIndex]; const nextQuestion = nextRound?.questions?.[activeQuestionIndex]; if (nextAttempt && !questionHasPendingFollowUp(nextRound, nextQuestion)) goToNextQuestion(nextAttempt); }}>{busy ? <Stack direction="row" gap={1} alignItems="center"><CircularProgress size={18} color="inherit" />Evaluating…</Stack> : activeRound.adaptive ? "Save answer" : `Save answer${assessment.followUpsEnabled && !activePendingFollowUp ? " and get follow-up" : ""}`}</Button>
+                        </Stack>
+                        {activePendingFollowUp && <Box sx={{ mt: 3, pl: 2, borderLeft: "3px solid", borderColor: "primary.main" }}>
+                            <Typography variant="overline" color="primary.main" fontWeight={800}>{activeRound.deliveryMode === "conversational" ? `Follow-up ${activeQuestion.followUpNumber} of up to 3` : "Follow-up"}</Typography>
+                            <Typography fontWeight={750}>{activeQuestion.followUpQuestion}</Typography>
+                            {activeRound.deliveryMode === "conversational" && <Typography variant="caption" color="text.secondary" display="block" mt={.5}>I’ll either ask one more focused question or move on when there’s enough evidence.</Typography>}
+                            <TextField fullWidth multiline minRows={3} sx={{ mt: 1 }} label="Your follow-up answer" value={activeQuestion.followUpAnswer || ""} onFocus={() => setFocusedField("followup")} onChange={(e) => updateLocal(activeRoundIndex, activeQuestionIndex, "followUpAnswer", e.target.value)} />
+                            <Button sx={{ mt: 1 }} variant="outlined" disabled={busy || !activeQuestion.followUpAnswer?.trim() || !dirty[answerKey(activeRoundIndex, activeQuestionIndex, true)]} onClick={async () => { const nextAttempt = await saveAnswer(activeRoundIndex, activeQuestionIndex, true); const nextRound = nextAttempt?.rounds?.[activeRoundIndex]; const nextQuestion = nextRound?.questions?.[activeQuestionIndex]; if (nextAttempt && !questionHasPendingFollowUp(nextRound, nextQuestion)) goToNextQuestion(nextAttempt); }}>{busy ? <Stack direction="row" gap={1} alignItems="center"><CircularProgress size={18} />Evaluating…</Stack> : activeRound.deliveryMode === "conversational" ? "Save follow-up" : "Save follow-up and continue"}</Button>
+                        </Box>}
+                    </CardContent></Card>}
+                </Box>
             </Box>
-            <Paper id="assessment-submit" variant="outlined" sx={{ p: 3, mt: 3 }}><Typography fontWeight={800}>Ready to submit?</Typography><Typography color="text.secondary" variant="body2" mt={.5}>Submission is final. Your report will be visible only to the recruiting team.</Typography>{Object.keys(dirty).length > 0 && <Alert severity="warning" sx={{ mt: 2 }}>Save all changes before submitting.</Alert>}<Button variant="contained" sx={{ mt: 2 }} disabled={busy || completed !== questions.length || Object.keys(dirty).length > 0} onClick={submit}>{busy ? <CircularProgress size={22} color="inherit" /> : "Submit assessment"}</Button></Paper>
+            <Paper id="assessment-submit" variant="outlined" sx={{ p: 3, mt: 3 }}>
+                <Typography fontWeight={800}>Ready to submit?</Typography>
+                <Typography color="text.secondary" variant="body2" mt={.5}>Submission is final. Your report will be visible only to the recruiting team.</Typography>
+                {Object.keys(dirty).length > 0 && <Alert severity="warning" sx={{ mt: 2 }}>Save all changes before submitting.</Alert>}
+                <Button variant="contained" sx={{ mt: 2 }} disabled={busy || completed !== questions.length || Object.keys(dirty).length > 0} onClick={submit}>{busy ? <CircularProgress size={22} color="inherit" /> : "Submit assessment"}</Button>
+            </Paper>
         </Box>}
     </Container>;
 }
