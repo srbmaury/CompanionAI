@@ -317,6 +317,7 @@ test("recruiter report renders the complete follow-up evidence chain on the cano
 
     await page.goto("/hire/assessments/report-followups");
     await expect(page.getByRole("heading", { name: "Backend evidence interview", level: 1 })).toBeVisible();
+    await page.getByRole("button", { name: /Technical/ }).click();
     await expect(page.getByText("AI follow-up 1: How do you rotate credentials?", { exact: true })).toBeVisible();
     await expect(page.getByText("AI follow-up 2: How do you detect abuse?", { exact: true })).toBeVisible();
     await expect(page.getByText("AI follow-up 3: What failure mode remains?", { exact: true })).toBeVisible();
