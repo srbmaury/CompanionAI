@@ -101,12 +101,26 @@ test("recruiter can lock the interview to reviewed primary questions while keepi
     ]);
 });
 
-test("adaptive conversational interview advances into a server-generated primary question", async ({ page }) => {
+test("recruiter can explicitly mark a reviewed adaptive question as optional", async ({ page }) => {
+    await mockSignedIn(page);
+    await mockEmptyHiringWorkspace(page);
+    await page.goto("/hire/assessments?create=1");
+    await page.getByRole("button", { name: "Add manual question" }).click();
+    await page.getByRole("textbox", { name: "Question 1", exact: true }).fill("Tell me about a reliability incident you personally owned.");
+    const mustAsk = page.getByLabel(/^Must ask this question/);
+    await expect(mustAsk).toBeChecked();
+    await mustAsk.uncheck();
+    await expect(page.getByText("Optional AI-planned question", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 configured · 0 must ask · up to 3 total", { exact: true })).toBeVisible();
+    await expect(page.getByText("Advanced scoring and review", { exact: true })).toBeVisible();
+});
+
+test("adaptive conversational interview uses stable progress while advancing into a server-generated primary question", async ({ page }) => {
     await mockSignedOut(page);
     const shareToken = "share-adaptive-primary";
     const firstQuestion = { _id: "question-1", text: "Tell me about a difficult production incident.", answer: "", followUpNumber: 0, followUps: [] };
     const secondQuestion = { _id: "question-2", text: "How would you reduce blast radius in the next release?", answer: "", followUpNumber: 0, followUps: [] };
-    const round = { _id: "round-1", name: "Technical judgment", deliveryMode: "conversational", adaptive: true, questions: [firstQuestion] };
+    const round = { _id: "round-1", name: "Technical judgment", deliveryMode: "conversational", adaptive: true, maxQuestions: 3, adaptiveComplete: false, questions: [firstQuestion] };
 
     await page.route(`**/api/assessments/public/${shareToken}`, (route) => json(route, {
         title: "Adaptive backend interview",
@@ -131,13 +145,17 @@ test("adaptive conversational interview advances into a server-generated primary
     });
 
     await startPublicAssessment(page, shareToken, "Adaptive Candidate", "adaptive@example.com");
+    await expect(page.getByText("Adaptive conversation · up to 3", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Let’s start with Technical judgment/)).toBeVisible();
     await expect(page.getByRole("heading", { name: firstQuestion.text })).toBeVisible();
     await page.getByPlaceholder("Answer by typing or speaking...").fill("I stabilized traffic, narrowed the failure domain, rolled back safely, and added release health gates.");
-    await page.getByRole("button", { name: "Save answer and continue interview" }).click();
+    await page.getByRole("button", { name: "Save answer" }).click();
 
     await expect(page.getByRole("heading", { name: secondQuestion.text })).toBeVisible();
-    await expect(page.getByText("1 of 2 complete", { exact: true })).toBeVisible();
-    await expect(page.getByText("Adaptive conversation", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 response saved · adaptive interview", { exact: true })).toBeVisible();
+    await expect(page.getByText("Adaptive conversation · up to 3", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Adaptive interview · up to 3 primary questions/)).toBeVisible();
+    await expect(page.getByText("1 of 2 complete", { exact: true })).toHaveCount(0);
 });
 
 test("candidate completes all three chained AI follow-ups before a conversational question is marked complete", async ({ page }) => {
@@ -215,23 +233,26 @@ test("candidate completes all three chained AI follow-ups before a conversationa
         await expect(page.getByText(`Follow-up ${index + 1} of up to 3`, { exact: true })).toBeVisible();
         await expect(page.getByText(followUpQuestions[index], { exact: true })).toBeVisible();
         await page.getByLabel("Your follow-up answer").fill(`Evidence for follow-up ${index + 1}`);
-        await page.getByRole("button", { name: "Save follow-up and continue interview" }).click();
+        await page.getByRole("button", { name: "Save follow-up" }).click();
         if (index < followUpQuestions.length - 1) {
             await expect(page.getByRole("heading", { name: primary.text })).toBeVisible();
         }
     }
 
-    await expect(page.getByText("1 of 1 complete", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Submit assessment" })).toBeEnabled();
+    await expect(page.getByRole("heading", { name: "Thanks — that wraps up Incident response." })).toBeVisible();
+    await expect(page.getByText(/That gives me what I need from the interview/)).toBeVisible();
     expect(answerRequests).toBe(4);
     expect(currentQuestion.followUps).toHaveLength(3);
     expect(currentQuestion.followUpNumber).toBe(0);
 
+    await page.getByRole("button", { name: "Review and submit" }).click();
+    await expect(page.getByText("1 of 1 complete", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Submit assessment" })).toBeEnabled();
     await page.getByRole("button", { name: "Submit assessment" }).click();
     await expect(page.getByRole("heading", { name: "Assessment submitted" })).toBeVisible();
 });
 
-test("candidate reload restores the saved assessment attempt without starting a second session", async ({ page }) => {
+test("candidate reload restores the exact saved question without starting a second session", async ({ page }) => {
     await mockSignedOut(page);
     const shareToken = "share-recovery";
     const first = { _id: "q1", text: "How do you make deploys safe?", answer: "", followUpNumber: 0, followUps: [] };
@@ -268,8 +289,8 @@ test("candidate reload restores the saved assessment attempt without starting a 
     await expect(page.getByText("1 of 2 complete", { exact: true })).toBeVisible();
 
     await page.reload();
-    await expect(page.getByRole("heading", { name: first.text })).toBeVisible();
-    await expect(page.getByPlaceholder("Answer by typing or speaking...")).toHaveValue(savedAnswer);
+    await expect(page.getByRole("heading", { name: second.text })).toBeVisible();
+    await expect(page.getByRole("heading", { name: first.text })).toHaveCount(0);
     await expect(page.getByText("1 of 2 complete", { exact: true })).toBeVisible();
     expect(startCalls).toBe(1);
 });
