@@ -19,6 +19,49 @@ const findAttempt = async (assessmentId, attemptId, rawToken) => rawToken
     ? CandidateAttempt.findOne({ _id: attemptId, assessment: assessmentId, accessTokenHash: tokenHash(rawToken) }).select("+accessTokenHash")
     : null;
 
+const trimTurn = (value, max = 20000) => (value || "").toString().replace(/\s+/g, " ").trim().slice(0, max);
+const candidateTranscriptFromTurns = (item) => (item?.discussionTurns || [])
+    .filter((turn) => turn?.speaker === "candidate")
+    .map((turn) => trimTurn(turn.text))
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+const appendCandidateDelta = (item, transcript) => {
+    const current = trimTurn(transcript);
+    if (!current) return false;
+    const previous = candidateTranscriptFromTurns(item);
+    if (!previous) {
+        item.discussionTurns.push({ speaker: "candidate", text: current, kind: "discussion", at: new Date() });
+        return true;
+    }
+    if (current === previous) return false;
+    let delta = "";
+    if (current.startsWith(previous)) {
+        delta = current.slice(previous.length).trim();
+    } else {
+        let common = 0;
+        const limit = Math.min(previous.length, current.length);
+        while (common < limit && previous[common] === current[common]) common += 1;
+        delta = current.slice(common).trim();
+    }
+    if (!delta) return false;
+    item.discussionTurns.push({ speaker: "candidate", text: delta.slice(0, 20000), kind: "discussion", at: new Date() });
+    if (item.discussionTurns.length > 80) item.discussionTurns = item.discussionTurns.slice(-80);
+    return true;
+};
+
+const appendInterviewerTurn = (item, decision) => {
+    if (!decision?.shouldInterrupt || !decision?.interjection) return false;
+    const text = trimTurn(decision.interjection, 600);
+    if (!text) return false;
+    const last = [...(item.discussionTurns || [])].reverse().find((turn) => turn?.speaker === "interviewer");
+    if (trimTurn(last?.text, 600) === text) return false;
+    item.discussionTurns.push({ speaker: "interviewer", text, kind: decision.kind || "challenge", at: new Date() });
+    if (item.discussionTurns.length > 80) item.discussionTurns = item.discussionTurns.slice(-80);
+    return true;
+};
+
 const publicAttempt = (attempt) => ({
     _id: attempt._id,
     candidateName: attempt.candidateName,
@@ -45,6 +88,7 @@ const publicAttempt = (attempt) => ({
                 spokenExplanation: question.spokenExplanation,
                 diagramData: question.diagramData,
                 diagramSummary: question.diagramSummary,
+                discussionTurns: (question.discussionTurns || []).map((turn) => ({ speaker: turn.speaker, text: turn.text, kind: turn.kind || "", at: turn.at })),
                 followUps: history.map((followUp) => ({ question: followUp.question, answer: followUp.answer || "" })),
                 followUpQuestion: current?.question || question.followUpQuestion || "",
                 followUpAnswer: pending ? "" : current?.answer || question.followUpAnswer || "",
@@ -80,14 +124,12 @@ export const checkpointPracticeSystemDesign = async (req, res, next) => {
         if (!diagram.valid) return res.status(400).json({ message: "Invalid or overly complex system-design diagram" });
         const transcript = (req.body.transcript || "").toString().trim().slice(0, 20000);
 
-        // Checkpoints double as lightweight recovery saves. They do not advance
-        // the adaptive question engine or generate post-submit follow-ups.
         if (transcript) item.answerGiven = transcript;
+        appendCandidateDelta(item, transcript);
         if (diagram.data) {
             item.diagramData = diagram.data;
             item.diagramSummary = diagram.summary;
         }
-        if (transcript || diagram.data) await round.save();
 
         const decision = await generateSystemDesignInterjection({
             problem: item.question.text,
@@ -99,6 +141,8 @@ export const checkpointPracticeSystemDesign = async (req, res, next) => {
             forceInteraction: req.body.forceInteraction === true,
             candidateAskedQuestion: req.body.candidateAskedQuestion === true,
         });
+        appendInterviewerTurn(item, decision);
+        if (transcript || diagram.data || decision?.shouldInterrupt) await round.save();
         return res.json(decision);
     } catch (error) {
         return next(error instanceof Error ? error : new Error(String(error)));
@@ -121,11 +165,12 @@ export const savePracticeSystemDesign = async (req, res, next) => {
         if (!diagram.valid) return res.status(400).json({ message: "Invalid or overly complex system-design diagram" });
 
         item.answerGiven = transcript;
+        appendCandidateDelta(item, transcript);
         item.diagramData = diagram.data;
         item.diagramSummary = diagram.summary;
         item.followUps = [];
         await round.save();
-        return res.json({ success: true, diagramSummary: item.diagramSummary || "" });
+        return res.json({ success: true, diagramSummary: item.diagramSummary || "", discussionTurns: item.discussionTurns || [] });
     } catch (error) {
         return next(error instanceof Error ? error : new Error(String(error)));
     }
@@ -154,6 +199,7 @@ export const checkpointCandidateSystemDesign = async (req, res, next) => {
         const transcript = (req.body.transcript || "").toString().trim().slice(0, 20000);
 
         if (transcript) item.answer = transcript;
+        appendCandidateDelta(item, transcript);
         if (diagram.data) {
             item.diagramData = diagram.data;
             item.diagramSummary = diagram.summary;
@@ -161,7 +207,6 @@ export const checkpointCandidateSystemDesign = async (req, res, next) => {
         item.followUps = [];
         item.followUpQuestion = "";
         item.followUpAnswer = "";
-        if (transcript || diagram.data) await attempt.save();
 
         const decision = await generateSystemDesignInterjection({
             problem: item.text,
@@ -173,6 +218,8 @@ export const checkpointCandidateSystemDesign = async (req, res, next) => {
             forceInteraction: req.body.forceInteraction === true,
             candidateAskedQuestion: req.body.candidateAskedQuestion === true,
         });
+        appendInterviewerTurn(item, decision);
+        if (transcript || diagram.data || decision?.shouldInterrupt) await attempt.save();
         return res.json(decision);
     } catch (error) {
         return next(error instanceof Error ? error : new Error(String(error)));
@@ -190,6 +237,7 @@ export const saveCandidateSystemDesign = async (req, res, next) => {
         if (!diagram.valid) return res.status(400).json({ message: "Invalid or overly complex system-design diagram" });
 
         item.answer = transcript;
+        appendCandidateDelta(item, transcript);
         item.spokenExplanation = "";
         item.diagramData = diagram.data;
         item.diagramSummary = diagram.summary;
