@@ -6,7 +6,7 @@ const SpeechRecognitionCtor =
         ? (window.SpeechRecognition || window.webkitSpeechRecognition || null)
         : null;
 
-const HANDS_FREE_SEGMENT_MS = 15000;
+const HANDS_FREE_SEGMENT_MS = 20000;
 
 export const composeLiveTranscript = (finalText, interimText) => `${finalText || ""} ${interimText || ""}`.trim();
 
@@ -17,7 +17,8 @@ export const composeLiveTranscript = (finalText, interimText) => `${finalText ||
  *    the whole round while pausing transcription during interviewer speech.
  *
  * Browser speech recognition supplies low-latency live text when available.
- * MediaRecorder + server transcription remains the quality/fallback layer.
+ * MediaRecorder + server transcription is used as the fallback layer when the
+ * browser did not already produce usable speech for that segment.
  */
 export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcribe", transcribeHeaders = {}, enableServerTranscription = true, skipAuthRedirect = false }) => {
     const [listening, setListening] = useState(false);
@@ -32,7 +33,6 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
 
     const mediaRecorderRef = useRef(null);
     const liveRecRef = useRef(null);
-    const liveRecExpectedStopRef = useRef(false);
     const liveRecRestartTimerRef = useRef(null);
     const recorderRotateTimerRef = useRef(null);
     const recorderStopReasonRef = useRef("manual");
@@ -131,16 +131,20 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
 
     const commitLiveTranscript = useCallback((target = activeTargetRef.current) => {
         const text = composeLiveTranscript(wsFinalsRef.current, wsInterimRef.current);
-        if (!text || liveTranscriptCommittedRef.current) return false;
+        if (!text) return false;
         liveTranscriptCommittedRef.current = true;
+        wsFinalsRef.current = "";
+        wsInterimRef.current = "";
+        setInterimText("");
         onTranscriptRef.current?.(target, text);
         return true;
     }, []);
 
     const stopLiveRec = useCallback((expected = true) => {
         clearLiveRestartTimer();
-        liveRecExpectedStopRef.current = expected;
-        try { liveRecRef.current?.stop(); } catch { void 0; }
+        const rec = liveRecRef.current;
+        if (rec) rec.__expectedStop = expected;
+        try { rec?.stop(); } catch { void 0; }
         liveRecRef.current = null;
         setInterimText("");
     }, [clearLiveRestartTimer]);
@@ -150,6 +154,7 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
         try {
             stopLiveRec(true);
             const rec = new SpeechRecognitionCtor();
+            rec.__expectedStop = false;
             rec.lang = "en-US";
             rec.continuous = true;
             rec.interimResults = true;
@@ -171,25 +176,22 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
                 setInterimText(interim);
             };
             rec.onerror = (event) => {
-                if (["not-allowed", "service-not-allowed", "audio-capture"].includes(event?.error)) {
-                    setMicPermission("denied");
-                }
+                if (["not-allowed", "service-not-allowed", "audio-capture"].includes(event?.error)) setMicPermission("denied");
             };
             rec.onend = () => {
                 setInterimText("");
-                const expected = liveRecExpectedStopRef.current;
-                liveRecExpectedStopRef.current = false;
+                const expected = Boolean(rec.__expectedStop);
                 if (restartable && !expected && handsFreeRef.current && !handsFreePausedRef.current) {
                     clearLiveRestartTimer();
                     liveRecRestartTimerRef.current = setTimeout(() => {
                         try {
+                            rec.__expectedStop = false;
                             rec.start();
                             liveRecRef.current = rec;
                         } catch { void 0; }
                     }, 180);
                 }
             };
-            liveRecExpectedStopRef.current = false;
             rec.start();
             liveRecRef.current = rec;
             return true;
@@ -199,7 +201,7 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
     }, [clearLiveRestartTimer, stopLiveRec]);
 
     const transcribeBlob = useCallback(async (blob, target, browserCommitted) => {
-        if (!enableServerTranscription || !blob || blob.size <= 1000) return "";
+        if (browserCommitted || !enableServerTranscription || !blob || blob.size <= 1000) return "";
         try {
             const form = new FormData();
             form.append("audio", blob, "audio.webm");
@@ -208,7 +210,7 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
                 headers: { "Content-Type": "multipart/form-data", ...transcribeHeaders },
             });
             const finalText = (resp?.data?.text || "").trim();
-            if (finalText && !browserCommitted) onTranscriptRef.current?.(target, finalText);
+            if (finalText) onTranscriptRef.current?.(target, finalText);
             return finalText;
         } catch (error) {
             console.warn("Server transcription failed, using browser transcript when available", error);
@@ -219,11 +221,8 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
     const startRecorderSegment = useCallback((stream, target, rotate = false) => {
         if (!stream || typeof MediaRecorder === "undefined") return false;
         let recorder;
-        try {
-            recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
-        } catch {
-            try { recorder = new MediaRecorder(stream); } catch { return false; }
-        }
+        try { recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" }); }
+        catch { try { recorder = new MediaRecorder(stream); } catch { return false; } }
         clearRotateTimer();
         const chunks = [];
         wsFinalsRef.current = "";
@@ -272,9 +271,7 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
         if (recorder && recorder.state !== "inactive") {
             recorderStopReasonRef.current = reason;
             try { recorder.stop(); } catch { void 0; }
-        } else {
-            mediaRecorderRef.current = null;
-        }
+        } else mediaRecorderRef.current = null;
     }, [clearRotateTimer]);
 
     const fallbackSTT = useCallback(async (target, { handsFree = false } = {}) => {
@@ -313,9 +310,7 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
                     startLiveRecognition(target, true);
                     startRecorderSegment(sessionStreamRef.current, target, true);
                     setListening(true);
-                } else {
-                    await fallbackSTT(target, { handsFree: true });
-                }
+                } else await fallbackSTT(target, { handsFree: true });
             }
             return;
         }
@@ -352,9 +347,7 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
                     startLiveRecognition(target, true);
                     startRecorderSegment(sessionStreamRef.current, target, true);
                     setListening(true);
-                } else {
-                    await fallbackSTT(target, { handsFree: true });
-                }
+                } else await fallbackSTT(target, { handsFree: true });
             }
             return true;
         }
@@ -440,10 +433,7 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
     }, [commitLiveTranscript, stopLiveRec, stopMeter, stopRecorder]);
 
     const stopListening = useCallback(() => {
-        if (handsFreeRef.current) {
-            pauseHandsFree();
-            return;
-        }
+        if (handsFreeRef.current) { pauseHandsFree(); return; }
         commitLiveTranscript(listeningTarget || activeTargetRef.current);
         stopLiveRec(true);
         stopRecorder("manual");
@@ -466,16 +456,10 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
             utterance.rate = 0.95;
             utterance.pitch = 1;
             const voices = window.speechSynthesis.getVoices();
-            const preferred =
-                voices.find((voice) => voice.name.includes("Google") && voice.lang.startsWith("en")) ||
-                voices.find((voice) => voice.lang.startsWith("en"));
+            const preferred = voices.find((voice) => voice.name.includes("Google") && voice.lang.startsWith("en")) || voices.find((voice) => voice.lang.startsWith("en"));
             if (preferred) utterance.voice = preferred;
             let settled = false;
-            const finish = (value) => {
-                if (settled) return;
-                settled = true;
-                resolve(value);
-            };
+            const finish = (value) => { if (!settled) { settled = true; resolve(value); } };
             utterance.onend = () => finish(true);
             utterance.onerror = () => finish(false);
             window.speechSynthesis.speak(utterance);
@@ -490,7 +474,7 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
         handsFreePausedRef.current = true;
         clearRotateTimer();
         clearLiveRestartTimer();
-        try { liveRecRef.current?.stop?.(); } catch { void 0; }
+        try { if (liveRecRef.current) liveRecRef.current.__expectedStop = true; liveRecRef.current?.stop?.(); } catch { void 0; }
         try { mediaRecorderRef.current?.stop?.(); } catch { void 0; }
         try { sessionStreamRef.current?.getTracks?.().forEach((track) => track.stop()); } catch { void 0; }
         try { if (rafRef.current) cancelAnimationFrame(rafRef.current); } catch { void 0; }
