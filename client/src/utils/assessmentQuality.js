@@ -8,7 +8,12 @@ export function assessQuestionSet(form) {
     const withoutCompetencies = questions.filter((question) => !(question.competencies || []).length).length;
     const jdTerms = [...new Set(normalize(form.jobDescription).split(" ").filter((term) => term.length > 5))].slice(0, 30);
     const coveredTerms = jdTerms.filter((term) => normalized.some((question) => question.includes(term)));
-    const targetMismatch = (form.rounds || []).filter((round) => Number(round.questionCount) !== (round.questions || []).filter((question) => question.text?.trim()).length).length;
+    const targetMismatch = (form.rounds || []).filter((round) => {
+        const configured = (round.questions || []).filter((question) => question.text?.trim()).length;
+        const target = Number(round.questionCount) || 0;
+        if (round.deliveryMode === "conversational" && round.adaptive !== false) return configured > target;
+        return target !== configured;
+    }).length;
     return {
         total: questions.length,
         duplicates,

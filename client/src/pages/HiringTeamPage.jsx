@@ -13,12 +13,16 @@ export default function HiringTeamPage() {
     const [email, setEmail] = useState("");
     const [role, setRole] = useState("recruiter");
     const [organizationName, setOrganizationName] = useState("");
+    const [renameValue, setRenameValue] = useState("");
+    const [renaming, setRenaming] = useState(false);
     const [adding, setAdding] = useState(false);
     const [billing, setBilling] = useState(null);
     const [billingLoading, setBillingLoading] = useState(false);
     const [billingActionLoading, setBillingActionLoading] = useState(false);
     const { canManageOrganization } = hiringPermissionsFor(currentRole);
     const assignableRoles = useMemo(() => assignableHiringRolesFor(currentRole), [currentRole]);
+
+    useEffect(() => { setRenameValue(activeOrganization?.name || ""); }, [activeOrganization?._id, activeOrganization?.name]);
 
     const loadMembers = useCallback(async () => {
         if (!activeOrganization?._id || !canManageOrganization) return;
@@ -53,6 +57,18 @@ export default function HiringTeamPage() {
     }, [activeOrganization?._id, canManageOrganization]);
 
     const memberCountLabel = useMemo(() => `${members.length} active member${members.length === 1 ? "" : "s"}`, [members.length]);
+
+    const renameOrganization = async (event) => {
+        event.preventDefault();
+        const name = renameValue.trim();
+        if (name.length < 2 || name === activeOrganization?.name) return;
+        setRenaming(true); setError("");
+        try {
+            await api.patch(`/organizations/${activeOrganization._id}`, { name });
+            await refreshOrganizations();
+        } catch (err) { setError(err?.response?.data?.message || "Could not rename organization"); }
+        finally { setRenaming(false); }
+    };
 
     const addMember = async (event) => {
         event.preventDefault();
@@ -150,7 +166,7 @@ export default function HiringTeamPage() {
                     <Typography variant="overline" color="primary.main" fontWeight={850}>Hiring</Typography>
                     <Typography component="h1" variant="h3" fontWeight={850} letterSpacing="-.035em">Organization settings</Typography>
                     <Typography color="text.secondary" mt={1}>Manage your team, shared candidate-interview capacity, organization billing, and enterprise access.</Typography>
-                    <Button component={RouterLink} to="/hiring/sso" variant="outlined" sx={{ mt: 2 }}>Configure work SSO</Button>
+                    <Button component={RouterLink} to="/hire/sso" variant="outlined" sx={{ mt: 2 }}>Configure work SSO</Button>
                 </Box>
 
                 {error && <Alert severity="error" onClose={() => setError("")}>{error}</Alert>}
@@ -173,6 +189,15 @@ export default function HiringTeamPage() {
                             </FormControl>
                         )}
                     </Stack>
+                    <Divider sx={{ my: 2.5 }} />
+                    <Box component="form" onSubmit={renameOrganization}>
+                        <Typography fontWeight={800}>Organization name</Typography>
+                        <Typography variant="body2" color="text.secondary" mt={.5}>Shown throughout the Hire workspace and on candidate assessment pages.</Typography>
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} mt={1.5}>
+                            <TextField fullWidth label="Organization name" value={renameValue} onChange={(event) => setRenameValue(event.target.value)} inputProps={{ maxLength: 120 }} />
+                            <Button type="submit" variant="outlined" disabled={renaming || renameValue.trim().length < 2 || renameValue.trim() === activeOrganization?.name}>{renaming ? "Saving…" : "Save name"}</Button>
+                        </Stack>
+                    </Box>
                 </Paper>
 
                 <Paper variant="outlined" sx={{ p: 3, borderRadius: 4 }}>

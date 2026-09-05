@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createOidcLoginState, decryptSsoSecret, encryptSsoSecret, hashSsoToken, normalizeSsoDomain } from "../../services/oidcSso.js";
+import { refreshCookieOptions } from "../../routes/ssoRoutes.js";
 
 describe("OIDC SSO security helpers", () => {
     const previousKey = process.env.SSO_ENCRYPTION_KEY;
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousSameSite = process.env.COOKIE_SAMESITE;
 
     beforeEach(() => {
         process.env.SSO_ENCRYPTION_KEY = "test-only-sso-encryption-key-that-is-long-enough";
@@ -11,6 +14,10 @@ describe("OIDC SSO security helpers", () => {
     afterEach(() => {
         if (previousKey === undefined) delete process.env.SSO_ENCRYPTION_KEY;
         else process.env.SSO_ENCRYPTION_KEY = previousKey;
+        if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = previousNodeEnv;
+        if (previousSameSite === undefined) delete process.env.COOKIE_SAMESITE;
+        else process.env.COOKIE_SAMESITE = previousSameSite;
     });
 
     it("creates independent state, nonce, and PKCE verifier values", () => {
@@ -31,5 +38,11 @@ describe("OIDC SSO security helpers", () => {
 
     it("normalizes work email domains", () => {
         expect(normalizeSsoDomain(" @Example.COM ")).toBe("example.com");
+    });
+
+    it("uses a cross-site compatible secure refresh cookie in production", () => {
+        process.env.NODE_ENV = "production";
+        delete process.env.COOKIE_SAMESITE;
+        expect(refreshCookieOptions()).toMatchObject({ httpOnly: true, secure: true, sameSite: "none", path: "/api/auth" });
     });
 });

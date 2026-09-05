@@ -1,14 +1,31 @@
 import mongoose from "mongoose";
 
+const attemptFollowUpSchema = new mongoose.Schema({
+    question: { type: String, required: true, maxlength: 1000 },
+    answer: { type: String, maxlength: 5000, default: "" },
+    reason: { type: String, maxlength: 240, default: "" },
+    focus: { type: String, maxlength: 120, default: "" },
+    answeredAt: Date,
+}, { _id: false });
+
 const attemptQuestionSchema = new mongoose.Schema({
     text: { type: String, required: true, maxlength: 1000 },
     weight: { type: Number, min: 0.1, max: 10, default: 1 },
     competencies: [{ type: String, maxlength: 80 }],
     knockout: { type: Boolean, default: false },
+    required: { type: Boolean, default: false },
+    difficulty: { type: Number, min: 1, max: 5, default: 3 },
+    sourceType: { type: String, enum: ["planned", "adaptive", "resume-claim", "fallback"], default: "planned" },
+    sourceClaim: { type: String, maxlength: 500, default: "" },
+    adaptiveEvaluated: { type: Boolean, default: false },
+    quickEvaluation: { type: mongoose.Schema.Types.Mixed, default: undefined },
     answer: { type: String, maxlength: 20000, default: "" },
     spokenExplanation: { type: String, maxlength: 5000, default: "" },
     diagramData: { type: String, maxlength: 500000, default: "" },
     diagramSummary: { type: String, maxlength: 10000, default: "" },
+    followUps: { type: [attemptFollowUpSchema], default: [], validate: (value) => value.length <= 3 },
+    // Kept as a compatibility projection for existing candidate UI/local recovery.
+    // The authoritative history is followUps[].
     followUpQuestion: { type: String, maxlength: 1000, default: "" },
     followUpAnswer: { type: String, maxlength: 5000, default: "" },
     feedbackComment: { type: String, maxlength: 2500, default: "" },
@@ -20,6 +37,8 @@ const attemptRoundSchema = new mongoose.Schema({
     name: { type: String, required: true },
     description: String,
     deliveryMode: { type: String, enum: ["conversational", "online-assessment", "system-design"], default: "conversational" },
+    adaptiveState: { type: mongoose.Schema.Types.Mixed, default: undefined },
+    adaptiveComplete: { type: Boolean, default: false },
     questions: [attemptQuestionSchema],
     score: { type: Number, min: 0, max: 10 },
 }, { _id: true });

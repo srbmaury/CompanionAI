@@ -161,14 +161,14 @@ test("recruiter can review and filter the cross-interview candidate pipeline", a
     }));
     await page.route("**/api/assessments?**", (route) => json(route, { items: [{ _id: "assessment-1", title: "Backend screen", status: "active", jobRole: "Backend Engineer", organizationName: "Acme", shareToken: "share-1", attemptCount: 2, submittedCount: 1 }], totalPages: 1 }));
 
-    await page.goto("/assessments");
+    await page.goto("/hire/assessments");
     await expect(page.getByRole("heading", { name: "Hiring overview" })).toBeVisible();
     await expect(page.getByText("Asha Candidate")).toBeVisible();
     await expect(page.getByText("8.5/10")).toBeVisible();
     await page.getByLabel("Search name or email").fill("Asha");
     await page.getByLabel("Status").click();
     await page.getByRole("option", { name: "Submitted" }).click();
-    await expect(page.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/assessments/assessment-1");
+    await expect(page.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/hire/assessments/assessment-1");
 });
 
 test("recruiter can publish a hybrid assessment with all candidate experiences", async ({ page }) => {
@@ -182,12 +182,12 @@ test("recruiter can publish a hybrid assessment with all candidate experiences",
         return json(route, { _id: "assessment-hybrid", shareToken: "share-hybrid", ...published }, 201);
     });
 
-    await page.goto("/assessments?create=1");
+    await page.goto("/hire/assessments?create=1");
     await page.getByLabel("Assessment name").fill("Hybrid engineering assessment");
     await page.getByRole("textbox", { name: "Job role" }).fill("Senior Software Engineer");
     await page.getByLabel("Job description and success criteria").fill("Evaluate communication, production coding, system design, scalability, reliability, testing, and security judgment.");
 
-    await page.getByLabel("Number of questions").first().fill("1");
+    await page.getByLabel("Maximum questions").first().fill("1");
     await page.getByRole("button", { name: "Add manual question" }).first().click();
     await page.getByRole("textbox", { name: "Question 1", exact: true }).first().fill("Describe a production incident you led and what changed afterward.");
     await page.getByRole("button", { name: "Add round" }).click();
@@ -195,15 +195,15 @@ test("recruiter can publish a hybrid assessment with all candidate experiences",
 
     await page.getByLabel("Round label").nth(1).fill("Coding exercise");
     await page.getByLabel("Candidate experience").nth(1).click();
-    await page.getByRole("option", { name: "Coding / written assessment" }).click();
-    await page.getByLabel("Number of questions").nth(1).fill("1");
+    await page.getByRole("option", { name: "Coding / written assessment — all questions" }).click();
+    await page.getByLabel("Question count").first().fill("1");
     await page.getByRole("button", { name: "Add manual question" }).nth(1).click();
     await page.getByRole("textbox", { name: "Question 1", exact: true }).nth(1).fill("Implement a function that returns the first non-repeating character.");
 
     await page.getByLabel("Round label").nth(2).fill("System design");
     await page.getByLabel("Candidate experience").nth(2).click();
-    await page.getByRole("option", { name: "System design canvas + discussion" }).click();
-    await expect(page.getByLabel("Number of questions").nth(2)).toHaveValue("1");
+    await page.getByRole("option", { name: "System design — canvas + discussion" }).click();
+    await expect(page.getByLabel("Question count").nth(1)).toHaveValue("1");
     await page.getByRole("button", { name: "Add manual question" }).nth(2).click();
     await page.getByRole("textbox", { name: "Question 1", exact: true }).nth(2).fill("Design a resilient global notification service.");
 
