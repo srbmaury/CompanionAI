@@ -140,7 +140,11 @@ const CodeEditorField = ({ value, onChange, onFocus, minRows = 6, outlinedInputS
         editorRef.current = editor;
         const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight) || 18;
         const minimumEditorHeight = (minRows || 6) * lineHeight + 20;
-        const maximumEditorHeight = 2000;
+        // Keep the assessment editor workstation-sized. Once code exceeds this
+        // height Monaco should scroll internally instead of growing the whole
+        // page into a multi-thousand-pixel editor.
+        const viewportBound = typeof window !== "undefined" ? window.innerHeight - 240 : 560;
+        const maximumEditorHeight = Math.max(minimumEditorHeight, Math.min(640, Math.max(360, viewportBound)));
 
         const updateEditorHeight = () => {
             if (!editorRef.current) return;
@@ -362,7 +366,13 @@ const CodeEditorField = ({ value, onChange, onFocus, minRows = 6, outlinedInputS
                                 automaticLayout: true,
                                 minimap: { enabled: false },
                                 scrollBeyondLastLine: false,
-                                scrollbar: { vertical: "hidden" },
+                                scrollbar: {
+                                    vertical: "auto",
+                                    horizontal: "auto",
+                                    verticalScrollbarSize: 12,
+                                    horizontalScrollbarSize: 10,
+                                    alwaysConsumeMouseWheel: false,
+                                },
                                 wordWrap: "on",
                                 smoothScrolling: true,
                                 tabSize: 4,
