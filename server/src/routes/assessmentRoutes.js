@@ -13,6 +13,7 @@ import {
     duplicateAssessment, generateAssessmentQuestions, improveAssessmentQuestionText, inviteCandidates, previewAssessment, protectCandidateTool, recordIntegrityEvent, reviewCandidateAttempt, revokeInvitation, runCandidateCode, submitCandidateAttempt, transcribeCandidateAudio, updateAssessment,
 } from "../controllers/assessmentController.js";
 import { createAdaptiveAssessment, saveAdaptiveCandidateAnswer, startAdaptiveCandidateAttempt } from "../controllers/hiringAdaptiveAssessmentController.js";
+import { getCandidateInvitationPrefill } from "../controllers/candidateInvitationController.js";
 import {
     checkpointCandidateSystemDesign,
     saveCandidateSystemDesign,
@@ -36,6 +37,7 @@ const systemDesignCandidateBody = z.object({
     candidateAskedQuestion: z.boolean().optional().default(false),
 });
 
+router.get("/public/:shareToken/invitation/:invitationId", validate(z.object({ shareToken: z.string().min(20).max(100), invitationId: ObjectIdString }), "params"), getCandidateInvitationPrefill);
 router.get("/public/:shareToken", validate(z.object({ shareToken: z.string().min(20).max(100) }), "params"), validate(z.object({ invite: ObjectIdString.optional() }), "query"), getPublicAssessment);
 router.post("/public/:shareToken/start", quotas({ key: (req) => `assessment-start:${req.params.shareToken}:${req.ip}`, metricKey: "assessment_start", windowSeconds: 3600, maxPerWindow: 10 }), validate(z.object({ shareToken: z.string().min(20).max(100) }), "params"), validate(z.object({ name: z.string().trim().min(1).max(120), email: z.string().trim().email().max(254), privacyConsent: z.literal(true), integrityConsent: z.boolean().optional().default(false), invitationId: ObjectIdString.optional() })), startAdaptiveCandidateAttempt);
 router.put("/public/:shareToken/attempts/:attemptId/answer", quotas({ key: (req) => `assessment-answer:${req.params.attemptId}:${req.ip}`, metricKey: "assessment_answer", windowSeconds: 3600, maxPerWindow: 120 }), validate(attemptParams, "params"), validate(z.object({ roundIndex: z.number().int().min(0).max(4), questionIndex: z.number().int().min(0).max(9), answer: z.string().max(20000).optional(), spokenExplanation: z.string().max(5000).optional(), followUpAnswer: z.string().max(5000).optional(), diagramData: z.string().max(500000).optional() }).refine((body) => body.answer !== undefined || body.spokenExplanation !== undefined || body.followUpAnswer !== undefined || body.diagramData !== undefined)), saveAdaptiveCandidateAnswer);
