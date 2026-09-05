@@ -97,6 +97,7 @@ export const checkpointPracticeSystemDesign = async (req, res, next) => {
             roundName: round.name,
             previousInterjections: req.body.previousInterjections || [],
             forceInteraction: req.body.forceInteraction === true,
+            candidateAskedQuestion: req.body.candidateAskedQuestion === true,
         });
         return res.json(decision);
     } catch (error) {
@@ -170,6 +171,7 @@ export const checkpointCandidateSystemDesign = async (req, res, next) => {
             roundName: round.name,
             previousInterjections: req.body.previousInterjections || [],
             forceInteraction: req.body.forceInteraction === true,
+            candidateAskedQuestion: req.body.candidateAskedQuestion === true,
         });
         return res.json(decision);
     } catch (error) {
