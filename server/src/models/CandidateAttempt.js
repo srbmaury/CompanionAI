@@ -8,6 +8,13 @@ const attemptFollowUpSchema = new mongoose.Schema({
     answeredAt: Date,
 }, { _id: false });
 
+const discussionTurnSchema = new mongoose.Schema({
+    speaker: { type: String, enum: ["candidate", "interviewer"], required: true },
+    text: { type: String, maxlength: 20000, required: true },
+    kind: { type: String, maxlength: 40, default: "" },
+    at: { type: Date, default: Date.now },
+}, { _id: false });
+
 const attemptQuestionSchema = new mongoose.Schema({
     text: { type: String, required: true, maxlength: 1000 },
     weight: { type: Number, min: 0.1, max: 10, default: 1 },
@@ -23,6 +30,7 @@ const attemptQuestionSchema = new mongoose.Schema({
     spokenExplanation: { type: String, maxlength: 5000, default: "" },
     diagramData: { type: String, maxlength: 500000, default: "" },
     diagramSummary: { type: String, maxlength: 10000, default: "" },
+    discussionTurns: { type: [discussionTurnSchema], default: [], validate: (value) => value.length <= 80 },
     followUps: { type: [attemptFollowUpSchema], default: [], validate: (value) => value.length <= 3 },
     // Kept as a compatibility projection for existing candidate UI/local recovery.
     // The authoritative history is followUps[].
