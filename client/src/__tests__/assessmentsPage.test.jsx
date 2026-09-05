@@ -39,7 +39,7 @@ describe("assessment workspace hierarchy", () => {
         expect(await screen.findByRole("heading", { name: "Hiring overview" })).toBeTruthy();
         expect(await screen.findByText("Priya Singh")).toBeTruthy();
         expect(screen.getByText("Senior backend screen")).toBeTruthy();
-        expect(screen.getByRole("link", { name: "Review" }).getAttribute("href")).toBe("/assessments/a1");
+        expect(screen.getByRole("link", { name: "Review" }).getAttribute("href")).toBe("/hire/assessments/a1");
         expect(screen.getByText("3 submitted")).toBeTruthy();
     });
 
@@ -47,8 +47,8 @@ describe("assessment workspace hierarchy", () => {
         get.mockResolvedValue({ data: { items: [], totalPages: 1 } });
         renderAssessments("/hire/assessments?create=1");
         await screen.findByRole("heading", { name: "Create assessment" });
-        expect(screen.getByLabelText("Maximum questions").value).toBe("3");
-        const aiQuestionToggle = screen.getByLabelText("Allow AI to generate additional interview questions");
+        expect(screen.getByLabelText(/Maximum questions/).value).toBe("3");
+        const aiQuestionToggle = screen.getByLabelText(/Allow AI to generate additional interview questions/);
         expect(aiQuestionToggle.checked).toBe(true);
         expect(screen.getByText("Adaptive primary questions")).toBeTruthy();
         expect(screen.getByText("0–3 follow-ups per question")).toBeTruthy();
@@ -58,12 +58,12 @@ describe("assessment workspace hierarchy", () => {
         expect(screen.getByText("Required recruiter question")).toBeTruthy();
         expect(screen.getByText("1 configured · 1 required · up to 3 total")).toBeTruthy();
         fireEvent.click(aiQuestionToggle);
-        expect(screen.getByLabelText("Question count").disabled).toBe(true);
-        expect(screen.getByLabelText("Question count").value).toBe("1");
+        expect(screen.getByLabelText(/Question count/).disabled).toBe(true);
+        expect(screen.getByLabelText(/Question count/).value).toBe("1");
         expect(screen.getByText("Recruiter question set only")).toBeTruthy();
         expect(screen.getByText("Fixed interview question")).toBeTruthy();
         expect(screen.getByText("1 configured · fixed interview set")).toBeTruthy();
-        expect(screen.getByLabelText("AI contextual follow-ups").checked).toBe(true);
+        expect(screen.getByLabelText(/AI contextual follow-ups/).checked).toBe(true);
     });
 
     it("supports a reviewed hybrid question set before publishing", async () => {
@@ -106,10 +106,10 @@ describe("assessment workspace hierarchy", () => {
         get.mockResolvedValue({ data: { items: [], totalPages: 1 } });
         renderAssessments("/hire/assessments?create=1");
         await screen.findByRole("heading", { name: "Create assessment" });
-        expect((await screen.findByLabelText("Maximum questions")).value).toBe("3");
+        expect((await screen.findByLabelText(/Maximum questions/)).value).toBe("3");
         fireEvent.mouseDown(await screen.findByLabelText("Candidate experience"));
         fireEvent.click(await screen.findByRole("option", { name: "System design — canvas + discussion" }));
-        expect(screen.getByLabelText("Question count").value).toBe("1");
+        expect(screen.getByLabelText(/Question count/).value).toBe("1");
         expect(screen.getByText(/Excalidraw architecture canvas/)).toBeTruthy();
     });
 });
