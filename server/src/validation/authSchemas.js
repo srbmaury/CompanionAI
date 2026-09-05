@@ -50,7 +50,6 @@ export const UpdateProfileSchema = z.object({
     currentPassword: z.string().min(1).optional(),
     newPassword: strongPassword.optional(),
     preferredProgrammingLanguage: z.enum(["javascript", "python", "cpp", "java"]).optional(),
-    interviewerVoicePreference: z.enum(["random", "male", "female"]).optional(),
     practiceGoal: z.enum(["get-first-role", "switch-role", "promotion", "confidence", "other"]).optional(),
     targetRole: z.string().trim().max(120).optional(),
     weeklyPracticeTarget: z.number().int().min(1).max(7).optional(),
