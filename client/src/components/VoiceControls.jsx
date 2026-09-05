@@ -34,6 +34,10 @@ const VoiceControls = ({
     selectedDeviceId,
     onChangeDevice,
     pushToTalk,
+    handsFree = false,
+    micSessionActive = false,
+    handsFreePaused = false,
+    onStartHandsFree,
 }) => {
     const isActive = useMemo(() => listening && listeningTarget === target, [listening, listeningTarget, target]);
     const micDenied = micPermission === "denied";
@@ -70,7 +74,32 @@ const VoiceControls = ({
                     </Button>
                 )}
 
-                {!isActive ? (
+                {handsFree ? (
+                    <>
+                        {micSessionActive ? (
+                            <Chip
+                                size="small"
+                                color="success"
+                                icon={<MicIcon />}
+                                label={isActive ? "Mic live · listening" : handsFreePaused ? "Mic ready · interviewer speaking" : "Mic ready"}
+                            />
+                        ) : (
+                            <Tooltip title={micDenied ? "Microphone access is blocked in your browser" : "The microphone will stay available for the interview"}>
+                                <span>
+                                    <Button
+                                        size="small"
+                                        variant="contained"
+                                        startIcon={<MicIcon />}
+                                        disabled={!supportsSTT || micDenied}
+                                        onClick={() => onStartHandsFree?.(target)}
+                                    >
+                                        Enable microphone
+                                    </Button>
+                                </span>
+                            </Tooltip>
+                        )}
+                    </>
+                ) : !isActive ? (
                     <Tooltip title={pushToTalk ? "Hold while you speak" : micDenied ? "Microphone access is blocked in your browser" : "Transcribe your spoken answer"}>
                         <span>
                             <Button
@@ -137,18 +166,23 @@ const VoiceControls = ({
                 )}
             </Stack>
 
-            {isActive && (
-                <Stack direction="row" alignItems="center" spacing={1} sx={{ maxWidth: 320 }}>
-                    <Typography variant="caption" color="error.main" fontWeight={700} sx={{ whiteSpace: "nowrap" }}>
-                        Listening
+            {(isActive || (handsFree && micSessionActive)) && (
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ maxWidth: 360 }}>
+                    <Typography variant="caption" color={isActive ? "success.main" : "text.secondary"} fontWeight={700} sx={{ whiteSpace: "nowrap" }}>
+                        {isActive ? "Listening" : "Interview mic active"}
                     </Typography>
                     <LinearProgress
                         variant="determinate"
-                        value={Math.max(5, Math.min(100, Math.round((micLevel || 0) * 100)))}
-                        color="error"
+                        value={isActive ? Math.max(5, Math.min(100, Math.round((micLevel || 0) * 100))) : 5}
+                        color={isActive ? "success" : "inherit"}
                         sx={{ flex: 1, height: 6, borderRadius: 999 }}
                     />
                 </Stack>
+            )}
+            {handsFree && micSessionActive && (
+                <Typography variant="caption" color="text.secondary">
+                    No push-to-talk: the microphone stays available and transcription pauses automatically while the interviewer speaks.
+                </Typography>
             )}
         </Stack>
     );
