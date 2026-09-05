@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import SystemDesignDiscussionPanel, { countDiscussionWords } from "../components/SystemDesignDiscussionPanel";
+import SystemDesignDiscussionPanel from "../components/SystemDesignDiscussionPanel";
+import { countDiscussionWords } from "../utils/systemDesignDiscussion";
 
 vi.mock("../hooks/useSystemDesignDiscussion", () => ({
     useSystemDesignDiscussion: () => ({ interjections: [], checking: false, checkpoint: vi.fn() }),
