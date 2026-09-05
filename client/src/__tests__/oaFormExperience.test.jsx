@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe("OAForm interview experience", () => {
-    it("keeps one question in focus and lets the candidate navigate without losing answers", () => {
+    it("keeps one question in focus and lets the candidate navigate without losing answers", async () => {
         const questions = [
             { question: { text: "Implement an LRU cache." } },
             { question: { text: "Explain the complexity." } },
@@ -61,12 +61,13 @@ describe("OAForm interview experience", () => {
         expect(screen.queryByRole("heading", { name: "Explain the complexity." })).toBeNull();
         expect(screen.getByText("1/2 answered")).toBeTruthy();
 
-        fireEvent.change(screen.getByLabelText("Mock answer editor"), { target: { value: "class LRU {}" } });
+        const firstEditor = await screen.findByLabelText("Mock answer editor");
+        fireEvent.change(firstEditor, { target: { value: "class LRU {}" } });
         expect(onChange).toHaveBeenCalledWith(0, "class LRU {}");
 
         fireEvent.click(screen.getByRole("button", { name: "Next question" }));
         expect(screen.getByRole("heading", { name: "Explain the complexity." })).toBeTruthy();
-        expect(screen.getByDisplayValue("Already answered")).toBeTruthy();
+        expect(await screen.findByDisplayValue("Already answered")).toBeTruthy();
 
         fireEvent.click(screen.getByRole("button", { name: "Previous" }));
         expect(screen.getByRole("heading", { name: "Implement an LRU cache." })).toBeTruthy();
