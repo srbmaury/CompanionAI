@@ -82,7 +82,7 @@ test("recruiter can lock the interview to reviewed primary questions while keepi
     await expect(fixedCount).toHaveValue("1");
     await expect(page.getByText("Recruiter question set only", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Add manual question" }).click();
-    await page.getByLabel("Question 1").fill("Describe a production reliability decision you made and the trade-off you accepted.");
+    await page.getByRole("textbox", { name: "Question 1", exact: true }).fill("Describe a production reliability decision you made and the trade-off you accepted.");
     await expect(page.getByText("Fixed interview question", { exact: true })).toBeVisible();
     await expect(page.getByLabel(/^AI contextual follow-ups/)).toBeChecked();
 
