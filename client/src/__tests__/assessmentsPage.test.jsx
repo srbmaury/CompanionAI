@@ -63,7 +63,7 @@ describe("assessment workspace hierarchy", () => {
         expect(screen.getByText("Recruiter question set only")).toBeTruthy();
         expect(screen.getByText("Fixed interview question")).toBeTruthy();
         expect(screen.getByText("1 configured · fixed interview set")).toBeTruthy();
-        expect(screen.getByLabelText(/AI contextual follow-ups/).checked).toBe(true);
+        expect(screen.getByRole("checkbox", { name: /^AI contextual follow-ups/ }).checked).toBe(true);
     });
 
     it("supports a reviewed hybrid question set before publishing", async () => {
