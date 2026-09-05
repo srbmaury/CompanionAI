@@ -16,7 +16,7 @@ import { createAdaptiveAssessment, saveAdaptiveCandidateAnswer, startAdaptiveCan
 
 const router = express.Router();
 const assessmentDeliveryMode = z.enum(["conversational", "online-assessment", "system-design"]);
-const questionInput = z.object({ text: z.string().trim().min(5).max(1000), weight: z.coerce.number().min(.1).max(10).optional().default(1), competencies: z.array(z.string().trim().min(1).max(80)).max(10).optional().default([]), knockout: z.boolean().optional().default(false) });
+const questionInput = z.object({ text: z.string().trim().min(5).max(1000), weight: z.coerce.number().min(.1).max(10).optional().default(1), competencies: z.array(z.string().trim().min(1).max(80)).max(10).optional().default([]), knockout: z.boolean().optional().default(false), required: z.boolean().optional().default(false) });
 const roundInput = z.object({ name: z.string().trim().min(2).max(80), description: z.string().trim().max(300).optional().default(""), deliveryMode: assessmentDeliveryMode.optional().default("conversational"), adaptive: z.boolean().optional().default(true), aiPrompt: z.string().trim().max(1000).optional().default(""), questionCount: z.coerce.number().int().min(1).max(10), questions: z.array(questionInput).max(10).optional().default([]) });
 const attemptParams = z.object({ shareToken: z.string().min(20).max(100), attemptId: ObjectIdString });
 const validTimezone = (value) => { try { Intl.DateTimeFormat("en-US", { timeZone: value }); return true; } catch { return false; } };
