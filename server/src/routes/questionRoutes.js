@@ -1,6 +1,7 @@
 import express from "express";
 import protect from "../middleware/authMiddleware.js";
 import validate from "../middleware/validate.js";
+import quotas from "../middleware/quotas.js";
 import { z } from "zod";
 import { ObjectIdString } from "../validation/commonSchemas.js";
 import audit from "../middleware/audit.js";
@@ -13,6 +14,10 @@ import {
     clarifyCurrentQuestion,
     submitFollowUpAnswer,
 } from "../controllers/questionController.js";
+import {
+    checkpointPracticeSystemDesign,
+    savePracticeSystemDesign,
+} from "../controllers/systemDesignDiscussionController.js";
 
 const router = express.Router();
 
@@ -126,6 +131,12 @@ const router = express.Router();
  *         description: Round skipped
  */
 
+const systemDesignDiscussionBody = z.object({
+    transcript: z.string().max(20000).optional().default(""),
+    diagramData: z.string().max(500000).optional().default(""),
+    previousInterjections: z.array(z.string().max(600)).max(8).optional().default([]),
+});
+
 router.post(
     "/:interviewId/rounds/:roundId/prepare",
     protect,
@@ -151,6 +162,29 @@ router.post(
     validate(z.object({ answers: z.array(z.string().max(5000)).min(1) })),
     audit("round.answers.submit", { entityType: "Round", getEntityId: (req) => req.params.roundId }),
     submitOAAnswers
+);
+
+router.post(
+    "/:roundId/system-design/checkpoint",
+    protect,
+    quotas({
+        key: (req) => `user:${req.user?._id || "anon"}:system-design-checkpoint:${req.params.roundId}`,
+        metricKey: "system_design_checkpoint",
+        windowSeconds: 60 * 60,
+        maxPerWindow: 240,
+    }),
+    validate(z.object({ roundId: ObjectIdString }), "params"),
+    validate(systemDesignDiscussionBody),
+    checkpointPracticeSystemDesign
+);
+
+router.post(
+    "/:roundId/system-design/complete",
+    protect,
+    validate(z.object({ roundId: ObjectIdString }), "params"),
+    validate(systemDesignDiscussionBody.extend({ transcript: z.string().trim().min(1).max(20000) })),
+    audit("round.system_design.save", { entityType: "Round", getEntityId: (req) => req.params.roundId }),
+    savePracticeSystemDesign
 );
 
 router.post(
