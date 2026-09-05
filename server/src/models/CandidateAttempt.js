@@ -1,5 +1,13 @@
 import mongoose from "mongoose";
 
+const attemptFollowUpSchema = new mongoose.Schema({
+    question: { type: String, required: true, maxlength: 1000 },
+    answer: { type: String, maxlength: 5000, default: "" },
+    reason: { type: String, maxlength: 240, default: "" },
+    focus: { type: String, maxlength: 120, default: "" },
+    answeredAt: Date,
+}, { _id: false });
+
 const attemptQuestionSchema = new mongoose.Schema({
     text: { type: String, required: true, maxlength: 1000 },
     weight: { type: Number, min: 0.1, max: 10, default: 1 },
@@ -15,6 +23,9 @@ const attemptQuestionSchema = new mongoose.Schema({
     spokenExplanation: { type: String, maxlength: 5000, default: "" },
     diagramData: { type: String, maxlength: 500000, default: "" },
     diagramSummary: { type: String, maxlength: 10000, default: "" },
+    followUps: { type: [attemptFollowUpSchema], default: [], validate: (value) => value.length <= 3 },
+    // Kept as a compatibility projection for existing candidate UI/local recovery.
+    // The authoritative history is followUps[].
     followUpQuestion: { type: String, maxlength: 1000, default: "" },
     followUpAnswer: { type: String, maxlength: 5000, default: "" },
     feedbackComment: { type: String, maxlength: 2500, default: "" },
