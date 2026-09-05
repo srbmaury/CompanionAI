@@ -15,10 +15,14 @@ const pendingFollowUpFor = (item) => {
 
 const composeFeedbackAnswer = (item) => {
     const original = (item?.answerGiven || "").toString().trim();
+    const liveDiscussion = (Array.isArray(item?.discussionTurns) ? item.discussionTurns : [])
+        .filter((turn) => turn?.text)
+        .map((turn) => `${turn.speaker === "interviewer" ? "Interviewer" : "Candidate"}: ${turn.text}`)
+        .join("\n");
     const followUps = (item?.followUps || [])
         .filter((followUp) => followUp?.question && followUp?.answer && !followUp?.skipped)
         .map((followUp, index) => `Follow-up ${index + 1}: ${followUp.question}\nFollow-up answer ${index + 1}: ${followUp.answer}`);
-    return [original, ...followUps].filter(Boolean).join("\n\n").trim();
+    return [liveDiscussion ? `Live interviewer discussion:\n${liveDiscussion}` : original, ...followUps].filter(Boolean).join("\n\n").trim();
 };
 
 export const useConversational = ({
