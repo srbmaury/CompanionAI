@@ -17,6 +17,15 @@ const followUpEvidence = (item) => {
         : "";
 };
 
+const liveDiscussionEvidence = (item) => {
+    const turns = Array.isArray(item?.discussionTurns) ? item.discussionTurns : [];
+    if (!turns.length) return "";
+    return ["Live interviewer discussion:", ...turns
+        .filter((turn) => turn?.text)
+        .map((turn) => `${turn.speaker === "interviewer" ? "Interviewer" : "Candidate"}: ${turn.text}`)]
+        .join("\n");
+};
+
 export default async function candidateAssessmentProcessor(job) {
     const attempt = await CandidateAttempt.findOne({ _id: job.data?.attemptId, status: "evaluating" });
     if (!attempt) return { skipped: true };
@@ -34,7 +43,13 @@ export default async function candidateAssessmentProcessor(job) {
             for (const item of round.questions) {
                 const diagramContext = item.diagramSummary || (item.diagramData ? summarizeSystemDesignDiagram(item.diagramData) : "");
                 if (diagramContext) item.diagramSummary = diagramContext;
-                const combined = [item.answer, diagramContext, item.spokenExplanation ? `Spoken explanation:\n${item.spokenExplanation}` : "", followUpEvidence(item)].filter(Boolean).join("\n\n");
+                const discussionContext = round.deliveryMode === "system-design" ? liveDiscussionEvidence(item) : "";
+                const combined = [
+                    discussionContext || item.answer,
+                    diagramContext,
+                    item.spokenExplanation ? `Spoken explanation:\n${item.spokenExplanation}` : "",
+                    followUpEvidence(item),
+                ].filter(Boolean).join("\n\n");
                 const feedback = await generateFeedbackForAnswer({ questionText: item.text, userAnswer: combined, evaluationContext: round.deliveryMode === "system-design" ? { mode: "system-design", jobRole: assessment?.jobRole, jobDescription: assessment?.jobDescription, roundDescription: round.description, rubric: assessment?.rubric } : undefined });
                 item.feedbackComment = feedback.comment; item.suggestions = feedback.suggestions; item.score = feedback.score;
                 roundScores.push(feedback.score); allScores.push(feedback.score);
