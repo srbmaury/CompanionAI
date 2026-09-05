@@ -5,8 +5,9 @@ const DEFAULT_INTERVAL_MS = 7000;
 const MIN_CONTEXT_CHARS = 80;
 const MIN_NEW_CHARS = 35;
 const FIRST_INTERACTION_CONTEXT_CHARS = 140;
-const CANDIDATE_SILENCE_MS = 15000;
-const SILENCE_POLL_MS = 1000;
+export const CANDIDATE_SILENCE_MS = 15000;
+const SILENCE_POLL_MS = 500;
+const SPEECH_LEVEL_THRESHOLD = 0.035;
 
 const looksLikeCandidateQuestion = (value = "") => {
     const tail = value.trim().slice(-180);
@@ -16,11 +17,10 @@ const looksLikeCandidateQuestion = (value = "") => {
 };
 
 /**
- * Periodically gives the AI interviewer a chance to participate during a
- * system-design discussion. Candidate clarification questions are handled
- * immediately; otherwise the first meaningful probe is guaranteed once enough
- * context exists. If the candidate says nothing for 15 seconds, the interviewer
- * must step in, including at the beginning of the round.
+ * Gives the AI interviewer regular opportunities to participate in a live
+ * system-design discussion. Candidate activity is based on committed transcript,
+ * interim speech and microphone energy so a long spoken sentence is never
+ * mistaken for silence while STT is waiting to commit text.
  */
 export const useSystemDesignDiscussion = ({
     enabled,
@@ -28,6 +28,10 @@ export const useSystemDesignDiscussion = ({
     headers = {},
     transcript = "",
     diagramData = "",
+    interimText = "",
+    micLevel = 0,
+    listening = false,
+    interviewerSpeaking = false,
     onInterjection,
     skipAuthRedirect = false,
     intervalMs = DEFAULT_INTERVAL_MS,
@@ -37,29 +41,62 @@ export const useSystemDesignDiscussion = ({
     const busyRef = useRef(false);
     const lastCheckedLengthRef = useRef(0);
     const lastCheckedAtRef = useRef(0);
-    const lastInterjectionAtRef = useRef(0);
     const lastCandidateActivityAtRef = useRef(Date.now());
     const lastSilenceAttemptAtRef = useRef(0);
     const lastObservedTranscriptRef = useRef(transcript || "");
+    const lastObservedInterimRef = useRef(interimText || "");
+    const wasInterviewerSpeakingRef = useRef(Boolean(interviewerSpeaking));
     const transcriptRef = useRef(transcript);
     const diagramRef = useRef(diagramData);
     const interjectionsRef = useRef(interjections);
     const onInterjectionRef = useRef(onInterjection);
+    const interviewerSpeakingRef = useRef(Boolean(interviewerSpeaking));
+
+    const markCandidateTurnStart = useCallback(() => {
+        const now = Date.now();
+        lastCandidateActivityAtRef.current = now;
+        lastSilenceAttemptAtRef.current = 0;
+    }, []);
 
     useEffect(() => {
         transcriptRef.current = transcript;
         const current = transcript || "";
         if (current !== lastObservedTranscriptRef.current) {
             lastObservedTranscriptRef.current = current;
-            lastCandidateActivityAtRef.current = Date.now();
+            markCandidateTurnStart();
         }
-    }, [transcript]);
+    }, [markCandidateTurnStart, transcript]);
+
+    useEffect(() => {
+        const current = interimText || "";
+        if (listening && current && current !== lastObservedInterimRef.current) {
+            lastObservedInterimRef.current = current;
+            markCandidateTurnStart();
+        } else if (!current) {
+            lastObservedInterimRef.current = "";
+        }
+    }, [interimText, listening, markCandidateTurnStart]);
+
+    useEffect(() => {
+        if (listening && Number(micLevel) >= SPEECH_LEVEL_THRESHOLD) markCandidateTurnStart();
+    }, [listening, markCandidateTurnStart, micLevel]);
+
+    useEffect(() => {
+        interviewerSpeakingRef.current = Boolean(interviewerSpeaking);
+        if (wasInterviewerSpeakingRef.current && !interviewerSpeaking) {
+            // The candidate's 15-second thinking/speaking window begins only
+            // after the interviewer has completely finished talking.
+            markCandidateTurnStart();
+        }
+        wasInterviewerSpeakingRef.current = Boolean(interviewerSpeaking);
+    }, [interviewerSpeaking, markCandidateTurnStart]);
+
     useEffect(() => { diagramRef.current = diagramData; }, [diagramData]);
     useEffect(() => { interjectionsRef.current = interjections; }, [interjections]);
     useEffect(() => { onInterjectionRef.current = onInterjection; }, [onInterjection]);
 
     const checkpoint = useCallback(async ({ force = false, dueToSilence = false } = {}) => {
-        if (!enabled || !endpoint || busyRef.current) return null;
+        if (!enabled || !endpoint || busyRef.current || interviewerSpeakingRef.current) return null;
         if (typeof document !== "undefined" && document.hidden) return null;
         const currentTranscript = (transcriptRef.current || "").trim();
         const now = Date.now();
@@ -99,25 +136,22 @@ export const useSystemDesignDiscussion = ({
                     kind: data.kind || "challenge",
                     at: new Date().toISOString(),
                 };
-                const interactionAt = Date.now();
-                lastInterjectionAtRef.current = interactionAt;
-                // Give the candidate a fresh 15-second turn after the interviewer
-                // finishes instead of immediately firing another silence prompt.
-                if (candidateSilent) lastCandidateActivityAtRef.current = interactionAt;
                 setInterjections((current) => [...current, item].slice(-12));
                 await onInterjectionRef.current?.(item);
+                // onInterjection includes TTS. Start the silence window only after
+                // the interviewer has actually finished speaking.
+                markCandidateTurnStart();
                 return item;
             }
             return null;
         } catch (error) {
-            // A live-interviewer checkpoint must never block the design session.
             console.debug("System design checkpoint skipped", error?.message || error);
             return null;
         } finally {
             busyRef.current = false;
             setChecking(false);
         }
-    }, [enabled, endpoint, headers, intervalMs, skipAuthRedirect]);
+    }, [enabled, endpoint, headers, intervalMs, markCandidateTurnStart, skipAuthRedirect]);
 
     useEffect(() => {
         if (!enabled || !endpoint) return undefined;
@@ -131,6 +165,7 @@ export const useSystemDesignDiscussion = ({
             const now = Date.now();
             if (
                 !busyRef.current
+                && !interviewerSpeakingRef.current
                 && now - lastCandidateActivityAtRef.current >= CANDIDATE_SILENCE_MS
                 && now - lastSilenceAttemptAtRef.current >= CANDIDATE_SILENCE_MS
             ) {
@@ -142,19 +177,18 @@ export const useSystemDesignDiscussion = ({
 
     useEffect(() => {
         if (enabled) {
-            lastCandidateActivityAtRef.current = Date.now();
-            lastSilenceAttemptAtRef.current = 0;
+            markCandidateTurnStart();
             lastObservedTranscriptRef.current = transcriptRef.current || "";
+            lastObservedInterimRef.current = "";
             return;
         }
         setInterjections([]);
         lastCheckedLengthRef.current = 0;
         lastCheckedAtRef.current = 0;
-        lastInterjectionAtRef.current = 0;
         lastSilenceAttemptAtRef.current = 0;
-    }, [enabled]);
+    }, [enabled, markCandidateTurnStart]);
 
-    return { interjections, checking, checkpoint };
+    return { interjections, checking, checkpoint, markCandidateTurnStart };
 };
 
 export default useSystemDesignDiscussion;
