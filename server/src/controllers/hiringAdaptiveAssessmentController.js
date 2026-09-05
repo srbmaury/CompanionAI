@@ -375,7 +375,10 @@ const advanceAdaptiveRound = async ({ assessment, attempt, roundIndex, questionI
     const claim = selectResumeClaimForTarget(round.adaptiveState, targetCompetency, evaluation.policy?.sourceClaim || "");
     const next = await generateNextAdaptiveQuestion({
         interview: { jobRole: assessment.jobRole, jobDescription: assessment.jobDescription, company: "" },
-        round: { name: round.name, description: round.description },
+        round: {
+            name: round.name,
+            description: `${round.description || ""}\nContinue the same interview conversation naturally. Ask a concise next question that connects to the evidence already collected, then go deeper on the most useful competency gap. Sound like a thoughtful human interviewer, not a rubric or questionnaire.`,
+        },
         state: round.adaptiveState,
         targetCompetency,
         difficulty: evaluation.policy?.difficulty || round.adaptiveState.currentDifficulty,
@@ -432,7 +435,20 @@ export const saveAdaptiveCandidateAnswer = async (req, res, next) => {
         } else {
             // Coding/written and system-design formats keep their fixed question
             // structure. A single optional probe remains available for those modes.
-            if (followUpAnswer !== undefined) item.followUpAnswer = followUpAnswer.toString().trim().slice(0, 5000);
+            if (followUpAnswer !== undefined) {
+                const value = followUpAnswer.toString().trim().slice(0, 5000);
+                if (!value) return res.status(400).json({ message: "Follow-up answer required" });
+                const history = ensureFollowUpHistory(item);
+                const pending = pendingFollowUpFor(item);
+                if (pending) {
+                    pending.answer = value;
+                    pending.answeredAt = new Date();
+                } else if (item.followUpQuestion) {
+                    history.push({ question: item.followUpQuestion, answer: value, answeredAt: new Date() });
+                }
+                item.followUpAnswer = value;
+                syncLegacyFollowUpFields(item);
+            }
             if (assessment.followUpsEnabled && item.answer && !item.followUpQuestion) {
                 try {
                     const decision = await generateFollowUp({
@@ -443,7 +459,13 @@ export const saveAdaptiveCandidateAnswer = async (req, res, next) => {
                         systemDesign: round.deliveryMode === "system-design",
                         competencies: item.competencies || [],
                     });
-                    item.followUpQuestion = decision?.shouldAsk ? decision.followUp || "" : "";
+                    if (decision?.shouldAsk && decision.followUp) {
+                        ensureFollowUpHistory(item).push({ question: decision.followUp, answer: "", reason: decision.reason || "", focus: decision.focus || "" });
+                        syncLegacyFollowUpFields(item);
+                    } else {
+                        item.followUpQuestion = "";
+                        item.followUpAnswer = "";
+                    }
                 } catch { /* save the original response even if follow-up generation fails */ }
             }
         }
