@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import api from "../api/axios";
+import { chooseInterviewerGender, interviewerPitchForGender, selectInterviewerVoice } from "../utils/interviewerVoice";
 
 const SpeechRecognitionCtor =
     typeof window !== "undefined"
@@ -46,6 +47,8 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
     const audioCtxRef = useRef(null);
     const analyserRef = useRef(null);
     const rafRef = useRef(null);
+    const interviewerGenderRef = useRef(null);
+    const interviewerVoiceRef = useRef(null);
     const onTranscriptRef = useRef(onTranscript);
     useEffect(() => { onTranscriptRef.current = onTranscript; }, [onTranscript]);
 
@@ -454,9 +457,15 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.rate = 0.95;
-            utterance.pitch = 1;
+            const gender = interviewerGenderRef.current || chooseInterviewerGender();
+            interviewerGenderRef.current = gender;
+            utterance.pitch = interviewerPitchForGender(gender);
             const voices = window.speechSynthesis.getVoices();
-            const preferred = voices.find((voice) => voice.name.includes("Google") && voice.lang.startsWith("en")) || voices.find((voice) => voice.lang.startsWith("en"));
+            let preferred = interviewerVoiceRef.current;
+            if (!preferred || !voices.some((voice) => voice.voiceURI === preferred.voiceURI)) {
+                preferred = selectInterviewerVoice(voices, gender);
+                interviewerVoiceRef.current = preferred;
+            }
             if (preferred) utterance.voice = preferred;
             let settled = false;
             const finish = (value) => { if (!settled) { settled = true; resolve(value); } };
