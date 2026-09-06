@@ -8,6 +8,6 @@ describe("resolveApiBaseUrl", () => {
     });
 
     it("keeps the configured production API origin", () => {
-        expect(resolveApiBaseUrl("https://api.companionai.example/api", "companionai.example")).toBe("https://api.companionai.example/api");
+        expect(resolveApiBaseUrl("https://api.evalcue.example/api", "evalcue.example")).toBe("https://api.evalcue.example/api");
     });
 });

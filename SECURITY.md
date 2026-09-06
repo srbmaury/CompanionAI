@@ -1,6 +1,6 @@
 # Security policy
 
-Report vulnerabilities privately to `security@companionai.app`. Do not include secrets or personal data in public issues.
+Report vulnerabilities through GitHub private vulnerability reporting. Do not include secrets or personal data in public issues.
 
 Supported production releases receive fixes for critical and high-severity vulnerabilities. Automated dependency checks run on every change and weekly through Dependabot.
 

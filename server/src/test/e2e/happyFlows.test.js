@@ -274,7 +274,7 @@ describe("Launch-critical full product journey E2E", () => {
         const deliveryHistory = await agent.get("/api/auth/reminders/deliveries").set(auth).expect(200);
         expect(deliveryHistory.body.items[0]).toMatchObject({ status: "sent", attempts: 1 });
         const exportResponse = await agent.get("/api/auth/export").set(auth).expect(200);
-        expect(exportResponse.headers["content-disposition"]).toContain("companionai-export");
+        expect(exportResponse.headers["content-disposition"]).toContain("evalcue-export");
         expect(exportResponse.body).toMatchObject({ profile: { email: "t@example.com" } });
         expect(exportResponse.body.productEvents).toHaveLength(1);
         process.env.ACCOUNT_DATA_EXPORT_ENABLED = "false";

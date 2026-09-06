@@ -17,7 +17,7 @@ const defaultOrganizationContext = {
 
 export const OrganizationContext = createContext(defaultOrganizationContext);
 
-const preferenceKey = (userId) => `companionai:organization:user:${userId}`;
+const preferenceKey = (userId) => `evalcue:organization:user:${userId}`;
 
 const readPreferredOrganization = (userId) => {
     if (!userId) return null;

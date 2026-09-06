@@ -46,7 +46,7 @@ export const sendMail = async ({ to, subject, html, text }) => {
             ...(html ? { htmlContent: html } : {}),
             ...(text ? { textContent: text } : {}),
             replyTo: { email: senderEmail, name: envTrim(process.env.BREVO_SENDER_NAME) || "Evalcue AI" },
-            tags: ["companionai-transactional"],
+            tags: ["evalcue-transactional"],
         }),
     });
 };

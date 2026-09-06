@@ -2,7 +2,7 @@ import { Alert, Snackbar } from "@mui/material";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { AuthContext } from "./AuthContext";
 
-const STORAGE_PREFIX = "companionai:notifications";
+const STORAGE_PREFIX = "evalcue:notifications";
 const VALID_SEVERITIES = new Set(["info", "success", "warning", "error"]);
 const normalizeHistory = (value) => Array.isArray(value) ? value.filter((item) => item?.message).map((item) => ({ ...item, read: Boolean(item.read) })).slice(0, 30) : [];
 const storageKeyFor = (userId) => `${STORAGE_PREFIX}:${userId || "guest"}`;

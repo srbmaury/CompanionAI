@@ -77,8 +77,8 @@ Keep the launch setup small and operationally useful:
 Today the API and BullMQ workers can run in the same process. When they are split into separate Render services, run the same OTLP exporter in both processes and use distinct service names, for example:
 
 ```text
-companionai-api
-companionai-worker
+evalcue-api
+evalcue-worker
 ```
 
 The worker process must push its own metrics because worker CPU/memory and worker-local queue processing metrics are not visible from the API process. Keep queue names, product purposes, provider/model names, and terminal outcomes as bounded labels; keep entity identifiers in logs/traces rather than Prometheus labels.

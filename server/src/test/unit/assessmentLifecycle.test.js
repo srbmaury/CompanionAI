@@ -12,7 +12,7 @@ describe("assessment lifecycle processing", () => {
         vi.clearAllMocks();
         updateMany.mockResolvedValue({ modifiedCount: 1 });
         find.mockResolvedValue([]);
-        process.env.CLIENT_ORIGIN = "https://app.companionai.example/";
+        process.env.CLIENT_ORIGIN = "https://app.evalcue.example/";
     });
 
     afterAll(() => {
@@ -34,8 +34,8 @@ describe("assessment lifecycle processing", () => {
         expect(result.sent).toBe(1);
         expect(invitation).toMatchObject({ status: "sent", attempts: 1, providerMessageId: "provider-1" });
         expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({
-            text: expect.stringContaining("https://app.companionai.example/assessment/token?invite=invite-1"),
-            html: expect.stringContaining("https://app.companionai.example/assessment/token?invite=invite-1"),
+            text: expect.stringContaining("https://app.evalcue.example/assessment/token?invite=invite-1"),
+            html: expect.stringContaining("https://app.evalcue.example/assessment/token?invite=invite-1"),
         }));
         expect(sendMail.mock.calls[0][0].text).not.toContain("localhost");
         expect(assessment.save).toHaveBeenCalledOnce();

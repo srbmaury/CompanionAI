@@ -1,9 +1,9 @@
 import { productHomePath } from "./productRoutes";
 
-export const WORKSPACE_EVENT = "companionai:workspace";
+export const WORKSPACE_EVENT = "evalcue:workspace";
 
-const GUEST_WORKSPACE_KEY = "companionai:workspace:guest";
-const USER_WORKSPACE_PREFIX = "companionai:workspace:user:";
+const GUEST_WORKSPACE_KEY = "evalcue:workspace:guest";
+const USER_WORKSPACE_PREFIX = "evalcue:workspace:user:";
 const VALID_WORKSPACES = new Set(["practice", "hiring"]);
 
 const getStorage = () => {

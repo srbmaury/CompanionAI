@@ -68,7 +68,7 @@ export default function Seo({ title, description, canonicalPath = "/", structure
         if (structuredData) {
             jsonLd = document.createElement("script");
             jsonLd.type = "application/ld+json";
-            jsonLd.dataset.companionaiSeo = "true";
+            jsonLd.dataset.evalcueSeo = "true";
             jsonLd.textContent = JSON.stringify(structuredData);
             document.head.appendChild(jsonLd);
         }

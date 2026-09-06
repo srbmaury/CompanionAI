@@ -312,7 +312,7 @@ router.get("/export", protect, requireFeature("ACCOUNT_DATA_EXPORT_ENABLED"), as
             ReminderDelivery.find({ user: userId }).lean(),
             ProductEvent.find({ user: userId }).lean(),
         ]);
-        res.setHeader("Content-Disposition", `attachment; filename="companionai-export-${new Date().toISOString().slice(0, 10)}.json"`);
+        res.setHeader("Content-Disposition", `attachment; filename="evalcue-export-${new Date().toISOString().slice(0, 10)}.json"`);
         return res.json({ exportedAt: new Date().toISOString(), profile, interviews, resumes, resumeReviews, savedExperiences, productFeedback, reminderDeliveries, productEvents });
     } catch (error) { return next(error); }
 });

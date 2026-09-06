@@ -9,7 +9,7 @@ Create a `.env` file in `client/` with the values your environment needs:
 ```env
 VITE_API_BASE_URL=/api
 # Canonical production origin used to generate sitemap.xml and robots.txt.
-# Example: https://www.companionai.example
+# Example: https://www.evalcue.example
 VITE_PUBLIC_ORIGIN=
 
 VITE_CAPTCHA_PROVIDER=turnstile

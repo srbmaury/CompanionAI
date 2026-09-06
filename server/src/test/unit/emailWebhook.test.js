@@ -17,7 +17,7 @@ describe("Brevo delivery webhook", () => {
     });
 
     it("marks matching provider messages delivered", async () => {
-        const response = await request(app).post("/brevo").set("x-companionai-webhook-secret", "long-test-secret").send({ event: "delivered", "message-id": "provider-1", email: "candidate@example.com" }).expect(200);
+        const response = await request(app).post("/brevo").set("x-evalcue-webhook-secret", "long-test-secret").send({ event: "delivered", "message-id": "provider-1", email: "candidate@example.com" }).expect(200);
         expect(response.body.updated).toBe(true);
         expect(updateOne).toHaveBeenCalledWith({ "invitations.providerMessageId": "provider-1" }, expect.objectContaining({ $set: expect.objectContaining({ "invitations.$[invitation].status": "delivered" }) }), expect.any(Object));
     });

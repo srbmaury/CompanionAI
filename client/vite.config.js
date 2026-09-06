@@ -24,13 +24,13 @@ const normalizePublicOrigin = (raw) => {
     if (!value) return "";
     const url = new URL(value);
     if (!["http:", "https:"].includes(url.protocol) || url.pathname !== "/" || url.search || url.hash) {
-        throw new Error("VITE_PUBLIC_ORIGIN must be an origin only, for example https://companionai.example");
+        throw new Error("VITE_PUBLIC_ORIGIN must be an origin only, for example https://evalcue.example");
     }
     return url.origin;
 };
 
 const seoFilesPlugin = (origin) => ({
-    name: "companionai-seo-files",
+    name: "evalcue-seo-files",
     async closeBundle() {
         if (!origin) return;
         const outDir = path.resolve(process.cwd(), "dist");

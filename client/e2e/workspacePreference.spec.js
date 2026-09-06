@@ -24,7 +24,7 @@ test("product preference stays scoped to the authenticated account", async ({ pa
 
     await page.goto("/hire");
     await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
-    expect(await page.evaluate(() => localStorage.getItem("companionai:workspace:user:user-a"))).toBe("hiring");
+    expect(await page.evaluate(() => localStorage.getItem("evalcue:workspace:user:user-a"))).toBe("hiring");
 
     currentUser = {
         _id: "user-b",
@@ -39,8 +39,8 @@ test("product preference stays scoped to the authenticated account", async ({ pa
     await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
 
     const stored = await page.evaluate(() => ({
-        userA: localStorage.getItem("companionai:workspace:user:user-a"),
-        userB: localStorage.getItem("companionai:workspace:user:user-b"),
+        userA: localStorage.getItem("evalcue:workspace:user:user-a"),
+        userB: localStorage.getItem("evalcue:workspace:user:user-b"),
     }));
 
     expect(stored.userA).toBe("hiring");
