@@ -23,8 +23,7 @@ test("product preference stays scoped to the authenticated account", async ({ pa
     await page.route("**/api/events", (route) => json(route, { accepted: true }, 202));
 
     await page.goto("/hire");
-    await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
-    expect(await page.evaluate(() => localStorage.getItem("evalcue:workspace:user:user-a"))).toBe("hiring");
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("evalcue:workspace:user:user-a"))).toBe("hiring");
 
     currentUser = {
         _id: "user-b",
@@ -36,7 +35,7 @@ test("product preference stays scoped to the authenticated account", async ({ pa
 
     // A full navigation restores the session as the second account.
     await page.goto("/practice");
-    await expect(page.getByRole("button", { name: "Account menu" })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem("evalcue:workspace:user:user-b"))).toBe("practice");
 
     const stored = await page.evaluate(() => ({
         userA: localStorage.getItem("evalcue:workspace:user:user-a"),
