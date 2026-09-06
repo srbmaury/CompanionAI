@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useLocation } from "react-router-dom";
 import Seo from "./Seo";
 
