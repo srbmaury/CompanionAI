@@ -1,5 +1,6 @@
 import { Box, Container, Link, Paper, Stack, Typography } from "@mui/material";
 import SiteFooter from "../components/SiteFooter";
+import { publicSupportEmail } from "../utils/publicContact";
 
 const privacySections = [
     ["What we collect", "Account details, resumes and extracted text, target-role information, interview and candidate-assessment answers, audio submitted for transcription, generated feedback, and security/operational logs."],
@@ -31,7 +32,12 @@ export default function LegalPage({ type }) {
                     <Typography color="text.secondary" mt={1}>Effective August 1, 2026</Typography>
                     <Stack spacing={4} mt={5}>
                         {sections.map(([title, body]) => <Box key={title}><Typography component="h2" variant="h6" fontWeight={750}>{title}</Typography><Typography color="text.secondary" mt={1} lineHeight={1.75}>{body}</Typography></Box>)}
-                        <Box><Typography component="h2" variant="h6" fontWeight={750}>Questions</Typography><Typography color="text.secondary" mt={1}>Contact <Link href="mailto:support@companionai.app">support@companionai.app</Link>.</Typography></Box>
+                        <Box>
+                            <Typography component="h2" variant="h6" fontWeight={750}>Questions</Typography>
+                            <Typography color="text.secondary" mt={1}>
+                                {publicSupportEmail ? <>Contact <Link href={`mailto:${publicSupportEmail}`}>{publicSupportEmail}</Link>.</> : "Contact the support channel provided by your Evalcue AI deployment administrator."}
+                            </Typography>
+                        </Box>
                     </Stack>
                 </Paper>
             </Container>
