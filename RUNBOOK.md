@@ -2,43 +2,66 @@
 
 ## Deployment topology
 
-Run the React build behind a CDN and the API as a Node 20+ service. Production requires MongoDB with transactions, Redis, HTTPS, Brevo transactional email API access, Cloudinary, CAPTCHA, Stripe, and at least one AI provider. The API process currently starts BullMQ workers and the reminder dispatcher; deploy one worker-enabled API replica until these are split into dedicated process types.
+Run the React build behind a CDN and the API as a Node 20+ service. Production requires a transaction-capable MongoDB replica set or sharded cluster, Redis, HTTPS, Brevo transactional email, Cloudinary for resume storage, CAPTCHA, Stripe, and at least one AI provider. Judge0 and server STT are required only when their feature flags are enabled.
+
+The API process currently starts BullMQ workers and scheduled reminder/assessment tasks. Run one worker-enabled API replica until workers and schedulers are split into dedicated process types.
 
 ## Pre-deployment
 
-1. Run `npm ci`, tests, lint, build, and production dependency audits in both packages.
-2. Confirm `/health/readiness` returns 200 in staging.
-3. Send a test reminder and complete a Stripe test checkout.
-4. Verify Stripe webhook delivery and replay behavior.
-5. Confirm MongoDB and Cloudinary backups before schema-affecting releases.
+1. Run client lint, unit tests, build, Playwright, and dependency audit.
+2. Run server unit tests, API journeys, and dependency audit.
+3. Confirm `/health/readiness` returns 200 in staging.
+4. Send a test email/reminder and complete a Stripe test checkout.
+5. Verify Stripe and Brevo webhook delivery/replay behavior.
+6. Confirm MongoDB and Cloudinary backup/restore coverage before schema-affecting releases.
+7. Verify generated `sitemap.xml` contains the production origin and canonical `/practice` and `/hire` routes.
 
 ## Environment and secrets
 
-Use a secret manager. Never commit `.env`. Rotate JWT, Brevo, Stripe, AI, Cloudinary, Redis, CAPTCHA, metrics, and Sentry credentials after suspected exposure. Configure both `ALLOWED_ORIGINS` and `CLIENT_ORIGIN` explicitly in production.
+Use a secret manager. Never commit `.env`.
 
-## Deployment and rollback
+Configure `ALLOWED_ORIGINS`, `CLIENT_ORIGIN`, and `SERVER_ORIGIN` explicitly on the API. Configure `VITE_PUBLIC_ORIGIN` on the frontend build to the canonical public origin; it drives canonical metadata plus sitemap/robots generation.
 
-Deploy immutable artifacts. Wait for readiness before routing traffic. On failure, route traffic to the previous artifact; do not roll back persisted data without a reviewed migration rollback. Stripe webhook events are idempotent and can be replayed after recovery.
+Rotate JWT, Brevo, Stripe, AI, Cloudinary, Redis, CAPTCHA, metrics, SSO-encryption, and Sentry credentials after suspected exposure.
+
+## Deployment and shutdown
+
+Deploy immutable artifacts and wait for readiness before routing traffic. On SIGTERM/SIGINT the API stops schedulers and OTLP timers, stops accepting new HTTP traffic, drains in-flight HTTP requests and BullMQ workers, closes queues, then closes MongoDB and Redis. `SHUTDOWN_TIMEOUT_MS` defaults to 15 seconds and forces a non-zero exit if draining stalls.
+
+On release failure, route traffic to the previous artifact. Do not roll back persisted data without a reviewed migration rollback.
 
 ## Backups
 
 - Enable continuous MongoDB backups with point-in-time recovery.
 - Test restoration quarterly into an isolated account.
-- Cloudinary assets should use provider backups or version retention.
-- Export Stripe configuration separately; Stripe remains the billing ledger.
+- Use Cloudinary provider backups/version retention where required.
+- Keep Stripe configuration exported/documented separately; Stripe remains the billing ledger.
 
 ## Alerts
 
-Alert on readiness failures, elevated 5xx responses, authentication spikes, rate-limit spikes, queue failures, reminders in `failed` state, Stripe webhook 5xx responses, Brevo API failures, and AI error/cost anomalies.
+Alert on readiness failures, elevated 5xx responses, authentication spikes, rate-limit spikes, queue failures/dead letters, reminders in `failed` state, Stripe/Brevo webhook failures, email delivery failures, Mongo pool pressure, Redis reconnects, and AI error/cost anomalies.
+
+## Candidate-assessment recovery
+
+Submissions atomically move to `evaluating`. BullMQ retries evaluation failures, and startup recovery re-enqueues attempts stranded in `evaluating` after a process interruption. Do not manually mark attempts submitted unless the persisted evaluation evidence has been reviewed.
+
+Candidate invitation links are generated from `CLIENT_ORIGIN`. If a candidate receives an incorrect host, verify that value first.
 
 ## Reminder recovery
 
-Reminder deliveries are persisted in MongoDB and retried with exponential backoff. After an outage, restart the API and inspect `reminderdeliveries` for failed records and `lastError`. Do not delete sent records; their unique user/reminder key prevents duplicates.
+Reminder deliveries are persisted in MongoDB and retried with exponential backoff. After an outage, inspect `reminderdeliveries` for failed records and `lastError`. Do not delete sent records; the unique user/reminder key prevents duplicate delivery.
 
 ## Stripe incidents
 
-Check webhook signing secret, event delivery status, `billingevents`, the configured Pro/Scale price IDs, and the affected user's Stripe customer/subscription IDs. Replay failed webhook events from Stripe after fixing the cause. Never grant paid-plan access solely from a client redirect.
+Check the webhook signing secret, `billingevents`, customer/subscription IDs, and the currently configured catalog:
+
+- `STRIPE_PRACTICE_PRO_PRICE_ID`
+- `STRIPE_HIRING_PILOT_PRICE_ID`
+- `STRIPE_HIRING_STARTER_PRICE_ID`
+- `STRIPE_HIRING_GROWTH_PRICE_ID`
+
+Replay failed webhook events from Stripe after fixing the cause. Never grant paid-plan access solely from a client redirect.
 
 ## Security incident
 
-Restrict traffic, preserve logs, rotate affected credentials, revoke sessions by incrementing user token versions, assess affected records, and follow applicable notification requirements. Record timeline, scope, remediation, and follow-up actions.
+Restrict traffic, preserve logs, rotate affected credentials, revoke sessions by incrementing user token versions and/or deleting refresh-token records, assess affected records, and follow applicable notification requirements. Record the timeline, scope, remediation, and follow-up actions.

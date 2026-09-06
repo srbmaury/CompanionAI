@@ -1,6 +1,20 @@
 import { useEffect } from "react";
 
-export default function Seo({ title, description, canonicalPath, structuredData }) {
+const configuredOrigin = (() => {
+    try {
+        const value = String(import.meta.env.VITE_PUBLIC_ORIGIN || "").trim();
+        return value ? new URL(value).origin : "";
+    } catch {
+        return "";
+    }
+})();
+
+const absoluteUrl = (path = "/") => {
+    const origin = configuredOrigin || window.location.origin;
+    return new URL(path || "/", `${origin}/`).href;
+};
+
+export default function Seo({ title, description, canonicalPath = "/", structuredData, imagePath = "", type = "website" }) {
     useEffect(() => {
         const previousTitle = document.title;
         document.title = title;
@@ -18,10 +32,27 @@ export default function Seo({ title, description, canonicalPath, structuredData 
             return { element, created, previous };
         };
 
-        const descriptionMeta = ensureMeta('meta[name="description"]', { name: "description", content: description });
-        const ogTitle = ensureMeta('meta[property="og:title"]', { property: "og:title", content: title });
-        const ogDescription = ensureMeta('meta[property="og:description"]', { property: "og:description", content: description });
-        const ogType = ensureMeta('meta[property="og:type"]', { property: "og:type", content: "website" });
+        const canonicalUrl = absoluteUrl(canonicalPath);
+        const metadata = [
+            ensureMeta('meta[name="description"]', { name: "description", content: description }),
+            ensureMeta('meta[property="og:title"]', { property: "og:title", content: title }),
+            ensureMeta('meta[property="og:description"]', { property: "og:description", content: description }),
+            ensureMeta('meta[property="og:type"]', { property: "og:type", content: type }),
+            ensureMeta('meta[property="og:url"]', { property: "og:url", content: canonicalUrl }),
+            ensureMeta('meta[property="og:site_name"]', { property: "og:site_name", content: "CompanionAI" }),
+            ensureMeta('meta[property="og:locale"]', { property: "og:locale", content: "en_US" }),
+            ensureMeta('meta[name="twitter:card"]', { name: "twitter:card", content: imagePath ? "summary_large_image" : "summary" }),
+            ensureMeta('meta[name="twitter:title"]', { name: "twitter:title", content: title }),
+            ensureMeta('meta[name="twitter:description"]', { name: "twitter:description", content: description }),
+        ];
+
+        if (imagePath) {
+            const imageUrl = absoluteUrl(imagePath);
+            metadata.push(
+                ensureMeta('meta[property="og:image"]', { property: "og:image", content: imageUrl }),
+                ensureMeta('meta[name="twitter:image"]', { name: "twitter:image", content: imageUrl }),
+            );
+        }
 
         let canonical = document.head.querySelector('link[rel="canonical"]');
         const canonicalCreated = !canonical;
@@ -31,7 +62,7 @@ export default function Seo({ title, description, canonicalPath, structuredData 
             canonical.rel = "canonical";
             document.head.appendChild(canonical);
         }
-        canonical.href = `${window.location.origin}${canonicalPath}`;
+        canonical.href = canonicalUrl;
 
         let jsonLd;
         if (structuredData) {
@@ -44,7 +75,7 @@ export default function Seo({ title, description, canonicalPath, structuredData 
 
         return () => {
             document.title = previousTitle;
-            [descriptionMeta, ogTitle, ogDescription, ogType].forEach(({ element, created, previous }) => {
+            metadata.forEach(({ element, created, previous }) => {
                 if (created) {
                     element.remove();
                     return;
@@ -59,7 +90,7 @@ export default function Seo({ title, description, canonicalPath, structuredData 
             else canonical.setAttribute("href", previousCanonicalHref);
             if (jsonLd) jsonLd.remove();
         };
-    }, [canonicalPath, description, structuredData, title]);
+    }, [canonicalPath, description, imagePath, structuredData, title, type]);
 
     return null;
 }

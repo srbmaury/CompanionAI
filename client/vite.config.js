@@ -6,8 +6,8 @@ import react from "@vitejs/plugin-react";
 
 const INDEXABLE_ROUTES = [
     "/",
-    "/interview-practice",
-    "/technical-hiring",
+    "/practice",
+    "/hire",
     "/docs",
     "/docs/technical-hiring/structured-technical-assessments",
     "/docs/technical-hiring/system-design-interviews",
@@ -37,8 +37,6 @@ const seoFilesPlugin = (origin) => ({
         await mkdir(outDir, { recursive: true });
         const urls = INDEXABLE_ROUTES.map((route) => `  <url><loc>${origin}${route}</loc></url>`).join("\n");
         const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
-        // Private SPA routes use a rendered noindex directive. Do not block them in
-        // robots.txt because a crawler must be able to load the page to observe noindex.
         const robots = [
             "User-agent: *",
             "Allow: /",
