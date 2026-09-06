@@ -60,33 +60,45 @@ const startPublicAssessment = async (page, shareToken, name = "Candidate", email
     await page.getByRole("button", { name: "Start assessment" }).click();
 };
 
+const fillRoleStep = async (page, {
+    role = "Senior Backend Engineer",
+    title = "Backend evidence interview",
+    description = "Own reliable backend systems, APIs, incident response, testing, observability, and architecture trade-offs in production.",
+} = {}) => {
+    await expect(page.getByRole("heading", { name: "Create an assessment", exact: true })).toBeVisible();
+    await expect(page.getByText("Step 1 of 4", { exact: true })).toBeVisible();
+    await page.getByRole("textbox", { name: "Job role" }).fill(role);
+    await page.getByLabel("Assessment name").fill(title);
+    await page.getByLabel("Job description and success criteria").fill(description);
+    await page.getByRole("button", { name: "Continue" }).click();
+    await expect(page.getByText("Step 2 of 4", { exact: true })).toBeVisible();
+};
+
 test("recruiter can lock the interview to reviewed primary questions while keeping AI follow-ups enabled", async ({ page }) => {
     await mockSignedIn(page);
     let published;
     await mockEmptyHiringWorkspace(page, (payload) => { published = payload; });
 
     await page.goto("/hire/assessments?create=1");
-    await expect(page.getByRole("heading", { name: "Create assessment", exact: true })).toBeVisible();
-    await page.getByRole("textbox", { name: "Job role" }).fill("Senior Backend Engineer");
-    await page.getByLabel("Assessment name").fill("Backend evidence interview");
-    await page.getByLabel("Job description and success criteria").fill("Own reliable backend systems, APIs, incident response, testing, observability, and architecture trade-offs in production.");
+    await fillRoleStep(page);
 
-    await expect(page.getByLabel("Maximum questions")).toHaveValue("3");
-    const adaptiveToggle = page.getByLabel(/^Allow AI to generate additional interview questions/);
+    const adaptiveToggle = page.getByLabel(/^Let AI adapt the remaining primary questions/);
     await expect(adaptiveToggle).toBeChecked();
-    await expect(page.getByText("Adaptive primary questions", { exact: true })).toBeVisible();
     await adaptiveToggle.uncheck();
+    const questionCount = page.getByLabel("Maximum primary questions");
+    await questionCount.fill("1");
+    await page.getByRole("button", { name: "Continue" }).click();
 
-    const fixedCount = page.getByLabel("Question count");
-    await expect(fixedCount).toBeDisabled();
-    await expect(fixedCount).toHaveValue("1");
-    await expect(page.getByText("Recruiter question set only", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Add manual question" }).click();
+    await expect(page.getByText("Step 3 of 4", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Add question" }).click();
     await page.getByRole("textbox", { name: "Question 1", exact: true }).fill("Describe a production reliability decision you made and the trade-off you accepted.");
-    await expect(page.getByText("Fixed interview question", { exact: true })).toBeVisible();
-    await expect(page.getByLabel(/^AI contextual follow-ups/)).toBeChecked();
+    await expect(page.getByLabel("Must ask")).toBeChecked();
+    await page.getByRole("button", { name: "Continue" }).click();
 
-    await page.getByRole("button", { name: "Publish now" }).click();
+    await expect(page.getByText("Step 4 of 4", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Allow contextual AI follow-up questions")).toBeChecked();
+    await page.getByRole("button", { name: "Publish assessment" }).click();
+
     await expect.poll(() => published).toBeTruthy();
     expect(published.status).toBe("active");
     expect(published.followUpsEnabled).toBe(true);
@@ -103,16 +115,39 @@ test("recruiter can lock the interview to reviewed primary questions while keepi
 
 test("recruiter can explicitly mark a reviewed adaptive question as optional", async ({ page }) => {
     await mockSignedIn(page);
-    await mockEmptyHiringWorkspace(page);
+    let published;
+    await mockEmptyHiringWorkspace(page, (payload) => { published = payload; });
+
     await page.goto("/hire/assessments?create=1");
-    await page.getByRole("button", { name: "Add manual question" }).click();
+    await fillRoleStep(page, {
+        role: "Backend Engineer",
+        title: "Adaptive backend interview",
+        description: "Evaluate practical backend engineering judgment, reliability, API design, testing, and clear communication in production scenarios.",
+    });
+
+    const adaptiveToggle = page.getByLabel(/^Let AI adapt the remaining primary questions/);
+    await expect(adaptiveToggle).toBeChecked();
+    await expect(page.getByLabel("Maximum primary questions")).toHaveValue("3");
+    await page.getByRole("button", { name: "Continue" }).click();
+
+    await page.getByRole("button", { name: "Add question" }).click();
     await page.getByRole("textbox", { name: "Question 1", exact: true }).fill("Tell me about a reliability incident you personally owned.");
-    const mustAsk = page.getByLabel(/^Must ask this question/);
+    const mustAsk = page.getByLabel("Must ask");
     await expect(mustAsk).toBeChecked();
     await mustAsk.uncheck();
-    await expect(page.getByText("Optional AI-planned question", { exact: true })).toBeVisible();
-    await expect(page.getByText("1 configured · 0 must ask · up to 3 total", { exact: true })).toBeVisible();
-    await expect(page.getByText("Advanced scoring and review", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Publish assessment" }).click();
+
+    await expect.poll(() => published).toBeTruthy();
+    expect(published.rounds).toHaveLength(1);
+    expect(published.rounds[0].adaptive).toBe(true);
+    expect(published.rounds[0].questionCount).toBe(3);
+    expect(published.rounds[0].questions).toEqual([
+        expect.objectContaining({
+            text: "Tell me about a reliability incident you personally owned.",
+            required: false,
+        }),
+    ]);
 });
 
 test("adaptive conversational interview uses stable progress while advancing into a server-generated primary question", async ({ page }) => {
