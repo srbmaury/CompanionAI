@@ -69,6 +69,20 @@ const assessmentSchema = new mongoose.Schema({
     rounds: { type: [assessmentRoundSchema], validate: (value) => value.length >= 1 && value.length <= 5 },
 }, { timestamps: true });
 
+// A system-design interview is one evolving problem, not a list of prompts.
+// Normalizing here also protects existing create/update paths and recruiter UI
+// payloads that still carry a larger generic question count.
+assessmentSchema.pre("validate", function normalizeSystemDesignRounds(next) {
+    for (const round of this.rounds || []) {
+        if (round.deliveryMode !== "system-design") continue;
+        round.questionCount = 1;
+        if (Array.isArray(round.questions) && round.questions.length > 1) {
+            round.questions = [round.questions[0]];
+        }
+    }
+    next();
+});
+
 assessmentSchema.index({ organization: 1, createdAt: -1 });
 assessmentSchema.index({ organization: 1, status: 1, createdAt: -1 });
 

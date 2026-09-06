@@ -2,20 +2,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { useInterviewSession } from "../hooks/useInterviewSession";
-import { useConversational }   from "../hooks/useConversational";
-import { useOAForm }           from "../hooks/useOAForm";
-import { useVoiceInput }       from "../hooks/useVoiceInput";
-import { useResumePdf }        from "../hooks/useResumePdf";
+import { useConversational } from "../hooks/useConversational";
+import { useOAForm } from "../hooks/useOAForm";
+import { useVoiceInput } from "../hooks/useVoiceInput";
+import { useResumePdf } from "../hooks/useResumePdf";
+import api from "../api/axios";
 
-import { Alert, Box, Button, Chip, CircularProgress, Divider, Drawer, IconButton, LinearProgress, Link, Stack, Typography,
-         Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
+import {
+    Alert, Box, Button, Chip, CircularProgress, Divider, Drawer, IconButton,
+    LinearProgress, Link, Paper, Stack, Typography, Dialog, DialogTitle,
+    DialogContent, DialogActions,
+} from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
-import HelpPopover   from "../components/HelpPopover";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import HelpPopover from "../components/HelpPopover";
 
 import ConversationalPanel from "../components/ConversationalPanel";
-import FeedbackPanel       from "../components/FeedbackPanel";
-import OAForm              from "../components/OAForm";
-import RoundList           from "../components/RoundList";
+import SystemDesignDiscussionPanel from "../components/SystemDesignDiscussionPanel";
+import FeedbackPanel from "../components/FeedbackPanel";
+import OAForm from "../components/OAForm";
+import RoundList from "../components/RoundList";
 import { composeAnswerParts } from "../utils/answerParts";
 import { storage, storageKeys } from "../utils/interviewStorage";
 
@@ -29,21 +35,19 @@ const outlinedInputSx = {
 
 const InterviewPage = () => {
     const { interviewId } = useParams();
-
-    // ── Toast ─────────────────────────────────────────────────────────────────
     const [inlineStatus, setInlineStatus] = useState({ open: false, severity: "info", message: "" });
     const showToast = useCallback((severity, message, persistent = false) => {
         setInlineStatus({ open: true, severity, message });
         if (!persistent && severity !== "error") {
-            setTimeout(() => setInlineStatus((s) => ({ ...s, open: false })), 4000);
+            setTimeout(() => setInlineStatus((state) => ({ ...state, open: false })), 4000);
         }
     }, []);
 
-    // ── UI toggles ────────────────────────────────────────────────────────────
     const [roundsOpen, setRoundsOpen] = useState(false);
     const [resumeOpen, setResumeOpen] = useState(false);
+    const [systemDesignDiagram, setSystemDesignDiagram] = useState("");
+    const [systemDesignEnding, setSystemDesignEnding] = useState(false);
 
-    // ── Session ───────────────────────────────────────────────────────────────
     const {
         interview, setInterview,
         selectedRound, setSelectedRound, selectRound,
@@ -56,15 +60,17 @@ const InterviewPage = () => {
 
     const isConversational = useMemo(
         () => selectedRound?.deliveryMode === "conversational",
-        [selectedRound]
+        [selectedRound],
     );
+    const isSystemDesign = useMemo(() => Boolean(
+        isConversational && /system\s*design|architecture/i.test(`${selectedRound?.name || ""} ${selectedRound?.description || ""}`),
+    ), [isConversational, selectedRound?.description, selectedRound?.name]);
 
     const hasAnsweredMissingFeedback = useMemo(() => {
-        const qList = selectedRound?.questions || [];
-        return qList.some((q) => (q?.answerGiven || "").toString().trim() && !q?.feedback);
+        const questions = selectedRound?.questions || [];
+        return questions.some((question) => (question?.answerGiven || "").toString().trim() && !question?.feedback);
     }, [selectedRound?.questions]);
 
-    // ── Voice transcript routing ──────────────────────────────────────────────
     const convAnswerSetterRef = useRef(null);
     const oaAnswersSetterRef = useRef(null);
     const [convSpokenAnswer, setConvSpokenAnswer] = useState("");
@@ -74,24 +80,27 @@ const InterviewPage = () => {
 
     const onTranscript = useCallback((target, text) => {
         if (target === "conv") {
-            if (convCodingEnabled) setConvSpokenAnswer((prev) => (prev ? `${prev} ${text}` : text));
-            else convAnswerSetterRef.current?.((prev) => (prev ? `${prev} ${text}` : text));
+            if (convCodingEnabled && !isSystemDesign) setConvSpokenAnswer((previous) => (previous ? `${previous} ${text}` : text));
+            else convAnswerSetterRef.current?.((previous) => (previous ? `${previous} ${text}` : text));
         } else if (typeof target === "number") {
             const setter = oaCodingEnabled[target] ? setOaSpokenAnswers : oaAnswersSetterRef.current;
-            setter?.((prev) => { const next = [...prev]; next[target] = ((next[target] || "") + " " + text).trimStart(); return next; });
+            setter?.((previous) => {
+                const next = [...previous];
+                next[target] = ((next[target] || "") + " " + text).trimStart();
+                return next;
+            });
         }
-    }, [convCodingEnabled, oaCodingEnabled]);
+    }, [convCodingEnabled, isSystemDesign, oaCodingEnabled]);
 
-    // ── Voice input ───────────────────────────────────────────────────────────
     const {
         listening, listeningTarget, interimText,
-        micLevel, micPermission,
+        micLevel, micPermission, micSessionActive, handsFreePaused,
         inputDevices, selectedDeviceId, setSelectedDeviceId,
         supportsSTT, supportsTTS,
         startListening, stopListening, speakNow,
+        startHandsFree, pauseHandsFree, resumeHandsFree, stopHandsFree,
     } = useVoiceInput({ onTranscript });
 
-    // ── Conversational ────────────────────────────────────────────────────────
     const {
         convViewState,
         convAnswer, setConvAnswer,
@@ -105,7 +114,7 @@ const InterviewPage = () => {
         showToast, clearDraftsForRound,
     });
     convAnswerSetterRef.current = setConvAnswer;
-    // ── OA Form ───────────────────────────────────────────────────────────────
+
     const {
         oaAnswers, setOaAnswers,
         oaSubmitting, oaFeedbackProgress,
@@ -121,8 +130,8 @@ const InterviewPage = () => {
         if (!selectedRound?._id || !isConversational || convViewState.done) return;
         const index = convViewState.index || 0;
         setConvSpokenAnswer(storage.get(storageKeys.convVoice(interviewId, selectedRound._id, index)) || "");
-        setConvCodingEnabled(Boolean(storage.get(storageKeys.convCoding(interviewId, selectedRound._id, index))));
-    }, [interviewId, selectedRound?._id, isConversational, convViewState.index, convViewState.done]);
+        setConvCodingEnabled(isSystemDesign ? false : Boolean(storage.get(storageKeys.convCoding(interviewId, selectedRound._id, index))));
+    }, [interviewId, selectedRound?._id, isConversational, isSystemDesign, convViewState.index, convViewState.done]);
 
     useEffect(() => {
         if (!selectedRound?._id || !isConversational || convViewState.done) return;
@@ -143,21 +152,50 @@ const InterviewPage = () => {
         storage.set(storageKeys.oaCoding(interviewId, selectedRound._id), oaCodingEnabled);
     }, [interviewId, selectedRound?._id, isConversational, oaSpokenAnswers, oaCodingEnabled]);
 
+    const systemDesignStorageKey = useMemo(() => selectedRound?._id ? `system-design-canvas:${interviewId}:${selectedRound._id}` : "", [interviewId, selectedRound?._id]);
+    useEffect(() => {
+        if (!isSystemDesign || !systemDesignStorageKey) { setSystemDesignDiagram(""); return; }
+        const currentItem = selectedRound?.questions?.[convViewState.index || 0];
+        let local = "";
+        try { local = window.localStorage?.getItem(systemDesignStorageKey) || ""; } catch { void 0; }
+        setSystemDesignDiagram(local || currentItem?.diagramData || "");
+    }, [convViewState.index, isSystemDesign, selectedRound?.questions, systemDesignStorageKey]);
+
+    const updateSystemDesignDiagram = useCallback((value) => {
+        setSystemDesignDiagram(value);
+        if (!systemDesignStorageKey) return;
+        try { window.localStorage?.setItem(systemDesignStorageKey, value); } catch { void 0; }
+    }, [systemDesignStorageKey]);
+
     const changeConversationalCodingMode = useCallback((enabled) => {
+        if (isSystemDesign) return;
         setConvCodingEnabled(enabled);
         if (!enabled && convSpokenAnswer.trim()) {
             setConvAnswer((current) => `${current}${current ? "\n\n" : ""}${convSpokenAnswer}`);
             setConvSpokenAnswer("");
         }
-    }, [convSpokenAnswer, setConvAnswer]);
+    }, [convSpokenAnswer, isSystemDesign, setConvAnswer]);
 
     const changeOaCodingMode = useCallback((index, enabled) => {
-        setOaCodingEnabled((current) => { const next = [...current]; next[index] = enabled; return next; });
+        setOaCodingEnabled((current) => {
+            const next = [...current];
+            next[index] = enabled;
+            return next;
+        });
         if (!enabled && (oaSpokenAnswers[index] || "").trim()) {
-            setOaAnswers((current) => { const next = [...current]; next[index] = `${next[index] || ""}${next[index] ? "\n\n" : ""}${oaSpokenAnswers[index]}`; return next; });
-            setOaSpokenAnswers((current) => { const next = [...current]; next[index] = ""; return next; });
+            setOaAnswers((current) => {
+                const next = [...current];
+                next[index] = `${next[index] || ""}${next[index] ? "\n\n" : ""}${oaSpokenAnswers[index]}`;
+                return next;
+            });
+            setOaSpokenAnswers((current) => {
+                const next = [...current];
+                next[index] = "";
+                return next;
+            });
         }
     }, [oaSpokenAnswers, setOaAnswers]);
+
     const submitConversationalAnswer = useCallback(async () => {
         await handleSubmitAnswer(composeAnswerParts(convAnswer, convSpokenAnswer));
         setConvSpokenAnswer("");
@@ -168,6 +206,26 @@ const InterviewPage = () => {
         setConvSpokenAnswer("");
     }, [convAnswer, convSpokenAnswer, handleFollowUpDone]);
 
+    const endSystemDesignDiscussion = useCallback(async () => {
+        if (!selectedRound?._id || !convAnswer.trim()) return false;
+        setSystemDesignEnding(true);
+        try {
+            await api.post(`/questions/${selectedRound._id}/system-design/complete`, {
+                transcript: convAnswer,
+                diagramData: systemDesignDiagram,
+                previousInterjections: [],
+            });
+            try { if (systemDesignStorageKey) window.localStorage?.removeItem(systemDesignStorageKey); } catch { void 0; }
+            await handleCompleteRound();
+            return true;
+        } catch (error) {
+            showToast("error", error?.response?.data?.message || "Could not save the system-design discussion.");
+            return false;
+        } finally {
+            setSystemDesignEnding(false);
+        }
+    }, [convAnswer, handleCompleteRound, selectedRound?._id, showToast, systemDesignDiagram, systemDesignStorageKey]);
+
     const submitOaAnswers = useCallback(async () => {
         const combined = Array.from(
             { length: Math.max(oaAnswers.length, oaSpokenAnswers.length) },
@@ -177,124 +235,200 @@ const InterviewPage = () => {
         setOaSpokenAnswers([]);
     }, [handleOASubmit, oaAnswers, oaSpokenAnswers]);
 
-    // ── Resume preview ────────────────────────────────────────────────────────
-    const resumeUrl         = interview?.resume?.fileUrl  || "";
-    const resumeFileType    = interview?.resume?.fileType || "";
+    const resumeUrl = interview?.resume?.fileUrl || "";
+    const resumeFileType = interview?.resume?.fileType || "";
     const resumePreviewPath = interview?.resume?._id ? `/resumes/${interview.resume._id}/preview` : "";
     const resumeBlobUrl = useResumePdf({ resumeOpen, resumePreviewPath, resumeFileType });
 
-    // ── Shared voice prop bundle ──────────────────────────────────────────────
     const voiceProps = useMemo(() => ({
         supportsTTS, supportsSTT,
         listening, listeningTarget, interimText,
         onSpeak: speakNow,
         onStartListening: startListening,
         onStopListening: stopListening,
-        micPermission, micLevel,
+        micPermission, micLevel, micSessionActive, handsFreePaused,
         inputDevices, selectedDeviceId,
         onChangeDevice: setSelectedDeviceId,
+        onStartHandsFree: startHandsFree,
+        onPauseHandsFree: pauseHandsFree,
+        onResumeHandsFree: resumeHandsFree,
+        onStopHandsFree: stopHandsFree,
         pushToTalk: false,
         outlinedInputSx,
-    }), [supportsTTS, supportsSTT, listening, listeningTarget, interimText, speakNow, startListening,
-        stopListening, micPermission, micLevel, inputDevices, selectedDeviceId, setSelectedDeviceId]);
+    }), [
+        supportsTTS, supportsSTT, listening, listeningTarget, interimText, speakNow,
+        startListening, stopListening, micPermission, micLevel, micSessionActive, handsFreePaused,
+        inputDevices, selectedDeviceId, setSelectedDeviceId, startHandsFree, pauseHandsFree,
+        resumeHandsFree, stopHandsFree,
+    ]);
 
-    if (!interview) return (
-        <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" }}>
-            <CircularProgress />
-        </Box>
-    );
+    const roundMeta = useMemo(() => {
+        const rounds = interview?.rounds || [];
+        const index = Math.max(0, rounds.findIndex((item) => item.round?._id === selectedRound?._id));
+        const completed = rounds.filter((item) => item.round?.status === "completed").length;
+        return {
+            index,
+            total: rounds.length,
+            completed,
+            progress: rounds.length ? Math.min(100, (completed / rounds.length) * 100) : 0,
+        };
+    }, [interview?.rounds, selectedRound?._id]);
+
+    const modeLabel = isSystemDesign
+        ? "System design"
+        : selectedRound?.deliveryMode === "conversational"
+            ? "Conversation"
+            : "Online assessment";
+
+    if (!interview) {
+        return (
+            <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh" }}>
+                <CircularProgress />
+            </Box>
+        );
+    }
 
     return (
         <>
-            <Box sx={{ display: "flex", gap: 3, p: { xs: 2, md: 3 }, flexDirection: { xs: "column", md: "row" } }}>
-                {/* Left: Rounds sidebar */}
-                <Box sx={{ width: { xs: "100%", md: 250 }, flexShrink: 0 }}>
-                    <Box sx={{ display: { xs: "flex", md: "none" }, mb: 1, justifyContent: "space-between", alignItems: "center" }}>
-                        <Typography variant="h6">Rounds</Typography>
-                        <IconButton onClick={() => setRoundsOpen(true)} aria-label="open rounds">
-                            <MenuIcon />
-                        </IconButton>
-                    </Box>
-                    <RoundList interview={interview} selectedRoundId={selectedRound?._id} onSelect={selectRound} />
-                    <Drawer anchor="left" open={roundsOpen} onClose={() => setRoundsOpen(false)} sx={{ display: { md: "none" } }}>
-                        <Box sx={{ width: "min(300px, 100vw)", p: 2 }} role="presentation">
-                            <Typography variant="h6" sx={{ mb: 1 }}>Rounds</Typography>
-                            <Divider sx={{ mb: 2 }} />
-                            <RoundList
-                                interview={interview}
-                                selectedRoundId={selectedRound?._id}
-                                onSelect={(r) => { selectRound(r); setRoundsOpen(false); }}
-                                showOnMobile
-                            />
-                        </Box>
-                    </Drawer>
-                </Box>
+            <Box sx={{ bgcolor: "background.default", minHeight: "calc(100vh - 64px)", py: { xs: 1.5, md: 2.5 } }}>
+                <Box sx={{ width: "100%", maxWidth: 1500, mx: "auto", px: { xs: 1.5, sm: 2.5, lg: 3 } }}>
+                    <Paper
+                        variant="outlined"
+                        sx={{
+                            mb: 2,
+                            px: { xs: 1.5, md: 2.25 },
+                            py: 1.5,
+                            borderRadius: 3,
+                            position: { md: "sticky" },
+                            top: { md: 8 },
+                            zIndex: 20,
+                            backdropFilter: "blur(12px)",
+                            bgcolor: "rgba(255,255,255,.94)",
+                        }}
+                    >
+                        <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" gap={1.5} alignItems={{ md: "center" }}>
+                            <Stack direction="row" spacing={1.25} alignItems="center" sx={{ minWidth: 0 }}>
+                                <IconButton
+                                    onClick={() => setRoundsOpen(true)}
+                                    aria-label="open rounds"
+                                    sx={{ display: { md: "none" } }}
+                                >
+                                    <MenuIcon />
+                                </IconButton>
+                                <Box sx={{ minWidth: 0 }}>
+                                    <Stack direction="row" spacing={.75} alignItems="center" flexWrap="wrap" useFlexGap>
+                                        <Typography fontWeight={850} noWrap>{selectedRound?.name || "Interview"}</Typography>
+                                        {selectedRound && <Chip size="small" label={modeLabel} color="primary" variant="outlined" />}
+                                        {selectedRound?.status === "completed" && <Chip size="small" icon={<CheckCircleRoundedIcon />} label="Completed" color="success" />}
+                                    </Stack>
+                                    <Typography variant="caption" color="text.secondary">
+                                        {roundMeta.total ? `Round ${roundMeta.index + 1} of ${roundMeta.total}` : "Interview"}
+                                        {selectedRound?.description ? ` · ${selectedRound.description}` : ""}
+                                    </Typography>
+                                </Box>
+                            </Stack>
 
-                {/* Right: Active round */}
-                <Box sx={{ flexGrow: 1 }}>
+                            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                                {allRoundsCompleted && Number.isFinite(Number(interview?.overallScore)) && (
+                                    <Chip color="primary" label={`Overall score ${interview.overallScore}/10`} />
+                                )}
+                                {resumeUrl && (
+                                    <Button
+                                        size="small"
+                                        variant="outlined"
+                                        onClick={() => {
+                                            if (resumeFileType === "application/pdf") setResumeOpen(true);
+                                            else window.open(resumeUrl, "_blank");
+                                        }}
+                                    >
+                                        View resume
+                                    </Button>
+                                )}
+                                <HelpPopover />
+                            </Stack>
+                        </Stack>
+                        <LinearProgress variant="determinate" value={roundMeta.progress} sx={{ mt: 1.25, height: 4, borderRadius: 999 }} />
+                    </Paper>
+
                     {inlineStatus.open && (
                         <Alert
                             severity={inlineStatus.severity}
                             aria-live={inlineStatus.severity === "error" ? undefined : "polite"}
                             role={inlineStatus.severity === "error" ? "alert" : undefined}
                             sx={{ mb: 2 }}
-                            onClose={() => setInlineStatus((s) => ({ ...s, open: false }))}
+                            onClose={() => setInlineStatus((state) => ({ ...state, open: false }))}
                         >
                             {inlineStatus.message}
                         </Alert>
                     )}
 
-                    <Alert severity={interview?.grounding?.status === "grounded" ? "success" : "info"} sx={{ mb: 2 }}>
-                        {interview?.grounding?.status === "grounded"
-                            ? `Grounded in ${interview.grounding.sources?.length || 0} public experience source${interview.grounding.sources?.length === 1 ? "" : "s"}; questions also use your JD and resume.`
-                            : "AI simulation: limited public company-specific evidence was available, so questions rely on the JD, role, and resume."}
-                        {(interview?.grounding?.sources || []).slice(0, 3).map((source) => (
-                            <Link key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" sx={{ ml: 1 }}>
-                                {source.title}
-                            </Link>
-                        ))}
-                    </Alert>
+                    <Box sx={{ display: "flex", gap: { md: 2.5, lg: 3 }, alignItems: "flex-start" }}>
+                        <Box
+                            component="aside"
+                            sx={{
+                                width: 220,
+                                flexShrink: 0,
+                                display: { xs: "none", md: "block" },
+                                position: "sticky",
+                                top: 92,
+                            }}
+                        >
+                            <RoundList interview={interview} selectedRoundId={selectedRound?._id} onSelect={selectRound} />
 
-                    {!selectedRound ? (
-                        <Typography>Select a round to view details</Typography>
-                    ) : (
-                        <>
-                            {/* Round header */}
-                            <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" alignItems={{ xs: "flex-start", md: "center" }} spacing={1} sx={{ mb: 2 }}>
-                                <Stack>
-                                    <Typography variant="h5" gutterBottom>{selectedRound.name}</Typography>
-                                    <Typography variant="body1" gutterBottom>{selectedRound.description}</Typography>
-                                </Stack>
-                                <Stack direction={{ xs: "column", md: "row" }} spacing={1} alignItems={{ xs: "stretch", md: "center" }} sx={{ mb: { xs: 2, md: 0 } }}>
-                                    {allRoundsCompleted && Number.isFinite(Number(interview?.overallScore)) && (
-                                        <Chip color="primary" label={`Overall Score: ${interview.overallScore}/10`} />
-                                    )}
-                                    {resumeUrl && (
-                                        <Button
-                                            variant="outlined"
-                                            onClick={() => { if (resumeFileType === "application/pdf") setResumeOpen(true); else window.open(resumeUrl, "_blank"); }}
-                                            sx={{ mb: { xs: 2, md: 0 } }}
-                                        >
-                                            View Resume
-                                        </Button>
-                                    )}
-                                </Stack>
-                                <Stack direction="row" spacing={1} alignItems="center">
-                                    <HelpPopover />
-                                </Stack>
-                            </Stack>
+                            <Box component="details" sx={{ mt: 1.5, px: .5 }}>
+                                <Typography
+                                    component="summary"
+                                    variant="caption"
+                                    color="text.secondary"
+                                    sx={{ cursor: "pointer", userSelect: "none" }}
+                                >
+                                    Why these questions?
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block" mt={.75}>
+                                    {interview?.grounding?.status === "grounded"
+                                        ? `Built from your JD, resume, and ${interview.grounding.sources?.length || 0} public interview source${interview.grounding.sources?.length === 1 ? "" : "s"}.`
+                                        : "Built from your JD, role, and resume because limited public company-specific evidence was available."}
+                                </Typography>
+                                {(interview?.grounding?.sources || []).slice(0, 3).map((source) => (
+                                    <Link key={source.url} href={source.url} target="_blank" rel="noopener noreferrer" display="block" variant="caption" mt={.5}>
+                                        {source.title}
+                                    </Link>
+                                ))}
+                            </Box>
+                        </Box>
 
-                            {/* Round body */}
-                            {loadingRound ? (
-                                <Stack spacing={1} sx={{ py: 2 }}>
-                                    <Typography>
-                                        Preparing questions{roundPrepareProgress ? `… ${Math.min(100, Math.max(0, Math.round(roundPrepareProgress)))}%` : "..."}
-                                    </Typography>
-                                    <LinearProgress
-                                        variant={roundPrepareProgress ? "determinate" : "indeterminate"}
-                                        value={Math.min(100, Math.max(0, roundPrepareProgress || 0))}
-                                    />
-                                </Stack>
+                        <Drawer anchor="left" open={roundsOpen} onClose={() => setRoundsOpen(false)} sx={{ display: { md: "none" } }}>
+                            <Box sx={{ width: "min(320px, 100vw)", p: 2 }} role="presentation">
+                                <Typography variant="h6" fontWeight={850}>Interview rounds</Typography>
+                                <Typography variant="body2" color="text.secondary" mb={1.5}>Move between unlocked rounds.</Typography>
+                                <Divider sx={{ mb: 2 }} />
+                                <RoundList
+                                    interview={interview}
+                                    selectedRoundId={selectedRound?._id}
+                                    onSelect={(round) => { selectRound(round); setRoundsOpen(false); }}
+                                    showOnMobile
+                                />
+                            </Box>
+                        </Drawer>
+
+                        <Box component="main" sx={{ flex: 1, minWidth: 0, maxWidth: isSystemDesign ? 1380 : 1220, mx: "auto" }}>
+                            {!selectedRound ? (
+                                <Paper variant="outlined" sx={{ p: 4, textAlign: "center", borderRadius: 3 }}>
+                                    <Typography fontWeight={800}>Choose an interview round to begin.</Typography>
+                                </Paper>
+                            ) : loadingRound ? (
+                                <Paper variant="outlined" sx={{ p: { xs: 2.5, md: 4 }, borderRadius: 3 }}>
+                                    <Stack spacing={1.5}>
+                                        <Typography fontWeight={800}>
+                                            Interviewer is preparing this round{roundPrepareProgress ? ` · ${Math.min(100, Math.max(0, Math.round(roundPrepareProgress)))}%` : ""}
+                                        </Typography>
+                                        <Typography variant="body2" color="text.secondary">Questions are being tailored to the role and your interview context.</Typography>
+                                        <LinearProgress
+                                            variant={roundPrepareProgress ? "determinate" : "indeterminate"}
+                                            value={Math.min(100, Math.max(0, roundPrepareProgress || 0))}
+                                        />
+                                    </Stack>
+                                </Paper>
                             ) : prepError ? (
                                 <Stack spacing={1}>
                                     <Alert severity="error">{prepError}</Alert>
@@ -303,18 +437,40 @@ const InterviewPage = () => {
                             ) : isConversational ? (
                                 selectedRound.status === "completed" ? (
                                     (convRoundSubmitting || hasAnsweredMissingFeedback) ? (
-                                        <Stack spacing={1} sx={{ py: 2 }}>
-                                            <Typography>
-                                                Generating feedback… {convFeedbackProgress ? `${Math.round(convFeedbackProgress)}%` : ""}
-                                            </Typography>
-                                            <LinearProgress
-                                                variant={convFeedbackProgress ? "determinate" : "indeterminate"}
-                                                value={convFeedbackProgress || 0}
-                                            />
-                                        </Stack>
-                                    ) : (
-                                        <FeedbackPanel round={selectedRound} />
-                                    )
+                                        <Paper variant="outlined" sx={{ p: 3, borderRadius: 3 }}>
+                                            <Stack spacing={1}>
+                                                <Typography fontWeight={800}>Generating interview feedback… {convFeedbackProgress ? `${Math.round(convFeedbackProgress)}%` : ""}</Typography>
+                                                <LinearProgress variant={convFeedbackProgress ? "determinate" : "indeterminate"} value={convFeedbackProgress || 0} />
+                                            </Stack>
+                                        </Paper>
+                                    ) : <FeedbackPanel round={selectedRound} />
+                                ) : isSystemDesign ? (
+                                    <SystemDesignDiscussionPanel
+                                        problem={convViewState.current?.text || ""}
+                                        transcript={convAnswer}
+                                        onTranscriptChange={setConvAnswer}
+                                        diagramData={systemDesignDiagram}
+                                        onDiagramChange={updateSystemDesignDiagram}
+                                        target="conv"
+                                        checkpointEndpoint={`/questions/${selectedRound._id}/system-design/checkpoint`}
+                                        supportsSTT={supportsSTT}
+                                        supportsTTS={supportsTTS}
+                                        listening={listening}
+                                        listeningTarget={listeningTarget}
+                                        interimText={interimText}
+                                        micLevel={micLevel}
+                                        micPermission={micPermission}
+                                        micSessionActive={micSessionActive}
+                                        handsFreePaused={handsFreePaused}
+                                        startHandsFree={startHandsFree}
+                                        pauseHandsFree={pauseHandsFree}
+                                        resumeHandsFree={resumeHandsFree}
+                                        stopHandsFree={stopHandsFree}
+                                        speakNow={speakNow}
+                                        onEnd={endSystemDesignDiscussion}
+                                        ending={systemDesignEnding || convRoundSubmitting}
+                                        savedLabel={convSavedAt ? "Transcript recovery is active" : "Transcript and whiteboard recover automatically"}
+                                    />
                                 ) : (
                                     <>
                                         <ConversationalPanel
@@ -339,14 +495,9 @@ const InterviewPage = () => {
                                             {...voiceProps}
                                         />
                                         {convRoundSubmitting && (
-                                            <Stack spacing={0.5} sx={{ mt: 1 }}>
-                                                <Typography>
-                                                    Generating feedback… {convFeedbackProgress ? `${Math.round(convFeedbackProgress)}%` : ""}
-                                                </Typography>
-                                                <LinearProgress
-                                                    variant={convFeedbackProgress ? "determinate" : "indeterminate"}
-                                                    value={convFeedbackProgress || 0}
-                                                />
+                                            <Stack spacing={.5} sx={{ mt: 1 }}>
+                                                <Typography variant="body2">Generating feedback… {convFeedbackProgress ? `${Math.round(convFeedbackProgress)}%` : ""}</Typography>
+                                                <LinearProgress variant={convFeedbackProgress ? "determinate" : "indeterminate"} value={convFeedbackProgress || 0} />
                                             </Stack>
                                         )}
                                     </>
@@ -354,18 +505,13 @@ const InterviewPage = () => {
                             ) : (
                                 selectedRound.status === "completed" ? (
                                     hasAnsweredMissingFeedback ? (
-                                        <Stack spacing={1} sx={{ py: 2 }}>
-                                            <Typography>
-                                                Generating feedback… {oaFeedbackProgress ? `${Math.round(oaFeedbackProgress)}%` : ""}
-                                            </Typography>
-                                            <LinearProgress
-                                                variant={oaFeedbackProgress ? "determinate" : "indeterminate"}
-                                                value={oaFeedbackProgress || 0}
-                                            />
-                                        </Stack>
-                                    ) : (
-                                        <FeedbackPanel round={selectedRound} />
-                                    )
+                                        <Paper variant="outlined" sx={{ p: 3, borderRadius: 3 }}>
+                                            <Stack spacing={1}>
+                                                <Typography fontWeight={800}>Generating interview feedback… {oaFeedbackProgress ? `${Math.round(oaFeedbackProgress)}%` : ""}</Typography>
+                                                <LinearProgress variant={oaFeedbackProgress ? "determinate" : "indeterminate"} value={oaFeedbackProgress || 0} />
+                                            </Stack>
+                                        </Paper>
+                                    ) : <FeedbackPanel round={selectedRound} />
                                 ) : (
                                     <>
                                         <OAForm
@@ -375,7 +521,11 @@ const InterviewPage = () => {
                                             codingEnabled={oaCodingEnabled}
                                             onCodingModeChange={changeOaCodingMode}
                                             codeDraftPrefix={`${interviewId}:${selectedRound._id}`}
-                                            onSpokenChange={(index, value) => setOaSpokenAnswers((current) => { const next = [...current]; next[index] = value; return next; })}
+                                            onSpokenChange={(index, value) => setOaSpokenAnswers((current) => {
+                                                const next = [...current];
+                                                next[index] = value;
+                                                return next;
+                                            })}
                                             onChange={handleOAChange}
                                             onSubmit={submitOaAnswers}
                                             onSkip={handleSkipRound}
@@ -383,30 +533,24 @@ const InterviewPage = () => {
                                             {...voiceProps}
                                         />
                                         {oaSubmitting && (
-                                            <Stack spacing={0.5} sx={{ mt: 1 }}>
-                                                <Typography>
-                                                    Generating feedback… {oaFeedbackProgress ? `${Math.round(oaFeedbackProgress)}%` : ""}
-                                                </Typography>
-                                                <LinearProgress
-                                                    variant={oaFeedbackProgress ? "determinate" : "indeterminate"}
-                                                    value={oaFeedbackProgress || 0}
-                                                />
+                                            <Stack spacing={.5} sx={{ mt: 1 }}>
+                                                <Typography variant="body2">Generating feedback… {oaFeedbackProgress ? `${Math.round(oaFeedbackProgress)}%` : ""}</Typography>
+                                                <LinearProgress variant={oaFeedbackProgress ? "determinate" : "indeterminate"} value={oaFeedbackProgress || 0} />
                                             </Stack>
                                         )}
                                     </>
                                 )
                             )}
-                        </>
-                    )}
+                        </Box>
+                    </Box>
                 </Box>
             </Box>
 
-
-            {/* Resume dialog */}
             <Dialog
                 open={resumeOpen}
                 onClose={() => setResumeOpen(false)}
-                fullWidth maxWidth="xl"
+                fullWidth
+                maxWidth="xl"
                 PaperProps={{ sx: { height: "92vh" } }}
                 aria-labelledby="resume-dialog-title"
             >

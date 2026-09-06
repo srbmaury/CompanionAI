@@ -1,42 +1,62 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useContext, useEffect, useRef } from "react";
 import api from "../api/axios";
+import { AuthContext } from "../context/AuthContext";
+import { chooseInterviewerGender, interviewerPitchForGender, selectInterviewerVoice } from "../utils/interviewerVoice";
 
 const SpeechRecognitionCtor =
     typeof window !== "undefined"
         ? (window.SpeechRecognition || window.webkitSpeechRecognition || null)
         : null;
 
+const HANDS_FREE_SEGMENT_MS = 20000;
+
 export const composeLiveTranscript = (finalText, interimText) => `${finalText || ""} ${interimText || ""}`.trim();
 
 /**
- * Dual-layer STT: MediaRecorder → Whisper on stop (high quality),
- * with Web Speech API running in parallel for live interim transcript display.
- * On stop, Whisper result wins; if Whisper fails, accumulated Web Speech finals are used.
+ * Voice input supports two modes:
+ * 1. One-shot recording for written/OA answers.
+ * 2. A hands-free interview session that keeps the microphone stream alive for
+ *    the whole round while pausing transcription during interviewer speech.
+ *
+ * Browser speech recognition supplies low-latency live text when available.
+ * MediaRecorder + server transcription is used as the fallback layer when the
+ * browser did not already produce usable speech for that segment.
  */
 export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcribe", transcribeHeaders = {}, enableServerTranscription = true, skipAuthRedirect = false }) => {
+    const { user } = useContext(AuthContext);
     const [listening, setListening] = useState(false);
     const [listeningTarget, setListeningTarget] = useState(null);
-    const [interimText, setInterimText] = useState("");   // live preview while speaking
+    const [interimText, setInterimText] = useState("");
     const [micLevel, setMicLevel] = useState(0);
     const [micPermission, setMicPermission] = useState("unknown");
     const [inputDevices, setInputDevices] = useState([]);
     const [selectedDeviceId, setSelectedDeviceId] = useState("default");
+    const [micSessionActive, setMicSessionActive] = useState(false);
+    const [handsFreePaused, setHandsFreePaused] = useState(false);
 
-    const mediaRecorderRef = useRef(null);  // MediaRecorder for Whisper audio
-    const liveRecRef = useRef(null);        // Web Speech running in parallel for live preview
-    const wsFinalsRef = useRef("");         // accumulated finals from parallel Web Speech
-    const wsInterimRef = useRef("");        // latest interim phrase, committed when the user stops
+    const mediaRecorderRef = useRef(null);
+    const liveRecRef = useRef(null);
+    const liveRecRestartTimerRef = useRef(null);
+    const recorderRotateTimerRef = useRef(null);
+    const recorderStopReasonRef = useRef("manual");
+    const sessionStreamRef = useRef(null);
+    const handsFreeRef = useRef(false);
+    const handsFreePausedRef = useRef(false);
+    const activeTargetRef = useRef(null);
+    const wsFinalsRef = useRef("");
+    const wsInterimRef = useRef("");
     const liveTranscriptCommittedRef = useRef(false);
     const audioCtxRef = useRef(null);
     const analyserRef = useRef(null);
     const rafRef = useRef(null);
+    const interviewerGenderRef = useRef(null);
+    const interviewerVoiceRef = useRef(null);
     const onTranscriptRef = useRef(onTranscript);
     useEffect(() => { onTranscriptRef.current = onTranscript; }, [onTranscript]);
 
     const supportsTTS = typeof window !== "undefined" && "speechSynthesis" in window;
     const supportsSTT = enableServerTranscription || Boolean(SpeechRecognitionCtor);
 
-    // Mic permissions + device enumeration
     useEffect(() => {
         const updateDevices = async () => {
             try {
@@ -60,7 +80,12 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
         };
     }, []);
 
+    const constraintsForDevice = useCallback(() => selectedDeviceId && selectedDeviceId !== "default"
+        ? { audio: { deviceId: { exact: selectedDeviceId } }, video: false }
+        : { audio: true, video: false }, [selectedDeviceId]);
+
     const startMeter = useCallback((stream) => {
+        if (!stream || audioCtxRef.current) return;
         try {
             const AudioCtx = window.AudioContext || window.webkitAudioContext;
             if (!AudioCtx) return;
@@ -99,30 +124,42 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
         setMicLevel(0);
     }, []);
 
-    const stopLiveRec = useCallback(() => {
-        try { liveRecRef.current?.stop(); } catch { void 0; }
-        liveRecRef.current = null;
-        setInterimText("");
+    const clearRotateTimer = useCallback(() => {
+        if (recorderRotateTimerRef.current) clearTimeout(recorderRotateTimerRef.current);
+        recorderRotateTimerRef.current = null;
     }, []);
 
-    const commitLiveTranscript = useCallback((target) => {
+    const clearLiveRestartTimer = useCallback(() => {
+        if (liveRecRestartTimerRef.current) clearTimeout(liveRecRestartTimerRef.current);
+        liveRecRestartTimerRef.current = null;
+    }, []);
+
+    const commitLiveTranscript = useCallback((target = activeTargetRef.current) => {
         const text = composeLiveTranscript(wsFinalsRef.current, wsInterimRef.current);
-        if (!text || liveTranscriptCommittedRef.current) return false;
+        if (!text) return false;
         liveTranscriptCommittedRef.current = true;
+        wsFinalsRef.current = "";
+        wsInterimRef.current = "";
+        setInterimText("");
         onTranscriptRef.current?.(target, text);
         return true;
     }, []);
 
-    // Pure Web Speech fallback (used when getUserMedia is unavailable entirely)
-    const fallbackSTT = useCallback(async (target) => {
+    const stopLiveRec = useCallback((expected = true) => {
+        clearLiveRestartTimer();
+        const rec = liveRecRef.current;
+        if (rec) rec.__expectedStop = expected;
+        try { rec?.stop(); } catch { void 0; }
+        liveRecRef.current = null;
+        setInterimText("");
+    }, [clearLiveRestartTimer]);
+
+    const startLiveRecognition = useCallback((target, restartable = false) => {
+        if (!SpeechRecognitionCtor) return false;
         try {
-            wsFinalsRef.current = "";
-            wsInterimRef.current = "";
-            liveTranscriptCommittedRef.current = false;
-            const Rec = SpeechRecognitionCtor;
-            if (!Rec) throw new Error("Web Speech not available");
-            if (liveRecRef.current) { liveRecRef.current.stop?.(); liveRecRef.current = null; }
-            const rec = new Rec();
+            stopLiveRec(true);
+            const rec = new SpeechRecognitionCtor();
+            rec.__expectedStop = false;
             rec.lang = "en-US";
             rec.continuous = true;
             rec.interimResults = true;
@@ -130,161 +167,340 @@ export const useVoiceInput = ({ onTranscript, transcribeEndpoint = "/stt/transcr
                 let finals = "";
                 let interim = "";
                 for (let i = event.resultIndex; i < event.results.length; i++) {
-                    const t = event.results[i][0].transcript;
-                    if (event.results[i].isFinal) finals += t + " ";
-                    else interim += t;
+                    const text = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) finals += `${text} `;
+                    else interim += text;
+                }
+                if (finals.trim()) {
+                    wsFinalsRef.current = `${wsFinalsRef.current} ${finals}`.trim();
+                    liveTranscriptCommittedRef.current = true;
+                    onTranscriptRef.current?.(activeTargetRef.current || target, finals.trim());
+                    wsFinalsRef.current = "";
                 }
                 wsInterimRef.current = interim;
-                if (finals.trim()) onTranscriptRef.current?.(target, finals.trim());
                 setInterimText(interim);
             };
-            rec.onend = () => { setListening(false); setListeningTarget(null); setInterimText(""); };
-            rec.onerror = () => { setListening(false); setListeningTarget(null); setInterimText(""); };
+            rec.onerror = (event) => {
+                if (["not-allowed", "service-not-allowed", "audio-capture"].includes(event?.error)) setMicPermission("denied");
+            };
+            rec.onend = () => {
+                setInterimText("");
+                const expected = Boolean(rec.__expectedStop);
+                if (restartable && !expected && handsFreeRef.current && !handsFreePausedRef.current) {
+                    clearLiveRestartTimer();
+                    liveRecRestartTimerRef.current = setTimeout(() => {
+                        try {
+                            rec.__expectedStop = false;
+                            rec.start();
+                            liveRecRef.current = rec;
+                        } catch { void 0; }
+                    }, 180);
+                }
+            };
             rec.start();
             liveRecRef.current = rec;
-            setListening(true);
-            setListeningTarget(target);
-        } catch (err) {
-            console.debug("Web Speech start error (ignored)", err);
-            setListening(false);
-            setListeningTarget(null);
+            return true;
+        } catch {
+            return false;
         }
-    }, []);
+    }, [clearLiveRestartTimer, stopLiveRec]);
 
-    const startListening = useCallback(async (target) => {
-        if (!supportsSTT) return;
-        if (!enableServerTranscription && SpeechRecognitionCtor) return fallbackSTT(target);
+    const transcribeBlob = useCallback(async (blob, target, browserCommitted) => {
+        if (browserCommitted || !enableServerTranscription || !blob || blob.size <= 1000) return "";
         try {
-            const constraints = selectedDeviceId && selectedDeviceId !== "default"
-                ? { audio: { deviceId: { exact: selectedDeviceId } }, video: false }
-                : { audio: true, video: false };
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            const form = new FormData();
+            form.append("audio", blob, "audio.webm");
+            const resp = await api.post(transcribeEndpoint, form, {
+                skipAuthRedirect,
+                headers: { "Content-Type": "multipart/form-data", ...transcribeHeaders },
+            });
+            const finalText = (resp?.data?.text || "").trim();
+            if (finalText) onTranscriptRef.current?.(target, finalText);
+            return finalText;
+        } catch (error) {
+            console.warn("Server transcription failed, using browser transcript when available", error);
+            return "";
+        }
+    }, [enableServerTranscription, skipAuthRedirect, transcribeEndpoint, transcribeHeaders]);
 
-            // MediaRecorder for Whisper (collects audio chunks)
-            let mr;
-            try {
-                mr = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
-            } catch {
-                mr = new MediaRecorder(stream);
+    const startRecorderSegment = useCallback((stream, target, rotate = false) => {
+        if (!stream || typeof MediaRecorder === "undefined") return false;
+        let recorder;
+        try { recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" }); }
+        catch { try { recorder = new MediaRecorder(stream); } catch { return false; } }
+        clearRotateTimer();
+        const chunks = [];
+        wsFinalsRef.current = "";
+        wsInterimRef.current = "";
+        liveTranscriptCommittedRef.current = false;
+        recorderStopReasonRef.current = "manual";
+        mediaRecorderRef.current = recorder;
+        recorder.ondataavailable = (event) => { if (event.data?.size > 0) chunks.push(event.data); };
+        recorder.onstop = async () => {
+            const reason = recorderStopReasonRef.current || "manual";
+            const browserCommitted = liveTranscriptCommittedRef.current;
+            await new Promise((resolve) => setTimeout(resolve, 120));
+            const blob = new Blob(chunks, { type: "audio/webm" });
+            const finalText = await transcribeBlob(blob, activeTargetRef.current || target, browserCommitted);
+            if (!browserCommitted && !finalText) {
+                const fallbackText = composeLiveTranscript(wsFinalsRef.current, wsInterimRef.current);
+                if (fallbackText) onTranscriptRef.current?.(activeTargetRef.current || target, fallbackText);
             }
-            const chunks = [];
+            if (reason === "rotate" && handsFreeRef.current && !handsFreePausedRef.current && sessionStreamRef.current) {
+                startRecorderSegment(sessionStreamRef.current, activeTargetRef.current || target, true);
+                return;
+            }
+            mediaRecorderRef.current = null;
+            setListening(false);
+            if (!handsFreeRef.current) {
+                setListeningTarget(null);
+                try { stream.getTracks().forEach((track) => track.stop()); } catch { void 0; }
+                stopMeter();
+            }
+        };
+        recorder.start(250);
+        if (rotate) {
+            recorderRotateTimerRef.current = setTimeout(() => {
+                if (mediaRecorderRef.current === recorder && recorder.state !== "inactive" && handsFreeRef.current && !handsFreePausedRef.current) {
+                    recorderStopReasonRef.current = "rotate";
+                    try { recorder.stop(); } catch { void 0; }
+                }
+            }, HANDS_FREE_SEGMENT_MS);
+        }
+        return true;
+    }, [clearRotateTimer, stopMeter, transcribeBlob]);
+
+    const stopRecorder = useCallback((reason = "manual") => {
+        clearRotateTimer();
+        const recorder = mediaRecorderRef.current;
+        if (recorder && recorder.state !== "inactive") {
+            recorderStopReasonRef.current = reason;
+            try { recorder.stop(); } catch { void 0; }
+        } else mediaRecorderRef.current = null;
+    }, [clearRotateTimer]);
+
+    const fallbackSTT = useCallback(async (target, { handsFree = false } = {}) => {
+        try {
+            activeTargetRef.current = target;
             wsFinalsRef.current = "";
             wsInterimRef.current = "";
             liveTranscriptCommittedRef.current = false;
-            mediaRecorderRef.current = mr;
-
-            // Parallel Web Speech for live interim transcript display
-            if (SpeechRecognitionCtor) {
-                try {
-                    const rec = new SpeechRecognitionCtor();
-                    rec.lang = "en-US";
-                    rec.continuous = true;
-                    rec.interimResults = true;
-                    rec.onresult = (event) => {
-                        let finals = "";
-                        let interim = "";
-                        for (let i = event.resultIndex; i < event.results.length; i++) {
-                            const t = event.results[i][0].transcript;
-                            if (event.results[i].isFinal) finals += t + " ";
-                            else interim += t;
-                        }
-                        if (finals.trim()) {
-                            liveTranscriptCommittedRef.current = true;
-                            onTranscriptRef.current?.(target, finals.trim());
-                        }
-                        wsInterimRef.current = interim;
-                        setInterimText(interim);
-                    };
-                    rec.onend = () => setInterimText("");
-                    rec.start();
-                    liveRecRef.current = rec;
-                } catch { /* Web Speech unavailable — no live preview, Whisper still works */ }
-            }
-
-            mr.ondataavailable = (e) => { if (e.data?.size > 0) chunks.push(e.data); };
-            mr.onstop = async () => {
-                stopLiveRec();
-                // Brief wait to allow the last chunk to flush
-                await new Promise((r) => setTimeout(r, 350));
-                try {
-                    const blob = new Blob(chunks, { type: "audio/webm" });
-                    let finalText = "";
-
-                    if (blob.size > 1000) {
-                        try {
-                            const form = new FormData();
-                            form.append("audio", blob, "audio.webm");
-                            const resp = await api.post(transcribeEndpoint, form, { skipAuthRedirect, headers: { "Content-Type": "multipart/form-data", ...transcribeHeaders } });
-                            finalText = (resp?.data?.text || "").trim();
-                        } catch (e) {
-                            console.warn("Whisper transcribe failed, using Web Speech fallback", e);
-                        }
-                    }
-
-                    // The stop action immediately commits the browser transcript. Use
-                    // Whisper only when the browser had no usable speech result.
-                    if (!liveTranscriptCommittedRef.current) {
-                        if (!finalText) finalText = composeLiveTranscript(wsFinalsRef.current, wsInterimRef.current);
-                        if (finalText) onTranscriptRef.current?.(target, finalText);
-                    }
-                } finally {
-                    setListening(false);
-                    setListeningTarget(null);
-                    try { stopMeter(); } catch { void 0; }
-                    try { stream.getTracks().forEach((t) => t.stop()); } catch { void 0; }
-                }
-            };
-
-            mr.start(250); // chunk every 250ms like OpportunityAgent
+            const started = startLiveRecognition(target, handsFree);
+            if (!started) throw new Error("Web Speech not available");
             setListening(true);
             setListeningTarget(target);
-            startMeter(stream);
-        } catch (err) {
-            console.debug("getUserMedia failed, falling back to Web Speech", err);
-            await fallbackSTT(target);
+            if (handsFree) {
+                handsFreeRef.current = true;
+                handsFreePausedRef.current = false;
+                setHandsFreePaused(false);
+                setMicSessionActive(true);
+            }
+        } catch (error) {
+            console.debug("Web Speech start error", error);
+            setListening(false);
+            setListeningTarget(null);
+            if (handsFree) setMicSessionActive(false);
         }
-    }, [enableServerTranscription, fallbackSTT, selectedDeviceId, skipAuthRedirect, startMeter, stopMeter, stopLiveRec, supportsSTT, transcribeEndpoint, transcribeHeaders]);
+    }, [startLiveRecognition]);
 
-    const stopListening = useCallback(() => {
-        commitLiveTranscript(listeningTarget);
-        stopLiveRec();
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-            try { mediaRecorderRef.current.stop(); } catch (e) { console.debug("stop error", e); }
+    const startListening = useCallback(async (target) => {
+        if (!supportsSTT) return;
+        if (handsFreeRef.current) {
+            activeTargetRef.current = target;
+            setListeningTarget(target);
+            if (handsFreePausedRef.current) {
+                handsFreePausedRef.current = false;
+                setHandsFreePaused(false);
+                if (sessionStreamRef.current) {
+                    startLiveRecognition(target, true);
+                    startRecorderSegment(sessionStreamRef.current, target, true);
+                    setListening(true);
+                } else await fallbackSTT(target, { handsFree: true });
+            }
+            return;
         }
-        mediaRecorderRef.current = null;
+        if (!enableServerTranscription && SpeechRecognitionCtor) return fallbackSTT(target);
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia(constraintsForDevice());
+            activeTargetRef.current = target;
+            const recorderStarted = startRecorderSegment(stream, target, false);
+            if (!recorderStarted && SpeechRecognitionCtor) {
+                stream.getTracks().forEach((track) => track.stop());
+                return fallbackSTT(target);
+            }
+            startLiveRecognition(target, false);
+            setListening(true);
+            setListeningTarget(target);
+            setMicPermission("granted");
+            startMeter(stream);
+        } catch (error) {
+            console.debug("getUserMedia failed, falling back to Web Speech", error);
+            if (SpeechRecognitionCtor) await fallbackSTT(target);
+            else setMicPermission("denied");
+        }
+    }, [constraintsForDevice, enableServerTranscription, fallbackSTT, startLiveRecognition, startMeter, startRecorderSegment, supportsSTT]);
+
+    const startHandsFree = useCallback(async (target) => {
+        if (!supportsSTT || !target) return false;
+        activeTargetRef.current = target;
+        if (handsFreeRef.current && micSessionActive) {
+            setListeningTarget(target);
+            if (handsFreePausedRef.current) {
+                handsFreePausedRef.current = false;
+                setHandsFreePaused(false);
+                if (sessionStreamRef.current) {
+                    startLiveRecognition(target, true);
+                    startRecorderSegment(sessionStreamRef.current, target, true);
+                    setListening(true);
+                } else await fallbackSTT(target, { handsFree: true });
+            }
+            return true;
+        }
+
+        handsFreeRef.current = true;
+        handsFreePausedRef.current = false;
+        setHandsFreePaused(false);
+        try {
+            if (!enableServerTranscription && SpeechRecognitionCtor) {
+                await fallbackSTT(target, { handsFree: true });
+                return true;
+            }
+            const stream = await navigator.mediaDevices.getUserMedia(constraintsForDevice());
+            sessionStreamRef.current = stream;
+            setMicPermission("granted");
+            setMicSessionActive(true);
+            setListeningTarget(target);
+            startMeter(stream);
+            startLiveRecognition(target, true);
+            if (!startRecorderSegment(stream, target, true) && !SpeechRecognitionCtor) throw new Error("No supported speech recorder");
+            setListening(true);
+            return true;
+        } catch (error) {
+            console.debug("Hands-free microphone start failed", error);
+            sessionStreamRef.current = null;
+            handsFreeRef.current = false;
+            handsFreePausedRef.current = false;
+            setMicSessionActive(false);
+            setHandsFreePaused(false);
+            if (SpeechRecognitionCtor) {
+                await fallbackSTT(target, { handsFree: true });
+                return true;
+            }
+            setMicPermission("denied");
+            return false;
+        }
+    }, [constraintsForDevice, enableServerTranscription, fallbackSTT, micSessionActive, startLiveRecognition, startMeter, startRecorderSegment, supportsSTT]);
+
+    const pauseHandsFree = useCallback(async () => {
+        if (!handsFreeRef.current) return;
+        handsFreePausedRef.current = true;
+        setHandsFreePaused(true);
+        commitLiveTranscript(activeTargetRef.current);
+        stopLiveRec(true);
+        stopRecorder("pause");
+        setListening(false);
+        setInterimText("");
+    }, [commitLiveTranscript, stopLiveRec, stopRecorder]);
+
+    const resumeHandsFree = useCallback(async (target = activeTargetRef.current) => {
+        if (!handsFreeRef.current || !target || !supportsSTT) return false;
+        activeTargetRef.current = target;
+        setListeningTarget(target);
+        if (!handsFreePausedRef.current && listening) return true;
+        handsFreePausedRef.current = false;
+        setHandsFreePaused(false);
+        if (sessionStreamRef.current) {
+            startLiveRecognition(target, true);
+            startRecorderSegment(sessionStreamRef.current, target, true);
+            setListening(true);
+            return true;
+        }
+        await fallbackSTT(target, { handsFree: true });
+        return true;
+    }, [fallbackSTT, listening, startLiveRecognition, startRecorderSegment, supportsSTT]);
+
+    const stopHandsFree = useCallback(() => {
+        if (!handsFreeRef.current && !sessionStreamRef.current) return;
+        handsFreeRef.current = false;
+        handsFreePausedRef.current = true;
+        setHandsFreePaused(false);
+        commitLiveTranscript(activeTargetRef.current);
+        stopLiveRec(true);
+        stopRecorder("shutdown");
+        try { sessionStreamRef.current?.getTracks?.().forEach((track) => track.stop()); } catch { void 0; }
+        sessionStreamRef.current = null;
+        activeTargetRef.current = null;
+        setMicSessionActive(false);
         setListening(false);
         setListeningTarget(null);
-        try { stopMeter(); } catch { void 0; }
-    }, [commitLiveTranscript, listeningTarget, stopMeter, stopLiveRec]);
+        setInterimText("");
+        stopMeter();
+    }, [commitLiveTranscript, stopLiveRec, stopMeter, stopRecorder]);
+
+    const stopListening = useCallback(() => {
+        if (handsFreeRef.current) { pauseHandsFree(); return; }
+        commitLiveTranscript(listeningTarget || activeTargetRef.current);
+        stopLiveRec(true);
+        stopRecorder("manual");
+        setListening(false);
+        setListeningTarget(null);
+        stopMeter();
+    }, [commitLiveTranscript, listeningTarget, pauseHandsFree, stopLiveRec, stopMeter, stopRecorder]);
 
     const retargetListening = useCallback((target) => {
-        if (listening && target) setListeningTarget(target);
+        if (!target) return;
+        activeTargetRef.current = target;
+        if (listening || handsFreeRef.current) setListeningTarget(target);
     }, [listening]);
 
-    const speakNow = useCallback((text) => {
+    const speakNow = useCallback((text) => new Promise((resolve) => {
         try {
-            if (!supportsTTS || !text) return;
+            if (!supportsTTS || !text) { resolve(false); return; }
             window.speechSynthesis.cancel();
-            const u = new SpeechSynthesisUtterance(text);
-            u.rate = 0.95;
-            u.pitch = 1;
-            // Prefer a natural-sounding English voice if available
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.rate = 0.95;
+            const preference = ["male", "female"].includes(user?.interviewerVoicePreference)
+                ? user.interviewerVoicePreference
+                : "random";
+            const gender = interviewerGenderRef.current || (preference === "random" ? chooseInterviewerGender() : preference);
+            interviewerGenderRef.current = gender;
+            utterance.pitch = interviewerPitchForGender(gender);
             const voices = window.speechSynthesis.getVoices();
-            const preferred =
-                voices.find((v) => v.name.includes("Google") && v.lang.startsWith("en")) ||
-                voices.find((v) => v.lang.startsWith("en"));
-            if (preferred) u.voice = preferred;
-            window.speechSynthesis.speak(u);
-        } catch (e) {
-            console.warn("speakNow error", e);
+            let preferred = interviewerVoiceRef.current;
+            if (!preferred || !voices.some((voice) => voice.voiceURI === preferred.voiceURI)) {
+                preferred = selectInterviewerVoice(voices, gender);
+                interviewerVoiceRef.current = preferred;
+            }
+            if (preferred) utterance.voice = preferred;
+            let settled = false;
+            const finish = (value) => { if (!settled) { settled = true; resolve(value); } };
+            utterance.onend = () => finish(true);
+            utterance.onerror = () => finish(false);
+            window.speechSynthesis.speak(utterance);
+        } catch (error) {
+            console.warn("speakNow error", error);
+            resolve(false);
         }
-    }, [supportsTTS]);
+    }), [supportsTTS, user?.interviewerVoicePreference]);
+
+    useEffect(() => () => {
+        handsFreeRef.current = false;
+        handsFreePausedRef.current = true;
+        clearRotateTimer();
+        clearLiveRestartTimer();
+        try { if (liveRecRef.current) liveRecRef.current.__expectedStop = true; liveRecRef.current?.stop?.(); } catch { void 0; }
+        try { mediaRecorderRef.current?.stop?.(); } catch { void 0; }
+        try { sessionStreamRef.current?.getTracks?.().forEach((track) => track.stop()); } catch { void 0; }
+        try { if (rafRef.current) cancelAnimationFrame(rafRef.current); } catch { void 0; }
+        try { audioCtxRef.current?.close?.(); } catch { void 0; }
+    }, [clearLiveRestartTimer, clearRotateTimer]);
 
     return {
         listening, listeningTarget, interimText,
-        micLevel, micPermission,
+        micLevel, micPermission, micSessionActive, handsFreePaused,
         inputDevices, selectedDeviceId, setSelectedDeviceId,
         supportsSTT, supportsTTS,
         startListening, stopListening, retargetListening, speakNow,
+        startHandsFree, pauseHandsFree, resumeHandsFree, stopHandsFree,
     };
 };

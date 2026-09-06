@@ -97,9 +97,12 @@ export const codeExecLimiter = rateLimit(await withStore({
     ...commonOptions,
 }));
 
+// Hands-free interviews rotate server-STT fallback segments while the mic
+// stream stays open. Browser speech recognition suppresses most of these
+// requests, but browsers without it need enough headroom for a long round.
 export const sttLimiter = rateLimit(await withStore({
     windowMs: 15 * 60 * 1000,
-    max: 30,
+    max: 60,
     message: { message: "Too many transcription requests, please slow down." },
     handler: buildHandler("Too many transcription requests, please slow down."),
     ...commonOptions,

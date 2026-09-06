@@ -10,6 +10,7 @@ const clamp = (value, min, max, fallback = min) => {
 const clean = (value, max = 300) => sanitizeText(value, max);
 const keyOf = (value) => clean(value, 120).toLowerCase().replace(/[^a-z0-9+#.]+/g, " ").trim();
 const MAX_RESUME_CLAIM_BASE_QUESTIONS = 2;
+const isSystemDesignRound = (round = {}) => /system\s*design|architecture/i.test(`${round?.name || round?.roundName || ""} ${round?.description || round?.roundDescription || ""}`);
 
 const uniqueStrings = (values, max = 8, length = 120) => {
     const out = [];
@@ -130,14 +131,31 @@ export const initializeAdaptiveInterviewState = async ({
     resumeText = "",
     maxQuestions = 5,
 }) => {
+    const systemDesign = isSystemDesignRound({ name: roundName, description: roundDescription });
     const fallback = fallbackCompetencies({ roundName, roundDescription, skills });
-    const fallbackClaims = extractResumeClaimsFallback(resumeText);
-    const boundedMax = clamp(maxQuestions, 2, 10, 5);
+    const fallbackClaims = systemDesign ? [] : extractResumeClaimsFallback(resumeText);
+    const boundedMax = systemDesign ? 1 : clamp(maxQuestions, 2, 10, 5);
     const safeRole = clean(jobRole, 120);
     const safeJD = clean(jobDescription, 3500);
     const safeRound = clean(roundName, 80);
     const safeRoundDescription = clean(roundDescription, 500);
-    const safeResume = clean(resumeText, 5000);
+    const safeResume = systemDesign ? "" : clean(resumeText, 5000);
+
+    if (systemDesign) {
+        return {
+            enabled: false,
+            minQuestions: 1,
+            maxQuestions: 1,
+            currentDifficulty: 3,
+            questionsAsked: 0,
+            competencies: normalizeCompetencies([], fallback),
+            resumeClaims: [],
+            lastDecision: { action: "continue", difficulty: 3, confidence: 0 },
+            completedReason: "",
+            initializedAt: new Date(),
+            updatedAt: new Date(),
+        };
+    }
 
     let parsed = {};
     try {
@@ -440,7 +458,7 @@ export const buildDeterministicAdaptiveQuestion = ({
 } = {}) => {
     const target = clean(targetCompetency || chooseNextCompetency(state), 80) || "technical depth";
     const level = clamp(difficulty, 1, 5, clamp(state?.currentDifficulty, 1, 5, 3));
-    const claim = clean(sourceClaim, 500);
+    const claim = isSystemDesignRound(round) ? "" : clean(sourceClaim, 500);
     const questionNumber = Math.max(0, Number(state?.questionsAsked) || 0);
     if (claim) {
         const claimEntry = (state?.resumeClaims || []).find((item) => keyOf(item.claim) === keyOf(claim));
@@ -465,10 +483,10 @@ export const buildDeterministicAdaptiveQuestion = ({
     let variants;
     if (/system\s*design|architecture/.test(roundText)) {
         variants = [
-            `For ${target}, what production constraint would most strongly shape your design, and why?`,
-            `For ${target}, which failure mode would you design for first in a production system, and why?`,
-            `For ${target}, what trade-off would become hardest as traffic grows by an order of magnitude?`,
-            `For ${target}, what part of your design would you change first if reliability became the dominant requirement?`,
+            "Design a URL shortening service like Bitly.",
+            "Design a real-time chat system like WhatsApp.",
+            "Design a cloud file storage and sharing service like Google Drive.",
+            "Design a notification service that supports push, email, and SMS.",
         ];
     } else if (/coding|algorithm|dsa|problem solving/.test(roundText)) {
         variants = [
@@ -514,8 +532,41 @@ export const generateNextAdaptiveQuestion = async ({
 }) => {
     const target = clean(targetCompetency || chooseNextCompetency(state), 80);
     const level = clamp(difficulty, 1, 5, clamp(state?.currentDifficulty, 1, 5, 3));
-    const claim = clean(sourceClaim, 500);
+    const systemDesign = isSystemDesignRound(round);
+    const claim = systemDesign ? "" : clean(sourceClaim, 500);
     const exclusions = uniqueStrings(excludeTexts, 20, 220);
+
+    if (systemDesign) {
+        try {
+            const standard = await generateQuestionsForRound({
+                company: "",
+                jobRole: interview?.jobRole || "",
+                jobDescription: interview?.jobDescription || "",
+                resumeText: "",
+                roundName: round?.name || "System Design",
+                roundDescription: round?.description || "Design a production system and defend the key trade-offs.",
+                deliveryMode: "conversational",
+                count: 1,
+                excludeTexts: exclusions,
+                grounding: null,
+            });
+            const item = Array.isArray(standard) ? standard[0] : null;
+            if (item?.text || typeof item === "string") {
+                return {
+                    text: clean(typeof item === "string" ? item : item.text, 500),
+                    tags: uniqueStrings(item?.tags || ["system design"], 6, 60),
+                    competencies: uniqueStrings(["Requirements", "Architecture", "Scalability & Reliability", "Trade-off Reasoning"], 4, 80),
+                    difficulty: level,
+                    sourceType: "planned",
+                    sourceClaim: "",
+                };
+            }
+        } catch {
+            // Use a canonical local design problem below.
+        }
+        return buildDeterministicAdaptiveQuestion({ round, state, targetCompetency: target, difficulty: level, sourceClaim: "" });
+    }
+
     const difficultyGuide = {
         1: "fundamentals and basic explanation",
         2: "basic application with a concrete example",

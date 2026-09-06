@@ -63,6 +63,11 @@ const userSchema = new mongoose.Schema(
             enum: ["javascript", "python", "cpp", "java"],
             default: "cpp",
         },
+        interviewerVoicePreference: {
+            type: String,
+            enum: ["random", "male", "female"],
+            default: "random",
+        },
         practiceGoal: {
             type: String,
             enum: ["get-first-role", "switch-role", "promotion", "confidence", "other"],

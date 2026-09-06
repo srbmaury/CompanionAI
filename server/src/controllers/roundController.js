@@ -2,6 +2,21 @@ import { suggestRounds } from "../utils/interviewRounds.js";
 import Round from "../models/Round.js";
 import Resume from "../models/Resume.js";
 
+const roundText = (round = {}) => `${round.roundName || ""} ${round.description || ""} ${(round.skills || []).join(" ")}`.toLowerCase();
+const suggestedQuestionLimit = (round = {}) => {
+    const text = roundText(round);
+    if (/system\s*design|architecture/.test(text)) return 1;
+    if (round.deliveryMode === "online-assessment") return 2;
+    if (/recruiter|screen|behavior|culture|hiring manager|leadership|ownership|collaboration/.test(text)) return 3;
+    return 4;
+};
+const withRealisticRoundSizes = (result) => {
+    const normalize = (round) => ({ ...round, questionLimit: suggestedQuestionLimit(round) });
+    if (Array.isArray(result)) return result.map(normalize);
+    if (Array.isArray(result?.rounds)) return { ...result, rounds: result.rounds.map(normalize) };
+    return result;
+};
+
 export const getSuggestedRounds = async (req, res, next) => {
     const { company, jobRole, jobDescription, resumeId } = req.body;
     if (!jobRole || !jobDescription) return res.status(400).json({ message: "Job Role and JD are required" });
@@ -14,7 +29,7 @@ export const getSuggestedRounds = async (req, res, next) => {
             resumeText = resume.extractedText || "";
         }
         const result = await suggestRounds(company || "", jobRole, jobDescription, { resumeText });
-        return res.status(200).json(result);
+        return res.status(200).json(withRealisticRoundSizes(result));
     } catch (error) {
         return next(error instanceof Error ? error : new Error(String(error)));
     }

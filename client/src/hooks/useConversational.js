@@ -8,19 +8,21 @@ const pendingFollowUpFor = (item) => {
     const followUps = Array.isArray(item?.followUps) ? item.followUps : [];
     for (let i = followUps.length - 1; i >= 0; i -= 1) {
         const followUp = followUps[i];
-        if (followUp?.question && !followUp?.answer && !followUp?.skipped) {
-            return { question: followUp.question, number: i + 1 };
-        }
+        if (followUp?.question && !followUp?.answer && !followUp?.skipped) return { question: followUp.question, number: i + 1 };
     }
     return null;
 };
 
 const composeFeedbackAnswer = (item) => {
     const original = (item?.answerGiven || "").toString().trim();
+    const liveDiscussion = (Array.isArray(item?.discussionTurns) ? item.discussionTurns : [])
+        .filter((turn) => turn?.text)
+        .map((turn) => `${turn.speaker === "interviewer" ? "Interviewer" : "Candidate"}: ${turn.text}`)
+        .join("\n");
     const followUps = (item?.followUps || [])
         .filter((followUp) => followUp?.question && followUp?.answer && !followUp?.skipped)
         .map((followUp, index) => `Follow-up ${index + 1}: ${followUp.question}\nFollow-up answer ${index + 1}: ${followUp.answer}`);
-    return [original, ...followUps].filter(Boolean).join("\n\n").trim();
+    return [liveDiscussion ? `Live interviewer discussion:\n${liveDiscussion}` : original, ...followUps].filter(Boolean).join("\n\n").trim();
 };
 
 export const useConversational = ({
@@ -64,13 +66,22 @@ export const useConversational = ({
     const refreshInterviewAndRound = useCallback(async () => {
         const { data } = await api.get(`/interviews/${interviewId}`);
         setInterview(data);
-        const updated = data.rounds?.find((entry) => entry.round?._id === selectedRound?._id)?.round;
+        const index = data.rounds?.findIndex((entry) => entry.round?._id === selectedRound?._id) ?? -1;
+        const updated = index >= 0 ? data.rounds[index]?.round : null;
         if (updated) {
             selectRound(updated);
             syncConvStateFromRound(updated);
         }
-        return updated;
+        return { updated, interview: data, index };
     }, [interviewId, selectedRound?._id, selectRound, setInterview, syncConvStateFromRound]);
+
+    const advancePastCompletedRound = useCallback((snapshot) => {
+        if (!snapshot?.interview || snapshot.index < 0) return false;
+        const nextRound = snapshot.interview.rounds?.[snapshot.index + 1]?.round;
+        if (!nextRound) return false;
+        selectRound(nextRound);
+        return true;
+    }, [selectRound]);
 
     useEffect(() => {
         if (!selectedRound || !isConversational) return;
@@ -99,20 +110,12 @@ export const useConversational = ({
         return { ...convState, done: selectedRound.status === "completed" || convState.done };
     }, [convState, selectedRound]);
 
-    const settleFeedbackJob = useCallback(async (jobId) => {
+    const settleFeedbackJob = useCallback((jobId) => {
         if (!jobId) return;
-        setConvRoundSubmitting(true);
-        setConvFeedbackProgress(0);
-        try {
-            await pollJobStatus("bulk-feedback", jobId, setConvFeedbackProgress);
-        } catch (error) {
-            console.error("background feedback failed", error);
-            showToast("warning", "Your round was saved, but feedback could not be generated yet.");
-        } finally {
-            setConvRoundSubmitting(false);
-            setConvFeedbackProgress(0);
-        }
-    }, [showToast]);
+        // Feedback is generated quietly. Showing its progress during later rounds
+        // would reveal evaluation mechanics and coach the candidate mid-interview.
+        pollJobStatus("bulk-feedback", jobId, () => {}).catch((error) => console.debug("background feedback pending", error?.message || error));
+    }, []);
 
     const handleSubmitAnswer = useCallback(async (answer) => {
         if (!selectedRound || !isConversational || pendingFollowUp) return;
@@ -124,16 +127,19 @@ export const useConversational = ({
             const { data } = await api.post(`/questions/${selectedRound._id}/answer`, { index: currentIndex, answer });
             setConvAnswer("");
             if (data?.followUp) setPendingFollowUp({ question: data.followUp, number: data.followUpNumber || 1, qIndex: currentIndex });
-            if (data?.feedbackJobId) await settleFeedbackJob(data.feedbackJobId);
-            await refreshInterviewAndRound();
-            if (data?.done) trackEvent("round_completed");
+            if (data?.feedbackJobId) settleFeedbackJob(data.feedbackJobId);
+            const snapshot = await refreshInterviewAndRound();
+            if (data?.done) {
+                trackEvent("round_completed");
+                if (advancePastCompletedRound(snapshot)) showToast("success", `Round complete. Next: ${snapshot.interview.rounds[snapshot.index + 1].round.name}.`);
+            }
         } catch (error) {
             console.error("answer submit error", error);
             showToast("error", error?.response?.data?.message || "Failed to save your answer.");
         } finally {
             setConvSubmitting(false);
         }
-    }, [selectedRound, isConversational, pendingFollowUp, convState.index, interviewId, refreshInterviewAndRound, settleFeedbackJob, showToast]);
+    }, [selectedRound, isConversational, pendingFollowUp, convState.index, interviewId, refreshInterviewAndRound, settleFeedbackJob, showToast, advancePastCompletedRound]);
 
     const handleFollowUpDone = useCallback(async (followUpAnswer = "") => {
         if (!pendingFollowUp || !selectedRound) return;
@@ -147,21 +153,21 @@ export const useConversational = ({
                 skip: !answer,
             });
             setConvAnswer("");
-            if (data?.followUp) {
-                setPendingFollowUp({ question: data.followUp, number: data.followUpNumber || pendingFollowUp.number + 1, qIndex: pendingFollowUp.qIndex });
-            } else {
-                setPendingFollowUp(null);
+            if (data?.followUp) setPendingFollowUp({ question: data.followUp, number: data.followUpNumber || pendingFollowUp.number + 1, qIndex: pendingFollowUp.qIndex });
+            else setPendingFollowUp(null);
+            if (data?.feedbackJobId) settleFeedbackJob(data.feedbackJobId);
+            const snapshot = await refreshInterviewAndRound();
+            if (data?.done) {
+                trackEvent("round_completed");
+                if (advancePastCompletedRound(snapshot)) showToast("success", `Round complete. Next: ${snapshot.interview.rounds[snapshot.index + 1].round.name}.`);
             }
-            if (data?.feedbackJobId) await settleFeedbackJob(data.feedbackJobId);
-            await refreshInterviewAndRound();
-            if (data?.done) trackEvent("round_completed");
         } catch (error) {
             console.error("follow-up submit error", error);
             showToast("warning", error?.response?.data?.message || "Follow-up answer could not be saved.");
         } finally {
             setConvSubmitting(false);
         }
-    }, [pendingFollowUp, selectedRound, interviewId, refreshInterviewAndRound, settleFeedbackJob, showToast]);
+    }, [pendingFollowUp, selectedRound, interviewId, refreshInterviewAndRound, settleFeedbackJob, showToast, advancePastCompletedRound]);
 
     const handleClarify = useCallback(async (message) => {
         if (!selectedRound || !isConversational) return;
@@ -184,33 +190,28 @@ export const useConversational = ({
                 const { data } = await api.get(`/interviews/${interviewId}`);
                 latest = data;
                 setInterview(data);
-            } catch { void 0; }
+            } catch { /* continue with local round */ }
             const roundForFeedback = latest?.rounds?.find((entry) => entry.round?._id === selectedRound._id)?.round || selectedRound;
             try {
-                setConvFeedbackProgress(0);
                 const answered = (roundForFeedback.questions || [])
                     .map((item, index) => ({ index, questionId: item.question?._id, answer: composeFeedbackAnswer(item) }))
                     .filter((item) => item.questionId && item.answer);
                 if (answered.length > 0) {
                     const { data: job } = await api.post(`/jobs/bulk-feedback`, { roundId: selectedRound._id, items: answered, attach: true });
-                    if (job?.jobId) await pollJobStatus("bulk-feedback", job.jobId, setConvFeedbackProgress);
+                    if (job?.jobId) settleFeedbackJob(job.jobId);
                 }
             } catch (error) {
-                console.error("bulk feedback (conversational) error", error);
-                showToast("warning", "The round will be saved even though feedback is currently unavailable.");
+                console.debug("conversational feedback deferred", error?.message || error);
             }
             await api.post(`/questions/${selectedRound._id}/complete`);
             const { data } = await api.get(`/interviews/${interviewId}`);
             setInterview(data);
             clearDraftsForRound(selectedRound);
             const index = (data.rounds || []).findIndex((entry) => entry.round._id === selectedRound._id);
-            const nextRound = index >= 0 && index + 1 < data.rounds.length ? data.rounds[index + 1].round : null;
-            if (nextRound) selectRound(nextRound);
-            else {
-                const updatedSelf = data.rounds.find((entry) => entry.round._id === selectedRound._id)?.round;
-                if (updatedSelf) selectRound(updatedSelf);
-            }
-            showToast("success", "Round submitted. Preparing feedback in background.");
+            const nextRound = index >= 0 ? data.rounds[index + 1]?.round : null;
+            const updatedSelf = index >= 0 ? data.rounds[index]?.round : null;
+            selectRound(nextRound || updatedSelf || null);
+            showToast("success", nextRound ? `Round complete. Next: ${nextRound.name}.` : "Interview complete. Open any completed round to review your debrief.");
         } catch (error) {
             console.error("complete round error", error);
             showToast("error", error?.response?.data?.message || "Failed to complete round.");
@@ -218,7 +219,7 @@ export const useConversational = ({
             setConvRoundSubmitting(false);
             setConvFeedbackProgress(0);
         }
-    }, [selectedRound, interviewId, clearDraftsForRound, selectRound, setInterview, showToast]);
+    }, [selectedRound, interviewId, clearDraftsForRound, selectRound, setInterview, showToast, settleFeedbackJob]);
 
     return {
         convState, convViewState,

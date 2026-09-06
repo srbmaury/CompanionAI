@@ -1,11 +1,12 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import api from "../api/axios";
 import { storage, storageKeys } from "../utils/interviewStorage";
 import { pollJobStatus } from "../utils/pollJobStatus";
 import { trackEvent } from "../utils/analytics";
 
 /**
- * Manages online-assessment mode: answer state, draft persistence, and submission.
+ * Manages online-assessment mode: answer state, local recovery, debounced server
+ * autosave and final submission.
  */
 export const useOAForm = ({
     interviewId,
@@ -20,9 +21,9 @@ export const useOAForm = ({
     const [oaAnswers, setOaAnswers] = useState([]);
     const [oaSubmitting, setOaSubmitting] = useState(false);
     const [oaFeedbackProgress, setOaFeedbackProgress] = useState(0);
+    const autosaveTimerRef = useRef(null);
+    const lastServerSnapshotRef = useRef("");
 
-    // Reset answers and restore any saved draft when the selected OA round changes
-    // Also fires when questions load (questions?.length changes from 0 → N)
     useEffect(() => {
         if (!selectedRound || isConversational) return;
         const questionCount = selectedRound.questions?.length || 0;
@@ -31,23 +32,59 @@ export const useOAForm = ({
         const len = Math.max(questionCount, Array.isArray(saved) ? saved.length : 0);
         setOaAnswers((prev) => {
             const next = new Array(len).fill("");
-            for (let i = 0; i < len; i++) {
-                next[i] = (saved?.[i] ?? prev?.[i] ?? "").toString();
-            }
+            for (let i = 0; i < len; i++) next[i] = (saved?.[i] ?? prev?.[i] ?? "").toString();
             return next;
         });
-    // The selected fields are intentional: replacing the whole round object should not erase drafts.
+        lastServerSnapshotRef.current = JSON.stringify((selectedRound.questions || []).map((question) => (question?.answerGiven || "").toString()));
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [interviewId, selectedRound?._id, selectedRound?.questions?.length, isConversational]);
 
-    // Persist OA drafts on every change
     useEffect(() => {
         if (!selectedRound || isConversational) return;
-        const hasContent = (oaAnswers || []).some((a) => (a || "").toString().trim().length > 0);
-        if (!hasContent) return;
-        storage.set(storageKeys.oa(interviewId, selectedRound._id), oaAnswers);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [oaAnswers]);
+        const normalized = (oaAnswers || []).map((answer) => (answer || "").toString());
+        const hasContent = normalized.some((answer) => answer.trim().length > 0);
+        if (hasContent) storage.set(storageKeys.oa(interviewId, selectedRound._id), normalized);
+
+        const roundId = String(selectedRound._id);
+        setInterview((current) => {
+            if (!current) return current;
+            let changed = false;
+            const rounds = (current.rounds || []).map((entry) => {
+                if (String(entry?.round?._id || "") !== roundId) return entry;
+                let roundChanged = false;
+                const questions = (entry.round.questions || []).map((question, index) => {
+                    const nextAnswer = normalized[index] || "";
+                    if ((question?.answerGiven || "").toString() === nextAnswer) return question;
+                    changed = true;
+                    roundChanged = true;
+                    return { ...question, answerGiven: nextAnswer };
+                });
+                return roundChanged ? { ...entry, round: { ...entry.round, questions } } : entry;
+            });
+            return changed ? { ...current, rounds } : current;
+        });
+    }, [interviewId, isConversational, oaAnswers, selectedRound?._id, setInterview]);
+
+    useEffect(() => {
+        clearTimeout(autosaveTimerRef.current);
+        if (!selectedRound || isConversational || selectedRound.status === "completed" || oaSubmitting) return undefined;
+        const questionCount = selectedRound.questions?.length || 0;
+        if (!questionCount) return undefined;
+        const snapshot = Array.from({ length: questionCount }, (_, index) => (oaAnswers?.[index] || "").toString());
+        const serialized = JSON.stringify(snapshot);
+        if (serialized === lastServerSnapshotRef.current) return undefined;
+        autosaveTimerRef.current = window.setTimeout(async () => {
+            try {
+                await api.post(`/questions/${selectedRound._id}/answers`, { answers: snapshot });
+                lastServerSnapshotRef.current = serialized;
+            } catch (error) {
+                console.debug("OA autosave deferred", error?.message || error);
+            }
+        }, 850);
+        return () => clearTimeout(autosaveTimerRef.current);
+    }, [isConversational, oaAnswers, oaSubmitting, selectedRound]);
+
+    useEffect(() => () => clearTimeout(autosaveTimerRef.current), []);
 
     const handleOAChange = useCallback((i, val) => {
         setOaAnswers((prev) => {
@@ -73,24 +110,22 @@ export const useOAForm = ({
             return;
         }
         try {
+            clearTimeout(autosaveTimerRef.current);
             setOaSubmitting(true);
             trackEvent("first_answer_submitted");
-            setOaFeedbackProgress(0);
-            const outgoing = Array.from(
-                { length: selectedRound.questions.length },
-                (_, i) => (answersToSubmit?.[i] ?? "").toString()
-            );
+            const outgoing = Array.from({ length: selectedRound.questions.length }, (_, i) => (answersToSubmit?.[i] ?? "").toString());
             await api.post(`/questions/${selectedRound._id}/answers`, { answers: outgoing });
+            lastServerSnapshotRef.current = JSON.stringify(outgoing);
 
+            // Feedback may generate in the background, but it must not block the
+            // interview or coach the candidate before later rounds.
             try {
                 const answered = (selectedRound.questions || [])
                     .map((q, i) => ({ index: i, questionId: q.question?._id, answer: (outgoing[i] || "").toString().trim() }))
                     .filter((it) => it.questionId && it.answer.length > 0);
                 if (answered.length > 0) {
                     const { data: job } = await api.post(`/jobs/bulk-feedback`, { roundId: selectedRound._id, items: answered, attach: true });
-                    if (job?.jobId) {
-                        await pollJobStatus("bulk-feedback", job.jobId, setOaFeedbackProgress);
-                    }
+                    if (job?.jobId) pollJobStatus("bulk-feedback", job.jobId, setOaFeedbackProgress).catch(() => {});
                 }
             } catch (e) {
                 console.error("bulk feedback enqueue error", e);
@@ -99,10 +134,12 @@ export const useOAForm = ({
             await api.post(`/questions/${selectedRound._id}/complete`);
             const { data } = await api.get(`/interviews/${interviewId}`);
             setInterview(data);
-            const updated = data.rounds.find((r) => r.round._id === selectedRound._id)?.round;
-            if (updated) selectRound(updated);
+            const index = data.rounds.findIndex((r) => r.round._id === selectedRound._id);
+            const nextRound = index >= 0 ? data.rounds[index + 1]?.round : null;
+            const updated = index >= 0 ? data.rounds[index]?.round : null;
+            selectRound(nextRound || updated || null);
             clearDraftsForRound(selectedRound);
-            showToast("success", "Round submitted successfully.");
+            showToast("success", nextRound ? `Round complete. Next: ${nextRound.name}.` : "Interview complete. Your debrief is ready when feedback finishes.");
             trackEvent("round_completed");
         } catch (e) {
             console.error("OA submit error", e);

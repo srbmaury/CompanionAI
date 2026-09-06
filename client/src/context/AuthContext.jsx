@@ -4,7 +4,7 @@ import { createContext, useCallback, useEffect, useState } from "react";
 import api, { clearAccessToken, setAccessToken, silentRefresh } from "../api/axios";
 import { adoptGuestWorkspacePreference, clearWorkspacePreference } from "../utils/workspacePreference";
 
-export const AuthContext = createContext();
+export const AuthContext = createContext({ user: null });
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);

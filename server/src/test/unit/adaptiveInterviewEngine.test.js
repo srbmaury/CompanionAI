@@ -5,6 +5,7 @@ import {
     buildDeterministicAdaptiveQuestion,
     chooseNextCompetency,
     extractResumeClaimsFallback,
+    initializeAdaptiveInterviewState,
     selectResumeClaimForTarget,
     shouldStopAdaptiveRound,
 } from "../../services/adaptiveInterviewEngine.js";
@@ -29,6 +30,34 @@ describe("adaptive interview engine", () => {
         expect(claims).toHaveLength(2);
         expect(claims[0].claim).toMatch(/60%|10M/);
         expect(claims.every((claim) => claim.probeAreas.length > 0)).toBe(true);
+    });
+
+    it("keeps system design as one resume-independent discussion problem", async () => {
+        const designState = await initializeAdaptiveInterviewState({
+            jobRole: "Senior Backend Engineer",
+            jobDescription: "Build scalable distributed services.",
+            roundName: "System Design",
+            roundDescription: "Design a production system and defend trade-offs.",
+            skills: ["system design", "scalability"],
+            resumeText: "Architected an offline runtime that reduced startup latency by 90%.",
+            maxQuestions: 5,
+        });
+        expect(designState.enabled).toBe(false);
+        expect(designState.minQuestions).toBe(1);
+        expect(designState.maxQuestions).toBe(1);
+        expect(designState.resumeClaims).toEqual([]);
+
+        const question = buildDeterministicAdaptiveQuestion({
+            round: { name: "System Design", description: "Design a production service." },
+            state: designState,
+            targetCompetency: "Architecture",
+            difficulty: 4,
+            sourceClaim: "Architected an offline runtime that reduced startup latency by 90%.",
+        });
+        expect(question.text).toMatch(/^Design /);
+        expect(question.text).not.toMatch(/offline|90%/i);
+        expect(question.sourceClaim).toBe("");
+        expect(question.sourceType).toBe("fallback");
     });
 
     it("updates competency score, confidence and bounded evidence", () => {
