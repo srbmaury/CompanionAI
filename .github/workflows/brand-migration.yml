@@ -1,0 +1,79 @@
+name: Brand migration
+
+on:
+  push:
+    branches:
+      - fix/main-hardening-seo
+    paths:
+      - .github/workflows/brand-migration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  rename:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/main-hardening-seo
+
+      - name: Replace old product brand everywhere
+        shell: python
+        run: |
+          from pathlib import Path
+
+          root = Path('.')
+          old_compact = ''.join(['Companion', 'AI'])
+          old_spaced = ' '.join(['Companion', 'AI'])
+          new = 'Evalcue AI'
+          before = 0
+          changed_files = []
+          skipped = {'.git'}
+
+          for path in root.rglob('*'):
+              if not path.is_file() or any(part in skipped for part in path.parts):
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except (UnicodeDecodeError, OSError):
+                  continue
+              matches = text.count(old_compact) + text.count(old_spaced)
+              if not matches:
+                  continue
+              before += matches
+              updated = text.replace(old_compact, new).replace(old_spaced, new)
+              path.write_text(updated, encoding='utf-8')
+              changed_files.append(str(path))
+
+          remaining = 0
+          for path in root.rglob('*'):
+              if not path.is_file() or any(part in skipped for part in path.parts):
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except (UnicodeDecodeError, OSError):
+                  continue
+              remaining += text.count(old_compact) + text.count(old_spaced)
+
+          print(f'OLD_BRAND_OCCURRENCES_BEFORE={before}')
+          print(f'CHANGED_FILES={len(changed_files)}')
+          for file in changed_files:
+              print(file)
+          print(f'OLD_BRAND_OCCURRENCES_AFTER={remaining}')
+          if before == 0:
+              raise SystemExit('No old-brand occurrences found; refusing a no-op migration')
+          if remaining != 0:
+              raise SystemExit(f'{remaining} old-brand occurrences remain')
+
+      - name: Remove one-shot workflow
+        run: rm .github/workflows/brand-migration.yml
+
+      - name: Commit migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Rename CompanionAI to Evalcue AI"
+          git push origin HEAD:fix/main-hardening-seo
