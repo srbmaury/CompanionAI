@@ -14,6 +14,16 @@ export const normalizeEnvironment = (env = process.env) => {
         env.COOKIE_SAMESITE = "none";
     }
 
+    // Render Key Value exposes an unauthenticated internal Redis endpoint to
+    // services in the same workspace/region. Allow deployments to provide the
+    // host/port separately while preserving REDIS_URL as the canonical value
+    // consumed by the rest of the application.
+    if (!env.REDIS_URL && env.REDIS_HOST) {
+        const host = String(env.REDIS_HOST).trim();
+        const port = String(env.REDIS_PORT || "6379").trim() || "6379";
+        if (host) env.REDIS_URL = `redis://${host}:${port}`;
+    }
+
     // app.js historically exposed a Stripe readiness gauge through the old
     // STRIPE_PRO_PRICE_ID name. Keep that gauge accurate while the billing
     // product uses separate Practice and Hiring price IDs.
