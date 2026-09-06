@@ -1,0 +1,41 @@
+name: Brand audit
+
+on:
+  push:
+    branches:
+      - fix/main-hardening-seo
+    paths:
+      - .github/workflows/brand-audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/main-hardening-seo
+      - name: Report remaining case-insensitive references
+        shell: python
+        run: |
+          from pathlib import Path
+          needle = ''.join(['companion', 'ai']).casefold()
+          total = 0
+          files = set()
+          for path in Path('.').rglob('*'):
+              if not path.is_file() or '.git' in path.parts:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except (UnicodeDecodeError, OSError):
+                  continue
+              for number, line in enumerate(text.splitlines(), 1):
+                  count = line.casefold().count(needle)
+                  if count:
+                      total += count
+                      files.add(str(path))
+                      print(f'{path}:{number}: {line}')
+          print(f'CASE_INSENSITIVE_OLD_BRAND_OCCURRENCES={total}')
+          print(f'FILES_WITH_REMAINING_REFERENCES={len(files)}')
