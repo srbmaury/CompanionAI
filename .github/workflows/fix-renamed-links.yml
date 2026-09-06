@@ -1,0 +1,38 @@
+name: Fix renamed links
+
+on:
+  push:
+    branches:
+      - fix/main-hardening-seo
+    paths:
+      - .github/workflows/fix-renamed-links.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/main-hardening-seo
+      - name: Remove invalid repository badge created by brand migration
+        shell: python
+        run: |
+          from pathlib import Path
+          readme = Path('README.md')
+          text = readme.read_text(encoding='utf-8')
+          lines = [line for line in text.splitlines() if not (line.startswith('[![CI](') and 'Evalcue AI/actions/' in line)]
+          readme.write_text('\n'.join(lines).rstrip() + '\n', encoding='utf-8')
+          if 'github.com/srbmaury/Evalcue AI' in readme.read_text(encoding='utf-8'):
+              raise SystemExit('Invalid renamed GitHub URL remains')
+          Path('.github/workflows/fix-renamed-links.yml').unlink()
+      - name: Commit link cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix links after Evalcue AI rename"
+          git push origin HEAD:fix/main-hardening-seo
