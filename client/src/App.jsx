@@ -39,7 +39,7 @@ const AdminFeedbackPage = lazy(() => import("./pages/AdminFeedbackPage.jsx"));
 const AdminAuditPage = lazy(() => import("./pages/AdminAuditPage.jsx"));
 const AdminCalibrationPage = lazy(() => import("./pages/AdminCalibrationPage.jsx"));
 const AdminCommercialAccessPage = lazy(() => import("./pages/AdminCommercialAccessPage.jsx"));
-const AssessmentsPage = lazy(() => import("./pages/AssessmentsPage.jsx"));
+const HiringWorkspacePage = lazy(() => import("./pages/HiringWorkspacePage.jsx"));
 const AssessmentReportPage = lazy(() => import("./pages/AssessmentReportPage.jsx"));
 const CandidateAssessmentPage = lazy(() => import("./pages/CandidateAssessmentPage.jsx"));
 const AssessmentPreviewPage = lazy(() => import("./pages/AssessmentPreviewPage.jsx"));
@@ -114,7 +114,7 @@ function App() {
                 <Route path="/practice/new" element={<ProtectedRoute><CreateInterviewPage /></ProtectedRoute>} />
                 <Route path="/practice/resume-review" element={<ProtectedRoute><ResumeReviewPage /></ProtectedRoute>} />
                 <Route path="/practice/interviews/:interviewId" element={<ProtectedRoute><InterviewPage /></ProtectedRoute>} />
-                <Route path="/hire/assessments" element={<HiringRoute><AssessmentsPage /></HiringRoute>} />
+                <Route path="/hire/assessments" element={<HiringRoute><HiringWorkspacePage /></HiringRoute>} />
                 <Route path="/hire/assessments/:assessmentId" element={<HiringRoute><AssessmentReportPage /></HiringRoute>} />
                 <Route path="/hire/assessments/:assessmentId/preview" element={<HiringRoute><AssessmentPreviewPage /></HiringRoute>} />
                 <Route path="/hire/team" element={<HiringRoute><HiringTeamPage /></HiringRoute>} />
