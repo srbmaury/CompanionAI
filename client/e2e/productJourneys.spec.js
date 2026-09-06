@@ -56,7 +56,7 @@ test("login survives a browser reload through refresh-token restoration", async 
 
     await page.reload();
     await expect(page).toHaveURL(/\/practice\/dashboard$/);
-    await expect(page.getByRole("heading", { name: /Ready for the next one, Test/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Welcome back, Test/ })).toBeVisible();
 });
 
 test("login returns the user to the protected screen they requested", async ({ page }) => {
@@ -133,7 +133,8 @@ test("Practice and Hire stay separate while profile keeps advanced settings coll
         await page.getByRole("menuitem", { name: "New assessment" }).click();
     }
     await expect(page).toHaveURL(/\/hire\/assessments\?create=1$/);
-    await expect(page.getByRole("heading", { name: "Create assessment", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create an assessment", exact: true })).toBeVisible();
+    await expect(page.getByText("Step 1 of 4")).toBeVisible();
 });
 
 test("practice sub-features remain reachable after navigation cleanup", async ({ page }) => {
@@ -170,7 +171,7 @@ test("recruiter can review and filter the cross-interview candidate pipeline", a
     await expect(page.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/hire/assessments/assessment-1");
 });
 
-test("recruiter can publish a hybrid assessment with all candidate experiences", async ({ page }) => {
+test("recruiter can publish a hybrid assessment through the guided flow", async ({ page }) => {
     await mockSignedIn(page);
     let published;
     await page.route("**/api/assessments/overview**", (route) => json(route, { summary: {}, assessments: [], candidates: [], totalPages: 1 }));
@@ -182,31 +183,38 @@ test("recruiter can publish a hybrid assessment with all candidate experiences",
     });
 
     await page.goto("/hire/assessments?create=1");
-    await page.getByLabel("Assessment name").fill("Hybrid engineering assessment");
+    await expect(page.getByText("Step 1 of 4")).toBeVisible();
     await page.getByRole("textbox", { name: "Job role" }).fill("Senior Software Engineer");
+    await page.getByLabel("Assessment name").fill("Hybrid engineering assessment");
     await page.getByLabel("Job description and success criteria").fill("Evaluate communication, production coding, system design, scalability, reliability, testing, and security judgment.");
+    await page.getByRole("button", { name: "Continue" }).click();
 
-    await page.getByLabel("Maximum questions").first().fill("1");
-    await page.getByRole("button", { name: "Add manual question" }).first().click();
-    await page.getByRole("textbox", { name: "Question 1", exact: true }).first().fill("Describe a production incident you led and what changed afterward.");
-    await page.getByRole("button", { name: "Add round" }).click();
-    await page.getByRole("button", { name: "Add round" }).click();
+    await expect(page.getByText("Step 2 of 4")).toBeVisible();
+    await page.getByLabel("Maximum primary questions").first().fill("1");
+    await page.getByRole("button", { name: "Add another round" }).click();
+    await page.getByRole("button", { name: "Add another round" }).click();
 
-    await page.getByLabel("Round label").nth(1).fill("Coding exercise");
-    await page.getByLabel("Candidate experience").nth(1).click();
-    await page.getByRole("option", { name: "Coding / written assessment — all questions" }).click();
+    await page.getByLabel("Format").nth(1).click();
+    await page.getByRole("option", { name: "Coding / written assessment" }).click();
+    await page.getByLabel("Round name").nth(1).fill("Coding exercise");
     await page.getByLabel("Question count").first().fill("1");
-    await page.getByRole("button", { name: "Add manual question" }).nth(1).click();
+
+    await page.getByLabel("Format").nth(2).click();
+    await page.getByRole("option", { name: "System design" }).click();
+    await page.getByLabel("Round name").nth(2).fill("System design");
+    await page.getByRole("button", { name: "Continue" }).click();
+
+    await expect(page.getByText("Step 3 of 4")).toBeVisible();
+    await page.getByRole("button", { name: "Add question" }).nth(0).click();
+    await page.getByRole("textbox", { name: "Question 1", exact: true }).nth(0).fill("Describe a production incident you led and what changed afterward.");
+    await page.getByRole("button", { name: "Add question" }).nth(1).click();
     await page.getByRole("textbox", { name: "Question 1", exact: true }).nth(1).fill("Implement a function that returns the first non-repeating character.");
-
-    await page.getByLabel("Round label").nth(2).fill("System design");
-    await page.getByLabel("Candidate experience").nth(2).click();
-    await page.getByRole("option", { name: "System design — canvas + discussion" }).click();
-    await expect(page.getByLabel("Question count").nth(1)).toHaveValue("1");
-    await page.getByRole("button", { name: "Add manual question" }).nth(2).click();
+    await page.getByRole("button", { name: "Add question" }).nth(2).click();
     await page.getByRole("textbox", { name: "Question 1", exact: true }).nth(2).fill("Design a resilient global notification service.");
+    await page.getByRole("button", { name: "Continue" }).click();
 
-    await page.getByRole("button", { name: "Publish now" }).click();
+    await expect(page.getByText("Step 4 of 4")).toBeVisible();
+    await page.getByRole("button", { name: "Publish assessment" }).click();
     await expect.poll(() => published?.rounds?.map((round) => round.deliveryMode)).toEqual(["conversational", "online-assessment", "system-design"]);
     expect(published.status).toBe("active");
     expect(published.rounds.every((round) => round.questionCount === 1)).toBeTruthy();
