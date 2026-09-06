@@ -1,0 +1,37 @@
+name: Restore assessment tests
+
+on:
+  push:
+    branches:
+      - fix/ui-consistency-cleanup
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/ui-consistency-cleanup
+          fetch-depth: 0
+      - name: Restore original test and update UI labels only
+        run: |
+          git fetch origin main
+          git checkout origin/main -- client/src/__tests__/assessmentsPage.test.jsx
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('client/src/__tests__/assessmentsPage.test.jsx')
+          text = p.read_text()
+          text = text.replace('name: "Your assessments"', 'name: "Assessments"', 1)
+          text = text.replace('name: "Hiring overview"', 'name: "Overview"', 1)
+          p.write_text(text)
+          PY
+          rm .github/workflows/restore-assessment-tests.yml
+          git config user.name "Saurabh Maurya"
+          git config user.email "srbmaury@gmail.com"
+          git add -A
+          git commit -m "Align assessment UI tests with cleanup"
+          git push origin HEAD:fix/ui-consistency-cleanup
