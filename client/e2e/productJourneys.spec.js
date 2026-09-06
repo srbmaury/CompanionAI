@@ -263,7 +263,7 @@ test("candidate completes an assessment without seeing private feedback", async 
     await page.getByRole("button", { name: "I’m done" }).click();
     await expect(page.getByRole("heading", { name: "Thanks — that wraps up Technical." })).toBeVisible();
     await page.getByRole("button", { name: "Review and submit" }).click();
-    await expect(page.getByText("1 of 1 complete")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Interview complete" })).toBeVisible();
     await page.getByRole("button", { name: "Submit assessment" }).click();
     await expect(page.getByRole("heading", { name: "Assessment submitted" })).toBeVisible();
     await expect(page.getByText(/score|feedback/i)).toHaveCount(0);
