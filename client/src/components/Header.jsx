@@ -39,7 +39,7 @@ const Brand = ({ to = "/" }) => (
         variant="h6"
         sx={{ display: "flex", alignItems: "center", gap: 1.15, textDecoration: "none", color: "inherit", fontWeight: 850, letterSpacing: "-.025em" }}
     >
-        <Box component="span" sx={{ width: 34, height: 34, borderRadius: 2.5, display: "grid", placeItems: "center", color: "white", background: "linear-gradient(135deg,#5b50d6,#8f85ff)", boxShadow: "0 8px 20px rgba(91,80,214,.28)", fontSize: 16 }}>C</Box>
+        <Box component="span" sx={{ width: 34, height: 34, borderRadius: 2.5, display: "grid", placeItems: "center", color: "white", background: "linear-gradient(135deg,#5b50d6,#8f85ff)", boxShadow: "0 8px 20px rgba(91,80,214,.28)", fontSize: 16 }}>E</Box>
         <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Evalcue AI</Box>
     </Typography>
 );
@@ -57,6 +57,12 @@ export default function Header() {
 
     const isCandidateAssessment = location.pathname.startsWith("/assessment/");
     const isAdmin = Boolean(user?.role === "admin");
+    const isAdminSurface = isAdmin && location.pathname.startsWith("/admin");
+    const adminNavSx = (path) => ({
+        color: location.pathname === path ? "primary.main" : "text.secondary",
+        bgcolor: location.pathname === path ? "action.selected" : "transparent",
+        "&:hover": { bgcolor: "action.hover", color: "text.primary" },
+    });
 
     useEffect(() => {
         setMobileAnchor(null);
@@ -76,7 +82,7 @@ export default function Header() {
             <AppBar position="sticky" color="transparent" elevation={0} sx={{ bgcolor: "background.paper", borderBottom: "1px solid", borderColor: "divider", color: "text.primary", backdropFilter: "blur(18px)", zIndex: 1200 }}>
                 <Container maxWidth="xl">
                     <Toolbar disableGutters sx={{ minHeight: { xs: 64, md: 72 }, gap: 1 }}>
-                        <Brand to={user && isAdmin ? "/admin" : "/"} />
+                        <Brand to={user && isAdmin ? "/admin/overview" : "/"} />
 
                         {isCandidateAssessment ? (
                             <Stack direction="row" spacing={.5} alignItems="center" sx={{ ml: "auto" }}>
@@ -92,14 +98,17 @@ export default function Header() {
                             </Stack>
                         ) : (
                             <>
-                                <Stack direction="row" spacing={.35} alignItems="center" sx={{ ml: "auto", display: { xs: "none", md: "flex" } }}>
-                                    <Button component={RouterLink} to="/practice" color="inherit">Practice</Button>
-                                    <Button component={RouterLink} to="/hire" color="inherit">Hire</Button>
-                                    {isAdmin && <>
-                                        <Button component={RouterLink} to="/admin/commercial" color="inherit">Commercial</Button>
-                                        <Button component={RouterLink} to="/admin/feedback" color="inherit">Feedback</Button>
-                                        <Button component={RouterLink} to="/admin/audit" color="inherit">Audit</Button>
-                                        <Button component={RouterLink} to="/admin/calibration" color="inherit">AI calibration</Button>
+                                <Stack direction="row" spacing={.35} alignItems="center" sx={{ ml: "auto", display: { xs: "none", md: isAdminSurface ? "none" : "flex", lg: "flex" } }}>
+                                    {isAdminSurface ? <>
+                                        <Button component={RouterLink} to="/admin/overview" sx={adminNavSx("/admin/overview")}>Overview</Button>
+                                        <Button component={RouterLink} to="/admin/commercial" sx={adminNavSx("/admin/commercial")}>Commercial</Button>
+                                        <Button component={RouterLink} to="/admin/jobs" sx={adminNavSx("/admin/jobs")}>Jobs</Button>
+                                        <Button component={RouterLink} to="/admin/feedback" sx={adminNavSx("/admin/feedback")}>Feedback</Button>
+                                        <Button component={RouterLink} to="/admin/audit" sx={adminNavSx("/admin/audit")}>Audit</Button>
+                                        <Button component={RouterLink} to="/admin/calibration" sx={adminNavSx("/admin/calibration")}>AI calibration</Button>
+                                    </> : <>
+                                        <Button component={RouterLink} to="/practice" color="inherit">Practice</Button>
+                                        <Button component={RouterLink} to="/hire" color="inherit">Hire</Button>
                                     </>}
                                     {!user && <Button component={RouterLink} to="/login" variant="contained">Sign in</Button>}
                                 </Stack>
@@ -146,16 +155,18 @@ export default function Header() {
                                         </Menu>
                                     </>}
 
-                                    <IconButton onClick={(event) => setMobileAnchor(event.currentTarget)} aria-label="Open navigation" sx={{ display: { xs: "inline-flex", md: "none" } }}><MenuIcon /></IconButton>
+                                    <IconButton onClick={(event) => setMobileAnchor(event.currentTarget)} aria-label="Open navigation" sx={{ display: { xs: "inline-flex", md: isAdminSurface ? "inline-flex" : "none", lg: "none" } }}><MenuIcon /></IconButton>
                                     <Menu anchorEl={mobileAnchor} open={Boolean(mobileAnchor?.isConnected)} onClose={closeMobile} PaperProps={{ sx: { minWidth: 250 } }}>
-                                        <MenuItem component={RouterLink} to="/practice" onClick={closeMobile}>Practice</MenuItem>
-                                        <MenuItem component={RouterLink} to="/hire" onClick={closeMobile}>Hire</MenuItem>
-                                        {isAdmin && <>
-                                            <Divider />
-                                            <MenuItem component={RouterLink} to="/admin/commercial" onClick={closeMobile}>Commercial</MenuItem>
-                                            <MenuItem component={RouterLink} to="/admin/feedback" onClick={closeMobile}>Feedback</MenuItem>
-                                            <MenuItem component={RouterLink} to="/admin/audit" onClick={closeMobile}>Audit</MenuItem>
-                                            <MenuItem component={RouterLink} to="/admin/calibration" onClick={closeMobile}>AI calibration</MenuItem>
+                                        {isAdminSurface ? <>
+                                            <MenuItem component={RouterLink} to="/admin/overview" selected={location.pathname === "/admin/overview"} onClick={closeMobile}>Overview</MenuItem>
+                                            <MenuItem component={RouterLink} to="/admin/commercial" selected={location.pathname === "/admin/commercial"} onClick={closeMobile}>Commercial</MenuItem>
+                                            <MenuItem component={RouterLink} to="/admin/jobs" selected={location.pathname === "/admin/jobs"} onClick={closeMobile}>Jobs</MenuItem>
+                                            <MenuItem component={RouterLink} to="/admin/feedback" selected={location.pathname === "/admin/feedback"} onClick={closeMobile}>Feedback</MenuItem>
+                                            <MenuItem component={RouterLink} to="/admin/audit" selected={location.pathname === "/admin/audit"} onClick={closeMobile}>Audit</MenuItem>
+                                            <MenuItem component={RouterLink} to="/admin/calibration" selected={location.pathname === "/admin/calibration"} onClick={closeMobile}>AI calibration</MenuItem>
+                                        </> : <>
+                                            <MenuItem component={RouterLink} to="/practice" onClick={closeMobile}>Practice</MenuItem>
+                                            <MenuItem component={RouterLink} to="/hire" onClick={closeMobile}>Hire</MenuItem>
                                         </>}
                                         {user ? <>
                                             <Divider />

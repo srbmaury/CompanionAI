@@ -17,7 +17,7 @@ function ReminderDeliveryHistory() {
     }, []);
     useEffect(() => { load(); }, [load]);
 
-    return <Container maxWidth="md" sx={{ pb: { xs: 4, md: 6 }, mt: { xs: -1, md: -2 } }}>
+    return <Container maxWidth="md" sx={{ pb: { xs: 4, md: 6 }, pt: 0 }}>
         <Paper variant="outlined" sx={{ p: 2.5 }}>
             <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" gap={1} alignItems={{ sm: "center" }}>
                 <div><Typography component="h2" variant="h6" fontWeight={800}>Recent practice reminders</Typography><Typography variant="body2" color="text.secondary">The last 10 delivery attempts for your weekly practice reminder.</Typography></div>

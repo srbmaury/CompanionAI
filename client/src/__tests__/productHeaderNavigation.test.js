@@ -3,7 +3,7 @@ import { isProductNavItemActive } from "../components/ProductHeader";
 
 const overview = { label: "Overview", path: "/hire/assessments" };
 const candidates = { label: "Candidates", path: "/hire/assessments", hash: "#candidate-pipeline" };
-const assessments = { label: "Assessments", path: "/hire/assessments", hash: "#assessment-list" };
+const assessments = { label: "Assessments", path: "/hire/assessments", hash: "#assessment-list", matchPrefix: "/hire/assessments/" };
 
 describe("Hire navbar active state", () => {
     it("highlights only Overview on the base Hire route", () => {
@@ -25,5 +25,19 @@ describe("Hire navbar active state", () => {
         expect(isProductNavItemActive(location, overview)).toBe(false);
         expect(isProductNavItemActive(location, candidates)).toBe(false);
         expect(isProductNavItemActive(location, assessments)).toBe(true);
+    });
+
+    it("keeps Assessments active while reviewing a specific assessment", () => {
+        const location = { pathname: "/hire/assessments/a1", hash: "" };
+        expect(isProductNavItemActive(location, overview)).toBe(false);
+        expect(isProductNavItemActive(location, candidates)).toBe(false);
+        expect(isProductNavItemActive(location, assessments)).toBe(true);
+    });
+});
+
+describe("Practice navbar active state", () => {
+    it("keeps Overview active while an interview is open", () => {
+        const practiceOverview = { label: "Overview", path: "/practice/dashboard", matchPrefix: "/practice/interviews/" };
+        expect(isProductNavItemActive({ pathname: "/practice/interviews/i1", hash: "" }, practiceOverview)).toBe(true);
     });
 });

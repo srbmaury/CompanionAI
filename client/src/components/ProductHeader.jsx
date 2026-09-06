@@ -70,6 +70,7 @@ const navButtonSx = (active) => ({
 });
 
 export const isProductNavItemActive = (location, item) => {
+    if (item.matchPrefix && location.pathname.startsWith(item.matchPrefix)) return true;
     if (location.pathname !== item.path) return false;
     return item.hash ? location.hash === item.hash : !location.hash;
 };
@@ -114,7 +115,7 @@ export default function ProductHeader({ surface = "practice" }) {
         if (!user) return [];
         if (surface === "practice") {
             return [
-                { label: "Overview", path: "/practice/dashboard" },
+                { label: "Overview", path: "/practice/dashboard", matchPrefix: "/practice/interviews/" },
                 { label: "Resume review", path: "/practice/resume-review" },
                 { label: "Progress", path: "/practice/progress" },
                 { label: "Company insights", path: "/practice/company-insights" },
@@ -125,7 +126,7 @@ export default function ProductHeader({ surface = "practice" }) {
         if (!hasHiringOrganization) return [{ label: "Set up Hire", path: "/hire/team" }];
         if (permissions.canViewOverview) items.push({ label: "Overview", path: "/hire/assessments" });
         if (permissions.canViewCandidatePipeline) items.push({ label: "Candidates", path: "/hire/assessments", hash: "#candidate-pipeline" });
-        if (permissions.canViewAssessments) items.push({ label: "Assessments", path: "/hire/assessments", hash: "#assessment-list" });
+        if (permissions.canViewAssessments) items.push({ label: "Assessments", path: "/hire/assessments", hash: "#assessment-list", matchPrefix: "/hire/assessments/" });
         if (permissions.canManageOrganization) items.push({ label: "Team & billing", path: "/hire/team" });
         return items;
     }, [hasHiringOrganization, permissions.canManageOrganization, permissions.canViewAssessments, permissions.canViewCandidatePipeline, permissions.canViewOverview, surface, user]);
@@ -209,7 +210,7 @@ export default function ProductHeader({ surface = "practice" }) {
                                     <Stack direction="row" alignItems="center" justifyContent="space-between" px={2} py={1.25}><Box><Typography fontWeight={850}>Notifications</Typography><Typography variant="caption" color="text.secondary">{unreadCount ? `${unreadCount} unread` : "You're all caught up"}</Typography></Box>{unreadCount > 0 && <Button size="small" onClick={markAllRead}>Mark read</Button>}</Stack><Divider />
                                     {notifications.length === 0 ? <Box px={2} py={3}><Typography variant="body2" color="text.secondary">No notifications yet.</Typography></Box> : notifications.slice(0, 8).map((notification) => <MenuItem key={notification.id || notification._id} onClick={() => { markNotificationRead(notification.id || notification._id); if (notification.href) navigate(notification.href); }}><ListItemText primary={notification.title || notification.message || "Notification"} secondary={notification.body || null} primaryTypographyProps={{ fontWeight: notification.read ? 500 : 800, noWrap: true }} secondaryTypographyProps={{ noWrap: true }} /></MenuItem>)}
                                 </Menu>
-                                <Tooltip title="Account"><IconButton onClick={(event) => setProfileAnchor(event.currentTarget)} aria-label="Account menu"><Avatar sx={{ width: 34, height: 34 }}>{user?.name?.trim()?.[0]?.toUpperCase() || "U"}</Avatar></IconButton></Tooltip>
+                                <Tooltip title="Account"><IconButton onClick={(event) => setProfileAnchor(event.currentTarget)} aria-label="Account menu" sx={{ display: { xs: "none", sm: "inline-flex" } }}><Avatar sx={{ width: 34, height: 34 }}>{user?.name?.trim()?.[0]?.toUpperCase() || "U"}</Avatar></IconButton></Tooltip>
                                 <Menu anchorEl={profileAnchor} open={Boolean(profileAnchor?.isConnected)} onClose={() => setProfileAnchor(null)} PaperProps={{ sx: { minWidth: 250 } }}>
                                     <Box px={2} py={1.25}><Typography fontWeight={850}>{user?.name || "Account"}</Typography><Typography variant="caption" color="text.secondary">{user?.email}</Typography></Box><Divider />
                                     {surface === "practice" && <MenuItem component={RouterLink} to="/practice/profile"><PersonOutlineRounded sx={{ mr: 1.25 }} />Profile</MenuItem>}
@@ -225,6 +226,12 @@ export default function ProductHeader({ surface = "practice" }) {
                                 {user ? <>
                                     {navigation.map((item) => renderNavItem(item, true))}
                                     {(surface === "practice" || permissions.canManageAssessments) && <MenuItem onClick={openPrimaryAction}><AddRounded sx={{ mr: 1.25 }} />{surface === "hiring" ? "New assessment" : "New practice"}</MenuItem>}
+                                    <Divider />
+                                    {surface === "practice" && <MenuItem component={RouterLink} to="/practice/profile" onClick={() => setMobileAnchor(null)}><PersonOutlineRounded sx={{ mr: 1.25 }} />Profile</MenuItem>}
+                                    <MenuItem onClick={() => { setMobileAnchor(null); openOtherProduct(); }}><SwapHorizRounded sx={{ mr: 1.25 }} />{config.crossLabel}</MenuItem>
+                                    <MenuItem onClick={() => { setMobileAnchor(null); setFeedbackOpen(true); }}><RateReviewOutlined sx={{ mr: 1.25 }} />Send feedback</MenuItem>
+                                    {user?.role === "admin" && <MenuItem component={RouterLink} to="/admin/overview" onClick={() => setMobileAnchor(null)}><SettingsOutlined sx={{ mr: 1.25 }} />Admin</MenuItem>}
+                                    <MenuItem onClick={handleLogout}><LogoutRounded sx={{ mr: 1.25 }} />Sign out</MenuItem>
                                 </> : <>
                                     <MenuItem component={RouterLink} to={config.crossPath}>{surface === "hiring" ? "For candidates" : "For hiring teams"}</MenuItem>
                                     <MenuItem component={RouterLink} to={productLoginPath(config.workspace)}>Sign in</MenuItem>

@@ -231,7 +231,7 @@ const CreateInterviewPage = () => {
                 storage.remove(CREATE_DRAFT_KEY);
                 trackEvent("interview_created");
                 notify("Interview created.", "success");
-                navigate(`/interviews/${data._id}`);
+                navigate(`/practice/interviews/${data._id}`);
             } else {
                 notify("Interview could not be created.", "error");
             }
