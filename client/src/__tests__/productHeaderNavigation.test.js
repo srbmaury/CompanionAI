@@ -34,3 +34,10 @@ describe("Hire navbar active state", () => {
         expect(isProductNavItemActive(location, assessments)).toBe(true);
     });
 });
+
+describe("Practice navbar active state", () => {
+    it("keeps Overview active while an interview is open", () => {
+        const practiceOverview = { label: "Overview", path: "/practice/dashboard", matchPrefix: "/practice/interviews/" };
+        expect(isProductNavItemActive({ pathname: "/practice/interviews/i1", hash: "" }, practiceOverview)).toBe(true);
+    });
+});
