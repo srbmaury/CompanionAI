@@ -1,6 +1,7 @@
 import { useContext, useEffect, useState } from "react";
 import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import {
+    ArrowBackRounded,
     DarkMode,
     LightMode,
     LogoutRounded,
@@ -32,17 +33,24 @@ import { useThemeMode } from "../context/ThemeContext";
 import { useNotifications } from "../context/NotificationContext";
 import ProductFeedbackDialog from "./ProductFeedbackDialog";
 
-const Brand = ({ to = "/" }) => (
-    <Typography
-        component={RouterLink}
-        to={to}
-        variant="h6"
-        sx={{ display: "flex", alignItems: "center", gap: 1.15, textDecoration: "none", color: "inherit", fontWeight: 850, letterSpacing: "-.025em" }}
-    >
-        <Box component="span" sx={{ width: 34, height: 34, borderRadius: 2.5, display: "grid", placeItems: "center", color: "white", background: "linear-gradient(135deg,#5b50d6,#8f85ff)", boxShadow: "0 8px 20px rgba(91,80,214,.28)", fontSize: 16 }}>E</Box>
-        <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Evalcue AI</Box>
-    </Typography>
-);
+const Brand = ({ to = "/", interactive = true }) => {
+    const content = (
+        <>
+            <Box component="span" sx={{ width: 34, height: 34, borderRadius: 2.5, display: "grid", placeItems: "center", color: "white", background: "linear-gradient(135deg,#5b50d6,#8f85ff)", boxShadow: "0 8px 20px rgba(91,80,214,.28)", fontSize: 16 }}>E</Box>
+            <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Evalcue AI</Box>
+        </>
+    );
+
+    return interactive ? (
+        <Typography component={RouterLink} to={to} variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1.15, textDecoration: "none", color: "inherit", fontWeight: 850, letterSpacing: "-.025em" }}>
+            {content}
+        </Typography>
+    ) : (
+        <Typography component="div" variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1.15, color: "inherit", fontWeight: 850, letterSpacing: "-.025em" }}>
+            {content}
+        </Typography>
+    );
+};
 
 export default function Header() {
     const { user, loading, logout } = useContext(AuthContext);
@@ -56,8 +64,10 @@ export default function Header() {
     const [feedbackOpen, setFeedbackOpen] = useState(false);
 
     const isCandidateAssessment = location.pathname.startsWith("/assessment/");
+    const isAuthScreen = ["/login", "/register", "/forgot-password", "/reset-password", "/verify-email", "/sso/callback"].some((path) => location.pathname.startsWith(path));
     const isAdmin = Boolean(user?.role === "admin");
     const isAdminSurface = isAdmin && location.pathname.startsWith("/admin");
+
     const adminNavSx = (path) => ({
         color: location.pathname === path ? "primary.main" : "text.secondary",
         bgcolor: location.pathname === path ? "action.selected" : "transparent",
@@ -77,19 +87,28 @@ export default function Header() {
 
     const closeMobile = () => setMobileAnchor(null);
 
+    const themeToggle = (
+        <Tooltip title={mode === "dark" ? "Use light theme" : "Use dark theme"}>
+            <IconButton onClick={toggle} aria-label="Toggle theme">{mode === "dark" ? <LightMode /> : <DarkMode />}</IconButton>
+        </Tooltip>
+    );
+
     return (
         <>
             <AppBar position="sticky" color="transparent" elevation={0} sx={{ bgcolor: "background.paper", borderBottom: "1px solid", borderColor: "divider", color: "text.primary", backdropFilter: "blur(18px)", zIndex: 1200 }}>
                 <Container maxWidth="xl">
                     <Toolbar disableGutters sx={{ minHeight: { xs: 64, md: 72 }, gap: 1 }}>
-                        <Brand to={user && isAdmin ? "/admin/overview" : "/"} />
+                        <Brand to={user && isAdmin ? "/admin/overview" : "/"} interactive={!isCandidateAssessment} />
 
                         {isCandidateAssessment ? (
                             <Stack direction="row" spacing={.5} alignItems="center" sx={{ ml: "auto" }}>
                                 <Button component={RouterLink} to="/privacy" color="inherit">Privacy</Button>
-                                <Tooltip title={mode === "dark" ? "Use light theme" : "Use dark theme"}>
-                                    <IconButton onClick={toggle} aria-label="Toggle theme">{mode === "dark" ? <LightMode /> : <DarkMode />}</IconButton>
-                                </Tooltip>
+                                {themeToggle}
+                            </Stack>
+                        ) : isAuthScreen ? (
+                            <Stack direction="row" spacing={.5} alignItems="center" sx={{ ml: "auto" }}>
+                                <Button component={RouterLink} to="/" color="inherit" startIcon={<ArrowBackRounded />} sx={{ display: { xs: "none", sm: "inline-flex" } }}>Back home</Button>
+                                {themeToggle}
                             </Stack>
                         ) : loading ? (
                             <Stack direction="row" spacing={1} alignItems="center" sx={{ ml: "auto" }} aria-label="Restoring your session">
@@ -98,7 +117,7 @@ export default function Header() {
                             </Stack>
                         ) : (
                             <>
-                                <Stack direction="row" spacing={.35} alignItems="center" sx={{ ml: "auto", display: { xs: "none", md: isAdminSurface ? "none" : "flex", lg: "flex" } }}>
+                                <Stack direction="row" spacing={.25} alignItems="center" sx={{ ml: "auto", display: { xs: "none", lg: "flex" } }}>
                                     {isAdminSurface ? <>
                                         <Button component={RouterLink} to="/admin/overview" sx={adminNavSx("/admin/overview")}>Overview</Button>
                                         <Button component={RouterLink} to="/admin/commercial" sx={adminNavSx("/admin/commercial")}>Commercial</Button>
@@ -109,14 +128,16 @@ export default function Header() {
                                     </> : <>
                                         <Button component={RouterLink} to="/practice" color="inherit">Practice</Button>
                                         <Button component={RouterLink} to="/hire" color="inherit">Hire</Button>
+                                        <Button component={RouterLink} to="/docs" color="inherit">Docs</Button>
                                     </>}
-                                    {!user && <Button component={RouterLink} to="/login" variant="contained">Sign in</Button>}
+                                    {!user && <>
+                                        <Button component={RouterLink} to="/login" color="inherit">Sign in</Button>
+                                        <Button component={RouterLink} to="/register" variant="contained">Get started</Button>
+                                    </>}
                                 </Stack>
 
-                                <Stack direction="row" spacing={.2} alignItems="center" sx={{ ml: { xs: "auto", md: 1 } }}>
-                                    <Tooltip title={mode === "dark" ? "Use light theme" : "Use dark theme"}>
-                                        <IconButton onClick={toggle} aria-label="Toggle theme">{mode === "dark" ? <LightMode /> : <DarkMode />}</IconButton>
-                                    </Tooltip>
+                                <Stack direction="row" spacing={.15} alignItems="center" sx={{ ml: { xs: "auto", lg: .75 } }}>
+                                    {themeToggle}
 
                                     {user && <>
                                         <Tooltip title="Notifications">
@@ -140,7 +161,7 @@ export default function Header() {
                                         </Menu>
 
                                         <Tooltip title="Account">
-                                            <IconButton onClick={(event) => setProfileAnchor(event.currentTarget)} aria-label="Account menu" sx={{ display: { xs: "none", md: "inline-flex" } }}>
+                                            <IconButton onClick={(event) => setProfileAnchor(event.currentTarget)} aria-label="Account menu" sx={{ display: { xs: "none", sm: "inline-flex" } }}>
                                                 <Avatar sx={{ width: 34, height: 34 }}>{user?.name?.trim()?.[0]?.toUpperCase() || "U"}</Avatar>
                                             </IconButton>
                                         </Tooltip>
@@ -155,8 +176,8 @@ export default function Header() {
                                         </Menu>
                                     </>}
 
-                                    <IconButton onClick={(event) => setMobileAnchor(event.currentTarget)} aria-label="Open navigation" sx={{ display: { xs: "inline-flex", md: isAdminSurface ? "inline-flex" : "none", lg: "none" } }}><MenuIcon /></IconButton>
-                                    <Menu anchorEl={mobileAnchor} open={Boolean(mobileAnchor?.isConnected)} onClose={closeMobile} PaperProps={{ sx: { minWidth: 250 } }}>
+                                    <IconButton onClick={(event) => setMobileAnchor(event.currentTarget)} aria-label="Open navigation" sx={{ display: { xs: "inline-flex", lg: "none" } }}><MenuIcon /></IconButton>
+                                    <Menu anchorEl={mobileAnchor} open={Boolean(mobileAnchor?.isConnected)} onClose={closeMobile} PaperProps={{ sx: { minWidth: 260, maxHeight: "calc(100dvh - 90px)" } }}>
                                         {isAdminSurface ? <>
                                             <MenuItem component={RouterLink} to="/admin/overview" selected={location.pathname === "/admin/overview"} onClick={closeMobile}>Overview</MenuItem>
                                             <MenuItem component={RouterLink} to="/admin/commercial" selected={location.pathname === "/admin/commercial"} onClick={closeMobile}>Commercial</MenuItem>
@@ -167,6 +188,7 @@ export default function Header() {
                                         </> : <>
                                             <MenuItem component={RouterLink} to="/practice" onClick={closeMobile}>Practice</MenuItem>
                                             <MenuItem component={RouterLink} to="/hire" onClick={closeMobile}>Hire</MenuItem>
+                                            <MenuItem component={RouterLink} to="/docs" onClick={closeMobile}>Docs</MenuItem>
                                         </>}
                                         {user ? <>
                                             <Divider />
@@ -176,6 +198,7 @@ export default function Header() {
                                         </> : <>
                                             <Divider />
                                             <MenuItem component={RouterLink} to="/login" onClick={closeMobile}>Sign in</MenuItem>
+                                            <MenuItem component={RouterLink} to="/register" onClick={closeMobile}>Get started</MenuItem>
                                         </>}
                                     </Menu>
                                 </Stack>
