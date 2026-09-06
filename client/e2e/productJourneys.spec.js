@@ -94,17 +94,16 @@ test("Practice and Hire stay separate while profile keeps advanced settings coll
         await expect(page.getByRole("button", { name: "Resume review" })).toBeVisible();
         await expect(page.getByRole("button", { name: "Progress" })).toBeVisible();
         await expect(page.getByRole("button", { name: "Company insights" })).toBeVisible();
+        await page.getByRole("button", { name: "Account menu" }).click();
+        await page.getByRole("menuitem", { name: "Open Evalcue AI Hire" }).click();
     } else {
         await page.getByRole("button", { name: "Open navigation" }).click();
         await expect(page.getByRole("menuitem", { name: "Resume review" })).toBeVisible();
         await expect(page.getByRole("menuitem", { name: "Company insights" })).toBeVisible();
-        await page.keyboard.press("Escape");
+        await page.getByRole("menuitem", { name: "Open Evalcue AI Hire" }).click();
     }
-
-    await page.getByRole("button", { name: "Account menu" }).click();
-    await page.getByRole("menuitem", { name: "Open Evalcue AI Hire" }).click();
     await expect(page).toHaveURL(/\/hire\/assessments$/);
-    await expect(page.getByRole("heading", { name: "Hiring overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 
     if ((page.viewportSize()?.width || 0) >= 900) {
         await page.getByRole("button", { name: "Candidates", exact: true }).click();
@@ -114,8 +113,8 @@ test("Practice and Hire stay separate while profile keeps advanced settings coll
     }
     await expect(page).toHaveURL(/\/hire\/assessments#candidate-pipeline$/);
     await expect(page.getByRole("heading", { name: "Candidate pipeline" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Hiring overview" })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Your assessments" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Overview" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Assessments" })).toHaveCount(0);
 
     if ((page.viewportSize()?.width || 0) >= 900) {
         await page.getByRole("button", { name: "Assessments", exact: true }).click();
@@ -124,7 +123,7 @@ test("Practice and Hire stay separate while profile keeps advanced settings coll
         await page.getByRole("menuitem", { name: "Assessments", exact: true }).click();
     }
     await expect(page).toHaveURL(/\/hire\/assessments#assessment-list$/);
-    await expect(page.getByRole("heading", { name: "Your assessments" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Assessments" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Candidate pipeline" })).toHaveCount(0);
 
     if ((page.viewportSize()?.width || 0) >= 900) {
@@ -142,13 +141,13 @@ test("practice sub-features remain reachable after navigation cleanup", async ({
     await page.route("**/api/resumes**", (route) => json(route, []));
     await page.route("**/api/experiences/saved**", (route) => json(route, { items: [], totalPages: 1 }));
 
-    await page.goto("/resume-review");
-    await expect(page.getByRole("link", { name: "Resume library" })).toHaveAttribute("href", "/resumes");
-    await expect(page.getByRole("link", { name: "Past reviews" })).toHaveAttribute("href", "/resume-reviews");
-    await expect(page.getByRole("link", { name: "Find best match" })).toHaveAttribute("href", "/resume-match");
+    await page.goto("/practice/resume-review");
+    await expect(page.getByRole("link", { name: "Resume library" })).toHaveAttribute("href", "/practice/resumes");
+    await expect(page.getByRole("link", { name: "Past reviews" })).toHaveAttribute("href", "/practice/resume-reviews");
+    await expect(page.getByRole("link", { name: "Find best match" })).toHaveAttribute("href", "/practice/resume-match");
 
-    await page.goto("/experiences");
-    await expect(page.getByRole("link", { name: "Saved insights" })).toHaveAttribute("href", "/saved-experiences");
+    await page.goto("/practice/company-insights");
+    await expect(page.getByRole("link", { name: "Saved insights" })).toHaveAttribute("href", "/practice/saved-experiences");
 });
 
 test("recruiter can review and filter the cross-interview candidate pipeline", async ({ page }) => {
@@ -162,7 +161,7 @@ test("recruiter can review and filter the cross-interview candidate pipeline", a
     await page.route("**/api/assessments?**", (route) => json(route, { items: [{ _id: "assessment-1", title: "Backend screen", status: "active", jobRole: "Backend Engineer", organizationName: "Acme", shareToken: "share-1", attemptCount: 2, submittedCount: 1 }], totalPages: 1 }));
 
     await page.goto("/hire/assessments");
-    await expect(page.getByRole("heading", { name: "Hiring overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
     await expect(page.getByText("Asha Candidate")).toBeVisible();
     await expect(page.getByText("8.5/10")).toBeVisible();
     await page.getByLabel("Search name or email").fill("Asha");
@@ -222,19 +221,19 @@ test("reviewer can inspect Hiring but cannot create assessments", async ({ page 
         members: [{ _id: "membership-1", role: "reviewer", joinedAt: "2026-09-03T00:00:00Z", user: { _id: "user-1", name: "Recruiter One", email: "recruiter@example.com" } }],
     }));
 
-    await page.goto("/assessments");
+    await page.goto("/hire/assessments");
     await expect(page.getByRole("heading", { name: "Candidate pipeline" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Hiring overview" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Overview" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "New assessment" })).toHaveCount(0);
 
     if ((page.viewportSize()?.width || 0) >= 900) {
-        await expect(page.getByRole("link", { name: "Team & billing" })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Team & billing" })).toHaveCount(0);
     } else {
         await page.getByRole("button", { name: "Open navigation" }).click();
-        await expect(page.getByRole("menuitem", { name: "Team & Hiring billing" })).toHaveCount(0);
+        await expect(page.getByRole("menuitem", { name: "Team & billing" })).toHaveCount(0);
         await page.keyboard.press("Escape");
     }
-    await page.goto("/hiring/team");
+    await page.goto("/hire/team");
     await expect(page).toHaveURL(/\/hire\/assessments#candidate-pipeline$/);
     await expect(page.getByRole("heading", { name: "Organization settings" })).toHaveCount(0);
 });
@@ -364,16 +363,16 @@ test("supporting authenticated screens render without overflow", async ({ page }
     await page.route("**/api/admin/audit**", (route) => json(route, { items: [], totalPages: 1 }));
 
     const screens = [
-        ["/profile", "Profile & settings"],
-        ["/progress", "Your progress"],
-        ["/resumes", "Resumes"],
-        ["/resume-review", "AI resume review"],
-        ["/resume-reviews", "Resume review history"],
-        ["/resume-match", "Find your best resume for a job"],
-        ["/experiences", "Company interview insights"],
-        ["/saved-experiences", "Saved company insights"],
-        ["/pricing", "Choose your Practice plan"],
-        ["/assessments", "Candidate assessments"],
+        ["/practice/profile", "Profile & settings"],
+        ["/practice/progress", "Your progress"],
+        ["/practice/resumes", "Resumes"],
+        ["/practice/resume-review", "AI resume review"],
+        ["/practice/resume-reviews", "Resume review history"],
+        ["/practice/resume-match", "Find your best resume for a job"],
+        ["/practice/company-insights", "Company interview insights"],
+        ["/practice/saved-experiences", "Saved company insights"],
+        ["/practice/pricing", "Choose your Practice plan"],
+        ["/hire/assessments", "Overview"],
         ["/admin/feedback", "Product feedback"],
         ["/admin/audit", "Audit activity"],
     ];
