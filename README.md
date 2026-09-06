@@ -1,6 +1,5 @@
 # Evalcue AI
 
-[![CI](https://github.com/srbmaury/Evalcue AI/actions/workflows/ci.yml/badge.svg)](https://github.com/srbmaury/Evalcue AI/actions/workflows/ci.yml)
 
 Evalcue AI is a full-stack platform for **software engineering interview practice** and **structured technical hiring**. Candidates can rehearse conversational, coding, and system-design interviews with adaptive AI follow-ups. Hiring teams can create role-specific assessments, invite candidates, collect technical evidence, and review scorecards while keeping employment decisions human-controlled.
 
