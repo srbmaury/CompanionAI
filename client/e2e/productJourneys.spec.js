@@ -241,8 +241,8 @@ test("reviewer can inspect Hiring but cannot create assessments", async ({ page 
 
 test("candidate completes an assessment without seeing private feedback", async ({ page }) => {
     await mockSignedOut(page);
-    const assessment = { title: "Backend screen", company: "Acme", jobRole: "Backend Engineer", durationMinutes: 20, followUpsEnabled: false, candidateInstructions: "Answer from your own experience.", rounds: [{ name: "Technical", questionCount: 1 }] };
-    const attempt = { _id: "attempt-1", rounds: [{ _id: "round-1", name: "Technical", description: "Practical judgment", questions: [{ _id: "question-1", text: "How do you make an API reliable?", answer: "" }] }] };
+    const assessment = { title: "Backend screen", company: "Acme", jobRole: "Backend Engineer", durationMinutes: 20, followUpsEnabled: false, candidateInstructions: "Answer from your own experience.", rounds: [{ name: "Technical", deliveryMode: "conversational", questionCount: 1 }] };
+    const attempt = { _id: "attempt-1", startedAt: new Date().toISOString(), rounds: [{ _id: "round-1", name: "Technical", description: "Practical judgment", deliveryMode: "conversational", adaptiveComplete: true, questions: [{ _id: "question-1", text: "How do you make an API reliable?", answer: "" }] }] };
     await page.route("**/api/assessments/public/share-1", (route) => json(route, assessment));
     await page.route("**/api/assessments/public/share-1/start", (route) => json(route, { attempt, attemptToken: "attempt-secret" }, 201));
     await page.route("**/api/assessments/public/share-1/attempts/attempt-1/answer", async (route) => {
@@ -252,13 +252,17 @@ test("candidate completes an assessment without seeing private feedback", async 
     await page.route("**/api/assessments/public/share-1/attempts/attempt-1/submit", (route) => json(route, { received: true }));
 
     await page.goto("/assessment/share-1");
-    await expect(page.getByText("Scores and private feedback are not shown to candidates.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Before you begin" })).toBeVisible();
+    await expect(page.getByText(/score|private feedback/i)).toHaveCount(0);
     await page.getByLabel("Full name").fill("Asha Candidate");
     await page.getByLabel("Email address").fill("asha@example.com");
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: "Start assessment" }).click();
+    await page.getByRole("button", { name: "Type / code" }).click();
     await page.getByPlaceholder("Answer by typing or speaking...").fill("I use idempotency, timeouts, retries, monitoring, and tested rollback paths.");
-    await page.getByRole("button", { name: "Save answer" }).click();
+    await page.getByRole("button", { name: "I’m done" }).click();
+    await expect(page.getByRole("heading", { name: "Thanks — that wraps up Technical." })).toBeVisible();
+    await page.getByRole("button", { name: "Review and submit" }).click();
     await expect(page.getByText("1 of 1 complete")).toBeVisible();
     await page.getByRole("button", { name: "Submit assessment" }).click();
     await expect(page.getByRole("heading", { name: "Assessment submitted" })).toBeVisible();
@@ -279,23 +283,18 @@ test("recruiter coding assessment uses the full interview workspace", async ({ p
     await page.getByRole("button", { name: "Start assessment" }).click();
 
     await expect(page.getByText("Coding / written")).toBeVisible();
-    await expect(page.getByText("Interview in progress")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Implement a function that removes duplicate IDs." })).toBeVisible();
     await expect(page.getByRole("button", { name: "Speak question" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Start voice" })).toBeVisible();
-    await expect(page.getByLabel("Spoken explanation")).toBeVisible();
-    await expect(page.getByText("Voice will fill: Spoken explanation")).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Editor content" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Explain your approach" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Run" })).toBeVisible();
     await page.getByRole("button", { name: "Use text answer" }).click();
     await expect(page.getByPlaceholder("Answer by typing or speaking...")).toBeVisible();
-    await expect(page.getByLabel("Spoken explanation")).toHaveCount(0);
-    await page.getByPlaceholder("Answer by typing or speaking...").focus();
-    await expect(page.getByText("Voice will fill: Answer")).toBeVisible();
-    await page.getByRole("button", { name: "Use code editor" }).click();
-    await expect(page.getByLabel("Spoken explanation")).toBeVisible();
-    await page.getByLabel("Spoken explanation").focus();
-    await expect(page.getByText("Voice will fill: Spoken explanation")).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Editor content" })).toHaveCount(0);
 });
 
-test("candidate can move between conversational, coding, and system-design rounds", async ({ page }) => {
+test("candidate sees the hybrid interview plan while future live rounds stay locked", async ({ page }) => {
     await mockSignedOut(page);
     const rounds = [
         { _id: "round-talk", name: "Conversational", description: "Communication", deliveryMode: "conversational", questions: [{ _id: "question-talk", text: "Describe an incident you led.", answer: "" }] },
@@ -318,22 +317,16 @@ test("candidate can move between conversational, coding, and system-design round
     await page.getByRole("button", { name: "Start assessment" }).click();
 
     await expect(page.getByRole("heading", { name: "Describe an incident you led." })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Conversational/ })).toBeVisible();
-    await page.getByRole("button", { name: /Coding exercise/ }).click();
-    await expect(page.getByRole("heading", { name: "Implement a function that removes duplicates." })).toBeVisible();
-    await expect(page.getByText("Coding / written", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: /System design/ }).click();
-    await expect(page.getByRole("heading", { name: "Design a global notification service." })).toBeVisible();
-    await expect(page.getByText("Your diagram is part of the interview")).toBeVisible();
-    await expect(page.getByText("Architecture diagram", { exact: true })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText(/reads component labels and bound connections/)).toBeVisible();
-    await expect(page.getByLabel("Spoken explanation")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Conversational/ })).toBeEnabled();
+    await expect(page.getByRole("button", { name: /Coding exercise/ })).toBeDisabled();
+    await expect(page.getByRole("button", { name: /System design/ })).toBeDisabled();
+    await expect(page.getByText(/Live rounds advance sequentially/)).toBeVisible();
 });
 
 test("candidate stays on the question when saving fails", async ({ page }) => {
     await mockSignedOut(page);
     const assessment = { title: "Reliability screen", jobRole: "Engineer", durationMinutes: 20, followUpsEnabled: false, rounds: [{ name: "Technical", deliveryMode: "conversational", questionCount: 2 }] };
-    const attempt = { _id: "attempt-failure", rounds: [{ _id: "round-failure", name: "Technical", deliveryMode: "conversational", questions: [
+    const attempt = { _id: "attempt-failure", startedAt: new Date().toISOString(), rounds: [{ _id: "round-failure", name: "Technical", deliveryMode: "conversational", adaptiveComplete: true, questions: [
         { _id: "question-failure-1", text: "Describe your rollback strategy.", answer: "" },
         { _id: "question-failure-2", text: "How do you monitor deployments?", answer: "" },
     ] }] };
@@ -346,9 +339,10 @@ test("candidate stays on the question when saving fails", async ({ page }) => {
     await page.getByLabel("Email address").fill("resilient@example.com");
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: "Start assessment" }).click();
+    await page.getByRole("button", { name: "Type / code" }).click();
     const answer = page.getByPlaceholder("Answer by typing or speaking...");
     await answer.fill("I use health gates, canaries, and a tested rollback command.");
-    await page.getByRole("button", { name: "Save answer" }).click();
+    await page.getByRole("button", { name: "I’m done" }).click();
     await expect(page.getByText("Temporary save failure")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Describe your rollback strategy." })).toBeVisible();
     await expect(answer).toHaveValue("I use health gates, canaries, and a tested rollback command.");
