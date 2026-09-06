@@ -70,6 +70,17 @@ const ProductAwareHeader = () => {
     return <Header />;
 };
 
+const AssessmentsEntryRoute = () => {
+    const location = useLocation();
+    const params = new URLSearchParams(location.search);
+    if (params.get("create") === "1") {
+        const editId = params.get("edit");
+        const target = editId ? `/hire/assessments/new?edit=${encodeURIComponent(editId)}` : "/hire/assessments/new";
+        return <Navigate to={target} replace />;
+    }
+    return <AssessmentsPage />;
+};
+
 function App() {
     const [showSkip, setShowSkip] = useState(false);
     const hiddenStyle = { position: "absolute", left: "-10000px", top: "auto", width: 1, height: 1, overflow: "hidden", zIndex: 10000 };
@@ -115,7 +126,7 @@ function App() {
                 <Route path="/practice/new" element={<ProtectedRoute><CreateInterviewPage /></ProtectedRoute>} />
                 <Route path="/practice/resume-review" element={<ProtectedRoute><ResumeReviewPage /></ProtectedRoute>} />
                 <Route path="/practice/interviews/:interviewId" element={<ProtectedRoute><InterviewPage /></ProtectedRoute>} />
-                <Route path="/hire/assessments" element={<HiringRoute><AssessmentsPage /></HiringRoute>} />
+                <Route path="/hire/assessments" element={<HiringRoute><AssessmentsEntryRoute /></HiringRoute>} />
                 <Route path="/hire/assessments/new" element={<HiringRoute><CreateAssessmentPage /></HiringRoute>} />
                 <Route path="/hire/assessments/:assessmentId" element={<HiringRoute><AssessmentReportPage /></HiringRoute>} />
                 <Route path="/hire/assessments/:assessmentId/preview" element={<HiringRoute><AssessmentPreviewPage /></HiringRoute>} />
