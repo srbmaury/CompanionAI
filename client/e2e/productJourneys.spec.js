@@ -372,7 +372,7 @@ test("supporting authenticated screens render without overflow", async ({ page }
         ["/practice/company-insights", "Company interview insights"],
         ["/practice/saved-experiences", "Saved company insights"],
         ["/practice/pricing", "Choose your Practice plan"],
-        ["/hire/assessments", "Overview"],
+        ["/hire/assessments", "Hiring workspace"],
         ["/admin/feedback", "Product feedback"],
         ["/admin/audit", "Audit activity"],
     ];
