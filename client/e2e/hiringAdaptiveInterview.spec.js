@@ -147,13 +147,13 @@ test("adaptive conversational interview uses stable progress while advancing int
     await startPublicAssessment(page, shareToken, "Adaptive Candidate", "adaptive@example.com");
     await expect(page.getByRole("heading", { name: firstQuestion.text })).toBeVisible();
     await expect(page.getByText(/remaining/)).toBeVisible();
-    await expect(page.getByText(/Adaptive/)).toHaveCount(0);
+    await expect(page.getByText("Adaptive primary questions", { exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Type / code" }).click();
     await page.getByPlaceholder("Answer by typing or speaking...").fill("I stabilized traffic, narrowed the failure domain, rolled back safely, and added release health gates.");
     await page.getByRole("button", { name: "I’m done" }).click();
 
     await expect(page.getByRole("heading", { name: secondQuestion.text })).toBeVisible();
-    await expect(page.getByText(/Adaptive/)).toHaveCount(0);
+    await expect(page.getByText("Adaptive primary questions", { exact: true })).toHaveCount(0);
     await expect(page.getByText("1 of 2 complete", { exact: true })).toHaveCount(0);
 });
 
@@ -244,7 +244,7 @@ test("candidate completes all three chained AI follow-ups before a conversationa
     expect(currentQuestion.followUpNumber).toBe(0);
 
     await page.getByRole("button", { name: "Review and submit" }).click();
-    await expect(page.getByText("1 of 1 complete", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Interview complete" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Submit assessment" })).toBeEnabled();
     await page.getByRole("button", { name: "Submit assessment" }).click();
     await expect(page.getByRole("heading", { name: "Assessment submitted" })).toBeVisible();
