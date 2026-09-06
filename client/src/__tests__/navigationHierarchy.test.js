@@ -11,38 +11,38 @@ describe("global back-button hierarchy", () => {
         "/reset-password",
         "/privacy",
         "/terms",
-        "/dashboard",
-        "/resume-review",
-        "/progress",
-        "/experiences",
-        "/profile",
-        "/pricing",
-        "/billing/success",
+        "/practice/dashboard",
+        "/practice/resume-review",
+        "/practice/progress",
+        "/practice/company-insights",
+        "/practice/profile",
+        "/practice/pricing",
+        "/practice/billing/success",
         "/admin/feedback",
         "/admin/audit",
-        "/hiring/team",
+        "/hire/team",
         "/assessment/public-share-token",
     ])("does not show Back on root page %s", (pathname) => {
         expect(shouldShowGlobalBack({ pathname, search: "" })).toBe(false);
     });
 
     it("treats Hiring sibling views as roots", () => {
-        expect(shouldShowGlobalBack({ pathname: "/assessments", search: "", hash: "" })).toBe(false);
-        expect(shouldShowGlobalBack({ pathname: "/assessments", search: "", hash: "#candidate-pipeline" })).toBe(false);
-        expect(shouldShowGlobalBack({ pathname: "/assessments", search: "", hash: "#assessment-list" })).toBe(false);
+        expect(shouldShowGlobalBack({ pathname: "/hire/assessments", search: "", hash: "" })).toBe(false);
+        expect(shouldShowGlobalBack({ pathname: "/hire/assessments", search: "", hash: "#candidate-pipeline" })).toBe(false);
+        expect(shouldShowGlobalBack({ pathname: "/hire/assessments", search: "", hash: "#assessment-list" })).toBe(false);
     });
 
     it.each([
-        ["/assessments", "?create=1"],
-        ["/assessments", "?create=1&edit=a1"],
-        ["/assessments/a1", ""],
-        ["/assessments/a1/preview", ""],
-        ["/create-interview", ""],
-        ["/interviews/i1", ""],
-        ["/resume-reviews", ""],
-        ["/resume-match", ""],
-        ["/resumes", ""],
-        ["/saved-experiences", ""],
+        ["/hire/assessments", "?create=1"],
+        ["/hire/assessments", "?create=1&edit=a1"],
+        ["/hire/assessments/a1", ""],
+        ["/hire/assessments/a1/preview", ""],
+        ["/practice/new", ""],
+        ["/practice/interviews/i1", ""],
+        ["/practice/resume-reviews", ""],
+        ["/practice/resume-match", ""],
+        ["/practice/resumes", ""],
+        ["/practice/saved-experiences", ""],
     ])("shows Back on nested page %s%s", (pathname, search) => {
         expect(shouldShowGlobalBack({ pathname, search })).toBe(true);
     });

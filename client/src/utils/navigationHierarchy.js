@@ -11,17 +11,17 @@ const ROOT_PATHS = new Set([
     "/terms",
     "/docs",
     "/sso/callback",
-    "/dashboard",
-    "/resume-review",
-    "/progress",
-    "/experiences",
-    "/profile",
-    "/pricing",
-    "/billing/success",
+    "/practice/dashboard",
+    "/practice/resume-review",
+    "/practice/progress",
+    "/practice/company-insights",
+    "/practice/profile",
+    "/practice/pricing",
+    "/practice/billing/success",
     "/admin/feedback",
     "/admin/audit",
-    "/hiring/team",
-    "/hiring/sso",
+    "/hire/team",
+    "/hire/sso",
 ]);
 
 export const isGlobalNavigationRoot = ({ pathname, search = "" }) => {
@@ -31,8 +31,8 @@ export const isGlobalNavigationRoot = ({ pathname, search = "" }) => {
     if (pathname.startsWith("/assessment/")) return true;
 
     // Hiring overview, candidate pipeline, and assessment list are sibling root views.
-    // The builder is intentionally nested so /assessments?create=1 keeps a Back action.
-    if (pathname === "/assessments") return !search;
+    // The builder is intentionally nested so /hire/assessments?create=1 keeps a Back action.
+    if (pathname === "/hire/assessments") return !search;
 
     return false;
 };

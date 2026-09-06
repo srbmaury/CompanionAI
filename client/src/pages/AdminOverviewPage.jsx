@@ -34,7 +34,7 @@ export default function AdminOverviewPage() {
     useEffect(() => { load(); }, [load]);
     const events = useMemo(() => Object.entries(data?.events || {}).sort((a, b) => b[1] - a[1]), [data?.events]);
 
-    return <Container maxWidth="xl" sx={{ py: { xs: 3, md: 5 } }}>
+    return <Container maxWidth="lg" sx={{ py: { xs: 3, md: 5 } }}>
         <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" gap={2} alignItems={{ md: "center" }}>
             <Box><Typography variant="overline" color="primary.main" fontWeight={850}>Platform administration</Typography><Typography component="h1" variant="h3" fontWeight={850}>Operations overview</Typography><Typography color="text.secondary" mt={1}>A compact view of account activity, interview usage, feedback, and operational follow-up.</Typography></Box>
             <Button variant="outlined" onClick={load} disabled={loading}>{loading ? "Refreshing…" : "Refresh"}</Button>

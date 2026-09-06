@@ -44,15 +44,15 @@ export const ThemeModeProvider = ({ children }) => {
             button: { textTransform: "none", fontWeight: 700 },
         },
         components: {
-            MuiButton: { defaultProps: { disableElevation: true }, styleOverrides: { root: { borderRadius: 11, minHeight: 40, whiteSpace: "normal", overflowWrap: "anywhere", textAlign: "center" }, containedPrimary: { boxShadow: "0 8px 22px rgba(91,80,214,.22)" } } },
+            MuiButton: { defaultProps: { disableElevation: true }, styleOverrides: { root: { borderRadius: 11, minHeight: 40, whiteSpace: "normal", overflowWrap: "normal", wordBreak: "normal", textAlign: "center" }, containedPrimary: { boxShadow: "0 8px 22px rgba(91,80,214,.22)" } } },
             MuiCard: { styleOverrides: { root: { borderRadius: 18, backgroundImage: "none" } } },
             MuiPaper: { styleOverrides: { root: { backgroundImage: "none" } } },
             MuiTextField: { defaultProps: { variant: "outlined" } },
             MuiOutlinedInput: { styleOverrides: { root: { borderRadius: 12 } } },
-            MuiChip: { styleOverrides: { root: { fontWeight: 700, maxWidth: "100%", height: "auto", minHeight: 32 }, label: { whiteSpace: "normal", overflowWrap: "anywhere", paddingTop: 4, paddingBottom: 4 } } },
-            MuiTypography: { styleOverrides: { root: { overflowWrap: "anywhere" } } },
-            MuiAlert: { styleOverrides: { message: { minWidth: 0, overflowWrap: "anywhere" } } },
-            MuiFormControlLabel: { styleOverrides: { root: { minWidth: 0 }, label: { minWidth: 0, overflowWrap: "anywhere" } } },
+            MuiChip: { styleOverrides: { root: { fontWeight: 700, maxWidth: "100%", height: "auto", minHeight: 32 }, label: { whiteSpace: "normal", overflowWrap: "break-word", paddingTop: 4, paddingBottom: 4 } } },
+            MuiTypography: { styleOverrides: { root: { overflowWrap: "break-word" } } },
+            MuiAlert: { styleOverrides: { message: { minWidth: 0, overflowWrap: "break-word" } } },
+            MuiFormControlLabel: { styleOverrides: { root: { minWidth: 0 }, label: { minWidth: 0, overflowWrap: "break-word" } } },
         },
     }), [mode]);
 
