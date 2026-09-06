@@ -25,34 +25,36 @@ const closeMenu = async (page) => {
     await page.keyboard.press("Escape");
 };
 
+const visibleMenuItem = (page, name) => page.getByRole("menuitem", { name }).filter({ visible: true });
+
 test("mobile navigation keeps workspace, organization, and account actions accessible", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "mobile-chromium", "Mobile navigation regression test");
     await mockSignedIn(page);
 
     await page.goto("/hire");
     await openNavigation(page);
-    await expect(page.getByRole("menuitem", { name: "Practice" })).toHaveCount(1);
-    await expect(page.getByRole("menuitem", { name: "Hire" })).toHaveCount(1);
-    await expect(page.getByRole("menuitem", { name: /Acme Hiring/i })).toHaveCount(1);
-    await expect(page.getByRole("menuitem", { name: "Team & billing" })).toHaveCount(1);
+    await expect(visibleMenuItem(page, "Practice")).toBeVisible();
+    await expect(visibleMenuItem(page, "Hire")).toBeVisible();
+    await expect(visibleMenuItem(page, /Acme Hiring/i)).toBeVisible();
+    await expect(visibleMenuItem(page, "Team & billing")).toBeVisible();
     await expect(page.getByRole("button", { name: "Account menu" })).toHaveCount(0);
     await closeMenu(page);
 
     await page.goto("/practice");
     await openNavigation(page);
-    await expect(page.getByRole("menuitem", { name: "Practice" })).toHaveCount(1);
-    await expect(page.getByRole("menuitem", { name: "Hire" })).toHaveCount(1);
-    await expect(page.getByRole("menuitem", { name: "Profile" })).toHaveCount(1);
-    await expect(page.getByRole("menuitem", { name: "Review resume" })).toHaveCount(1);
-    await expect(page.getByRole("menuitem", { name: "Match to job" })).toHaveCount(1);
+    await expect(visibleMenuItem(page, "Practice")).toBeVisible();
+    await expect(visibleMenuItem(page, "Hire")).toBeVisible();
+    await expect(visibleMenuItem(page, "Profile")).toBeVisible();
+    await expect(visibleMenuItem(page, "Review resume")).toBeVisible();
+    await expect(visibleMenuItem(page, "Match to job")).toBeVisible();
     await expect(page.getByRole("button", { name: "Account menu" })).toHaveCount(0);
     await closeMenu(page);
 
     await page.goto("/privacy");
     await openNavigation(page);
-    await expect(page.getByRole("menuitem", { name: "Practice" })).toHaveCount(1);
-    await expect(page.getByRole("menuitem", { name: "Hire" })).toHaveCount(1);
-    await expect(page.getByRole("menuitem", { name: "Docs" })).toHaveCount(1);
-    await expect(page.getByRole("menuitem", { name: "Profile & settings" })).toHaveCount(1);
+    await expect(visibleMenuItem(page, "Practice")).toBeVisible();
+    await expect(visibleMenuItem(page, "Hire")).toBeVisible();
+    await expect(visibleMenuItem(page, "Docs")).toBeVisible();
+    await expect(visibleMenuItem(page, "Profile & settings")).toBeVisible();
     await expect(page.getByText(/billing/i)).toHaveCount(0);
 });
