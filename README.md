@@ -1,12 +1,12 @@
-# CompanionAI
+# Evalcue AI
 
-[![CI](https://github.com/srbmaury/CompanionAI/actions/workflows/ci.yml/badge.svg)](https://github.com/srbmaury/CompanionAI/actions/workflows/ci.yml)
+[![CI](https://github.com/srbmaury/Evalcue AI/actions/workflows/ci.yml/badge.svg)](https://github.com/srbmaury/Evalcue AI/actions/workflows/ci.yml)
 
-CompanionAI is a full-stack platform for **software engineering interview practice** and **structured technical hiring**. Candidates can rehearse conversational, coding, and system-design interviews with adaptive AI follow-ups. Hiring teams can create role-specific assessments, invite candidates, collect technical evidence, and review scorecards while keeping employment decisions human-controlled.
+Evalcue AI is a full-stack platform for **software engineering interview practice** and **structured technical hiring**. Candidates can rehearse conversational, coding, and system-design interviews with adaptive AI follow-ups. Hiring teams can create role-specific assessments, invite candidates, collect technical evidence, and review scorecards while keeping employment decisions human-controlled.
 
 ## Product surfaces
 
-### CompanionAI Practice
+### Evalcue AI Practice
 
 - Role- and job-description-specific interview plans
 - Conversational interviews with hands-free voice support
@@ -18,7 +18,7 @@ CompanionAI is a full-stack platform for **software engineering interview practi
 
 Canonical public route: `/practice`
 
-### CompanionAI Hire
+### Evalcue AI Hire
 
 - Organization-owned technical assessments and candidate pipelines
 - Manual or AI-generated round definitions
@@ -219,7 +219,7 @@ Major API areas:
 
 ## Live system-design interviews
 
-System-design rounds use a single architecture problem with an Excalidraw canvas and a live discussion. During the interview CompanionAI can issue **bounded, context-aware interviewer interjections** rather than only one fixed follow-up. The interviewer can probe requirements, capacity, consistency, reliability, security, observability, or clarification questions without revealing a solution or coaching the candidate.
+System-design rounds use a single architecture problem with an Excalidraw canvas and a live discussion. During the interview Evalcue AI can issue **bounded, context-aware interviewer interjections** rather than only one fixed follow-up. The interviewer can probe requirements, capacity, consistency, reliability, security, observability, or clarification questions without revealing a solution or coaching the candidate.
 
 The system stores the final candidate transcript as the authoritative answer, the diagram/derived topology summary, and bounded discussion turns. Evaluation uses the complete final candidate transcript plus interviewer prompts and diagram context, so truncating old UI discussion turns does not discard early candidate reasoning.
 

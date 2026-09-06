@@ -49,7 +49,7 @@ const CONFIG = {
         publicHome: "/practice",
         appHome: "/practice/dashboard",
         crossPath: "/hire",
-        crossLabel: "Open CompanionAI Hire",
+        crossLabel: "Open Evalcue AI Hire",
     },
     hiring: {
         workspace: "hiring",
@@ -58,7 +58,7 @@ const CONFIG = {
         publicHome: "/hire",
         appHome: "/hire/assessments",
         crossPath: "/practice",
-        crossLabel: "Open CompanionAI Practice",
+        crossLabel: "Open Evalcue AI Practice",
     },
 };
 
@@ -175,7 +175,7 @@ export default function ProductHeader({ surface = "practice" }) {
                         <Stack direction="row" spacing={1.15} alignItems="center" minWidth={0} component={RouterLink} to={home} sx={{ textDecoration: "none", color: "inherit", flexShrink: 0 }}>
                             <Box sx={{ width: 34, height: 34, borderRadius: 2.5, display: "grid", placeItems: "center", color: "white", background: surface === "hiring" ? "linear-gradient(135deg,#12685f,#36aa9d)" : "linear-gradient(135deg,#5b50d6,#8f85ff)", boxShadow: surface === "hiring" ? "0 8px 20px rgba(18,104,95,.24)" : "0 8px 20px rgba(91,80,214,.28)" }}><ProductIcon fontSize="small" /></Box>
                             <Box sx={{ minWidth: 0 }}>
-                                <Typography fontWeight={900} letterSpacing="-.025em" lineHeight={1.05} sx={{ display: { xs: "none", sm: "block" } }}>CompanionAI</Typography>
+                                <Typography fontWeight={900} letterSpacing="-.025em" lineHeight={1.05} sx={{ display: { xs: "none", sm: "block" } }}>Evalcue AI</Typography>
                                 <Typography variant="caption" color="text.secondary" fontWeight={800} lineHeight={1} sx={{ display: { xs: "none", sm: "block" } }}>{config.label}</Typography>
                             </Box>
                         </Stack>

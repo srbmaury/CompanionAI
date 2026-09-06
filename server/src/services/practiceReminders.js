@@ -13,9 +13,9 @@ const mailFor = (user) => {
     const dashboard = `${process.env.CLIENT_ORIGIN || "http://localhost:5173"}/dashboard`;
     return {
         to: user.email,
-        subject: "Your CompanionAI practice reminder",
-        text: `Hi ${user.name},\n\nIt’s time for your interview practice${role}. A focused session today keeps your progress moving.\n\nOpen CompanionAI: ${dashboard}\n\nChange or disable reminders from Profile & settings.`,
-        html: `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>Ready for a focused practice session?</h2><p>Hi ${escapeHtml(user.name)},</p><p>It’s time for your interview practice${escapeHtml(role)}. A focused session today keeps your progress moving.</p><p><a href="${escapeHtml(dashboard)}">Open CompanionAI</a></p><p>You can change or disable reminders from Profile &amp; settings.</p></div>`,
+        subject: "Your Evalcue AI practice reminder",
+        text: `Hi ${user.name},\n\nIt’s time for your interview practice${role}. A focused session today keeps your progress moving.\n\nOpen Evalcue AI: ${dashboard}\n\nChange or disable reminders from Profile & settings.`,
+        html: `<div style="font-family:Arial,sans-serif;line-height:1.6"><h2>Ready for a focused practice session?</h2><p>Hi ${escapeHtml(user.name)},</p><p>It’s time for your interview practice${escapeHtml(role)}. A focused session today keeps your progress moving.</p><p><a href="${escapeHtml(dashboard)}">Open Evalcue AI</a></p><p>You can change or disable reminders from Profile &amp; settings.</p></div>`,
     };
 };
 
@@ -87,6 +87,6 @@ export async function deliverDuePracticeReminders(now = new Date()) {
 }
 
 export async function sendTestPracticeReminder(user) {
-    const info = await sendMail({ ...mailFor(user), subject: "CompanionAI test reminder" });
+    const info = await sendMail({ ...mailFor(user), subject: "Evalcue AI test reminder" });
     return { messageId: info?.messageId || "" };
 }

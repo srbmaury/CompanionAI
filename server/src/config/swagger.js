@@ -3,9 +3,9 @@ import swaggerJSDoc from "swagger-jsdoc";
 const definition = {
     openapi: "3.0.0",
     info: {
-        title: "CompanionAI API",
+        title: "Evalcue AI API",
         version: "1.0.0",
-        description: "API documentation for CompanionAI backend",
+        description: "API documentation for Evalcue AI backend",
     },
     servers: [
         { url: "/" },

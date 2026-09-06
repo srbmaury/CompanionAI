@@ -31,7 +31,7 @@ const RegisterPage = () => {
     const routeWorkspace = workspaceForSurface(surfaceForPath(location.pathname));
     const requestedWorkspace = ["practice", "hiring"].includes(workspaceParam) ? workspaceParam : routeWorkspace;
     const authSurface = requestedWorkspace || "combined";
-    const productName = requestedWorkspace === "hiring" ? "CompanionAI Hire" : requestedWorkspace === "practice" ? "CompanionAI Practice" : "CompanionAI";
+    const productName = requestedWorkspace === "hiring" ? "Evalcue AI Hire" : requestedWorkspace === "practice" ? "Evalcue AI Practice" : "Evalcue AI";
 
     useEffect(() => {
         if (requestedWorkspace) setWorkspacePreference(requestedWorkspace);
@@ -171,7 +171,7 @@ const RegisterPage = () => {
                     <Captcha onVerify={(t) => setCaptchaToken(t)} onExpire={() => setCaptchaToken("")} />
                     <FormControlLabel control={<Checkbox checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} />} label={<Typography variant="body2">I agree to the <Link component={RouterLink} to="/terms">Terms</Link> and acknowledge the <Link component={RouterLink} to="/privacy">Privacy Notice</Link>.</Typography>} />
                     <Button type="submit" variant="contained" size="large" startIcon={<PersonAddIcon />} disabled={submitting || !acceptedTerms} sx={{ py: 1.25, borderRadius: 2, textTransform: "none", fontWeight: 700 }}>{submitting ? "Creating account..." : requestedWorkspace === "hiring" ? "Create hiring account" : requestedWorkspace === "practice" ? "Create practice account" : "Create account"}</Button>
-                    {acceptedTerms && <Stack spacing={2} alignItems="center"><div ref={googleDivRef} /><Typography variant="caption" color="text.secondary" align="center">Google sign-up may not display in embedded browsers. If the Google window is blank, open CompanionAI in Chrome or Safari, or create your account with email.</Typography></Stack>}
+                    {acceptedTerms && <Stack spacing={2} alignItems="center"><div ref={googleDivRef} /><Typography variant="caption" color="text.secondary" align="center">Google sign-up may not display in embedded browsers. If the Google window is blank, open Evalcue AI in Chrome or Safari, or create your account with email.</Typography></Stack>}
                     {submittedEmail && <Stack spacing={1} alignItems="center"><Typography variant="body2" color="text.secondary">Didn’t get the email? Check spam or resend.</Typography><Button variant="text" onClick={async () => { try { const r = await resendVerification(submittedEmail); setSuccessMsg(r?.message || "Verification email re-sent"); } catch (e) { console.warn("Resend verification failed", e); } }}>Resend verification</Button><Button component={RouterLink} to={loginPath} size="small">Continue to sign in</Button></Stack>}
                 </Stack>
             </Box>

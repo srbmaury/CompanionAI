@@ -1,4 +1,4 @@
-# CompanionAI production runbook
+# Evalcue AI production runbook
 
 ## Deployment topology
 

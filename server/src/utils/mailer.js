@@ -40,12 +40,12 @@ export const sendMail = async ({ to, subject, html, text }) => {
     return brevoRequest("/smtp/email", {
         method: "POST",
         body: JSON.stringify({
-            sender: { email: senderEmail, name: envTrim(process.env.BREVO_SENDER_NAME) || "CompanionAI" },
+            sender: { email: senderEmail, name: envTrim(process.env.BREVO_SENDER_NAME) || "Evalcue AI" },
             to: recipients(to),
             subject,
             ...(html ? { htmlContent: html } : {}),
             ...(text ? { textContent: text } : {}),
-            replyTo: { email: senderEmail, name: envTrim(process.env.BREVO_SENDER_NAME) || "CompanionAI" },
+            replyTo: { email: senderEmail, name: envTrim(process.env.BREVO_SENDER_NAME) || "Evalcue AI" },
             tags: ["companionai-transactional"],
         }),
     });

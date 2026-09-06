@@ -20,7 +20,7 @@ import { setWorkspacePreference } from "../utils/workspacePreference";
 
 const COPY = {
     practice: {
-        eyebrow: "CompanionAI Practice",
+        eyebrow: "Evalcue AI Practice",
         icon: <SchoolOutlined />,
         headline: "Train for the interview you actually have.",
         subheadline: "Turn your target role, job description, and resume into adaptive technical interviews that keep probing until there is enough evidence to show what you know and what to improve.",
@@ -28,7 +28,7 @@ const COPY = {
         secondary: "Sign in",
         crossLabel: "Hiring teams",
         crossPath: "/hire",
-        crossText: "Use CompanionAI Hire",
+        crossText: "Use Evalcue AI Hire",
         proof: "Built for candidates · Private practice data · Evidence-backed feedback",
         features: [
             { icon: <PsychologyRounded />, title: "Adaptive interview engine", body: "Questions change with your answers, competency coverage, confidence, and resume claims instead of following a static script." },
@@ -43,7 +43,7 @@ const COPY = {
         ],
     },
     hiring: {
-        eyebrow: "CompanionAI Hire",
+        eyebrow: "Evalcue AI Hire",
         icon: <WorkOutlineRounded />,
         headline: "Screen technical candidates without burning senior-engineer hours.",
         subheadline: "Create structured, adaptive assessments from the role you are hiring for, invite candidates with one link, and review evidence-rich reports before deciding where human interviewer time matters most.",
@@ -51,7 +51,7 @@ const COPY = {
         secondary: "Recruiter sign in",
         crossLabel: "Candidates",
         crossPath: "/practice",
-        crossText: "Use CompanionAI Practice",
+        crossText: "Use Evalcue AI Practice",
         proof: "Organization-owned hiring data · Human review · Calibration-ready scoring",
         features: [
             { icon: <GroupsRounded />, title: "Structured candidate pipeline", body: "Create assessments, invite candidates, track submissions, and keep hiring evidence inside the organization workspace." },
@@ -176,7 +176,7 @@ export default function ProductLandingPage({ surface = "practice" }) {
                             <Box maxWidth={760}>
                                 <Typography variant="overline" color="primary.main" fontWeight={850}>Responsible hiring design</Typography>
                                 <Typography variant="h4" fontWeight={850} mt={.5}>AI organizes evidence. People make employment decisions.</Typography>
-                                <Typography color="text.secondary" mt={1}>CompanionAI Hire is designed for structured evidence collection, human review, calibration, and explicit recruiter or hiring-manager judgment—not fully automated hiring decisions.</Typography>
+                                <Typography color="text.secondary" mt={1}>Evalcue AI Hire is designed for structured evidence collection, human review, calibration, and explicit recruiter or hiring-manager judgment—not fully automated hiring decisions.</Typography>
                             </Box>
                             <ShieldOutlined color="primary" sx={{ fontSize: 56 }} />
                         </Stack>

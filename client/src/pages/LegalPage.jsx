@@ -12,7 +12,7 @@ const privacySections = [
 ];
 
 const termsSections = [
-    ["Service", "CompanionAI provides practice questions and AI-generated feedback for educational purposes. It does not guarantee interviews, offers, scores, or employment outcomes."],
+    ["Service", "Evalcue AI provides practice questions and AI-generated feedback for educational purposes. It does not guarantee interviews, offers, scores, or employment outcomes."],
     ["Acceptable use", "Do not misuse the service, access another person’s data, evade limits, upload malicious files, or use code execution to attack systems."],
     ["Your content", "You retain ownership of content you submit and grant the service the limited permission needed to process it and provide the requested features."],
     ["AI limitations", "AI output can be inaccurate, incomplete, or biased. Assessment owners must review reports independently and must not use AI feedback as the sole basis for a hiring decision."],
@@ -26,7 +26,7 @@ export default function LegalPage({ type }) {
         <>
             <Container maxWidth="md" sx={{ py: { xs: 5, md: 8 } }}>
                 <Paper variant="outlined" sx={{ p: { xs: 3, md: 6 }, borderRadius: 4 }}>
-                    <Typography variant="overline" color="primary.main" fontWeight={800}>CompanionAI</Typography>
+                    <Typography variant="overline" color="primary.main" fontWeight={800}>Evalcue AI</Typography>
                     <Typography component="h1" variant="h3" fontWeight={800} mt={1}>{privacy ? "Privacy notice" : "Terms of use"}</Typography>
                     <Typography color="text.secondary" mt={1}>Effective August 1, 2026</Typography>
                     <Stack spacing={4} mt={5}>

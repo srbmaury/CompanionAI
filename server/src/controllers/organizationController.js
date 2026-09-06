@@ -150,7 +150,7 @@ export const addMember = async (req, res, next) => {
             return res.status(403).json({ message: "Only the organization owner can add another admin" });
         }
         const user = await User.findOne({ email: req.body.email.toLowerCase().trim() });
-        if (!user) return res.status(404).json({ message: "That person needs a CompanionAI account before they can be added" });
+        if (!user) return res.status(404).json({ message: "That person needs a Evalcue AI account before they can be added" });
         const membership = await OrganizationMembership.findOneAndUpdate(
             { organization: req.params.organizationId, user: user._id },
             {

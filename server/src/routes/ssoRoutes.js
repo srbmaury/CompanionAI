@@ -74,7 +74,7 @@ const provisionSsoAccess = async ({ organization, metadata, claims, email }) => 
             if (user) {
                 const existingForOrganization = user.ssoIdentities?.find((identity) => String(identity.organization) === String(organization._id));
                 if (existingForOrganization && (existingForOrganization.issuer !== metadata.issuer || existingForOrganization.subject !== claims.sub)) {
-                    throw new SsoAccessError("This CompanionAI account is linked to a different SSO identity");
+                    throw new SsoAccessError("This Evalcue AI account is linked to a different SSO identity");
                 }
                 membership = await OrganizationMembership.findOne({ organization: organization._id, user: user._id }).session(session);
                 if (membership?.status === "disabled") throw new SsoAccessError("Your organization access is disabled");
@@ -170,7 +170,7 @@ router.get("/callback", async (req, res) => {
         const email = String(claims.email || claims.preferred_username || claims.upn || "").trim().toLowerCase();
         const domain = emailDomain(email);
         if (!email || claims.email_verified === false || !config.domains.includes(domain)) return fail("Your identity is not allowed for this organization");
-        if (email !== attempt.emailHint) return fail("Sign in with the same work email you entered in CompanionAI");
+        if (email !== attempt.emailHint) return fail("Sign in with the same work email you entered in Evalcue AI");
 
         let access;
         try {
