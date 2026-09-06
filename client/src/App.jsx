@@ -40,7 +40,7 @@ const AdminFeedbackPage = lazy(() => import("./pages/AdminFeedbackPage.jsx"));
 const AdminAuditPage = lazy(() => import("./pages/AdminAuditPage.jsx"));
 const AdminCalibrationPage = lazy(() => import("./pages/AdminCalibrationPage.jsx"));
 const AdminCommercialAccessPage = lazy(() => import("./pages/AdminCommercialAccessPage.jsx"));
-const AssessmentsPage = lazy(() => import("./pages/AssessmentsPage.jsx"));
+const AssessmentsPage = lazy(() => import("./pages/HiringWorkspacePage.jsx"));
 const AssessmentReportPage = lazy(() => import("./pages/AssessmentReportPage.jsx"));
 const CandidateAssessmentPage = lazy(() => import("./pages/CandidateAssessmentPage.jsx"));
 const AssessmentPreviewPage = lazy(() => import("./pages/AssessmentPreviewPage.jsx"));
