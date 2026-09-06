@@ -85,7 +85,8 @@ test("recruiter can lock the interview to reviewed primary questions while keepi
     const adaptiveToggle = page.getByLabel(/^Let AI adapt the remaining primary questions/);
     await expect(adaptiveToggle).toBeChecked();
     await adaptiveToggle.uncheck();
-    const questionCount = page.getByLabel("Maximum primary questions");
+    const questionCount = page.getByLabel("Question count");
+    await expect(questionCount).toHaveValue("3");
     await questionCount.fill("1");
     await page.getByRole("button", { name: "Continue" }).click();
 
