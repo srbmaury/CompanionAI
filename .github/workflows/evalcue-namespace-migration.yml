@@ -1,0 +1,95 @@
+name: Evalcue namespace migration
+
+on:
+  push:
+    branches:
+      - fix/main-hardening-seo
+    paths:
+      - .github/workflows/evalcue-namespace-migration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/main-hardening-seo
+
+      - name: Migrate remaining old namespace
+        shell: python
+        run: |
+          from pathlib import Path
+
+          root = Path('.')
+          old = ''.join(['companion', 'ai'])
+          replacement = 'evalcue'
+          old_security = f'security@{old}.app'
+          old_sender = f'{old}.email@gmail.com'
+
+          security = root / 'SECURITY.md'
+          if security.exists():
+              text = security.read_text(encoding='utf-8')
+              text = text.replace(
+                  f'Report vulnerabilities privately to `{old_security}`. Do not include secrets or personal data in public issues.',
+                  'Report vulnerabilities through GitHub private vulnerability reporting. Do not include secrets or personal data in public issues.'
+              )
+              security.write_text(text, encoding='utf-8')
+
+          changed = []
+          for path in root.rglob('*'):
+              if not path.is_file() or '.git' in path.parts:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except (UnicodeDecodeError, OSError):
+                  continue
+              updated = text.replace(old_sender, 'sender@example.com').replace(old, replacement)
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+                  changed.append(str(path))
+
+          env_example = root / 'client/.env.example'
+          if env_example.exists():
+              text = env_example.read_text(encoding='utf-8')
+              if 'VITE_SUPPORT_EMAIL=' not in text:
+                  if not text.endswith('\n'):
+                      text += '\n'
+                  text += 'VITE_SUPPORT_EMAIL=\n'
+                  env_example.write_text(text, encoding='utf-8')
+                  changed.append(str(env_example))
+
+          for temporary in [root / '.github/workflows/brand-audit.yml', root / '.github/workflows/evalcue-namespace-migration.yml']:
+              if temporary.exists():
+                  temporary.unlink()
+
+          remaining = []
+          needle = old.casefold()
+          for path in root.rglob('*'):
+              if not path.is_file() or '.git' in path.parts:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except (UnicodeDecodeError, OSError):
+                  continue
+              for number, line in enumerate(text.splitlines(), 1):
+                  if needle in line.casefold():
+                      remaining.append(f'{path}:{number}: {line}')
+
+          print(f'CHANGED_FILES={len(set(changed))}')
+          print(f'CASE_INSENSITIVE_OLD_BRAND_OCCURRENCES_AFTER={len(remaining)}')
+          for line in remaining:
+              print(line)
+          if remaining:
+              raise SystemExit('Old brand namespace still exists')
+
+      - name: Commit namespace migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Complete Evalcue AI namespace migration"
+          git push origin HEAD:fix/main-hardening-seo
