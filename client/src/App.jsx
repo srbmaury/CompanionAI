@@ -13,6 +13,7 @@ import SearchIndexPolicy from "./components/SearchIndexPolicy";
 import CanonicalProductRedirect from "./components/CanonicalProductRedirect";
 
 const CreateInterviewPage = lazy(() => import("./pages/CreateInterviewPage"));
+const CreateAssessmentPage = lazy(() => import("./pages/CreateAssessmentPage.jsx"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
 const ForgotPasswordPage = lazy(() => import("./pages/ForgotPasswordPage.jsx"));
 const InterviewPage = lazy(() => import("./pages/InterviewPage"));
@@ -115,6 +116,7 @@ function App() {
                 <Route path="/practice/resume-review" element={<ProtectedRoute><ResumeReviewPage /></ProtectedRoute>} />
                 <Route path="/practice/interviews/:interviewId" element={<ProtectedRoute><InterviewPage /></ProtectedRoute>} />
                 <Route path="/hire/assessments" element={<HiringRoute><AssessmentsPage /></HiringRoute>} />
+                <Route path="/hire/assessments/new" element={<HiringRoute><CreateAssessmentPage /></HiringRoute>} />
                 <Route path="/hire/assessments/:assessmentId" element={<HiringRoute><AssessmentReportPage /></HiringRoute>} />
                 <Route path="/hire/assessments/:assessmentId/preview" element={<HiringRoute><AssessmentPreviewPage /></HiringRoute>} />
                 <Route path="/hire/team" element={<HiringRoute><HiringTeamPage /></HiringRoute>} />
