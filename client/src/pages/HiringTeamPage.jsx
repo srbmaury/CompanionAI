@@ -233,8 +233,8 @@ export default function HiringTeamPage() {
 
                 {canManageOrganization && (
                     <Paper component="form" variant="outlined" sx={{ p: 3, borderRadius: 4 }} onSubmit={addMember}>
-                        <Typography variant="h5" fontWeight={800}>Add existing CompanionAI user</Typography>
-                        <Typography color="text.secondary" mt={.5}>For now, the person must already have a CompanionAI account. Email invitations can be added later.</Typography>
+                        <Typography variant="h5" fontWeight={800}>Add existing Evalcue AI user</Typography>
+                        <Typography color="text.secondary" mt={.5}>For now, the person must already have a Evalcue AI account. Email invitations can be added later.</Typography>
                         <Stack direction={{ xs: "column", md: "row" }} spacing={1.5} mt={2}>
                             <TextField label="Email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required fullWidth />
                             <FormControl sx={{ minWidth: 190 }}>

@@ -10,8 +10,8 @@ describe("Brevo transactional mailer", () => {
         fetchMock.mockReset();
         process.env.NODE_ENV = "development";
         process.env.BREVO_API_KEY = "test-api-key";
-        process.env.BREVO_SENDER_EMAIL = "companionai.email@gmail.com";
-        process.env.BREVO_SENDER_NAME = "CompanionAI";
+        process.env.BREVO_SENDER_EMAIL = "sender@example.com";
+        process.env.BREVO_SENDER_NAME = "Evalcue AI";
     });
 
     it("sends transactional email through the Brevo HTTPS API", async () => {
@@ -20,7 +20,7 @@ describe("Brevo transactional mailer", () => {
         const [url, options] = fetchMock.mock.calls[0];
         expect(url).toBe("https://api.brevo.com/v3/smtp/email");
         expect(options.headers["api-key"]).toBe("test-api-key");
-        expect(JSON.parse(options.body)).toMatchObject({ sender: { email: "companionai.email@gmail.com", name: "CompanionAI" }, to: [{ email: "person@example.com" }], subject: "Verify" });
+        expect(JSON.parse(options.body)).toMatchObject({ sender: { email: "sender@example.com", name: "Evalcue AI" }, to: [{ email: "person@example.com" }], subject: "Verify" });
     });
 
     it("verifies the API key without sending email", async () => {

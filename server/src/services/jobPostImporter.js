@@ -104,7 +104,7 @@ export const importJobPost = async (rawUrl) => {
     for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
         const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
         let response;
-        try { response = await fetch(current, { redirect: "manual", signal: controller.signal, headers: { "user-agent": "CompanionAI-JobImporter/1.0", accept: "text/html,text/plain;q=0.9" } }); }
+        try { response = await fetch(current, { redirect: "manual", signal: controller.signal, headers: { "user-agent": "Evalcue AI-JobImporter/1.0", accept: "text/html,text/plain;q=0.9" } }); }
         catch (error) { throw new Error(error?.name === "AbortError" ? "The job post took too long to respond." : "The job post could not be reached."); }
         finally { clearTimeout(timeout); }
         if ([301, 302, 303, 307, 308].includes(response.status)) {

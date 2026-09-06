@@ -20,7 +20,7 @@ const resolveBaseUrl = () => resolveApiBaseUrl(
 export const shouldAttachOrganization = (url = "") => {
     let pathname;
     try {
-        pathname = new URL(url, "http://companionai.local").pathname;
+        pathname = new URL(url, "http://evalcue.local").pathname;
     } catch {
         return false;
     }

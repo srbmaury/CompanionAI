@@ -4,21 +4,21 @@ import { Box, Chip, Container, Paper, Stack, Typography } from "@mui/material";
 const SURFACE_COPY = {
     practice: {
         icon: <SchoolOutlined />,
-        label: "CompanionAI Practice",
+        label: "Evalcue AI Practice",
         headline: "Prepare against the role you actually want.",
         body: "Keep personal practice focused on your target role, resume, technical gaps, and improvement over time.",
         bullets: ["Adaptive technical interviews", "Resume and job-description context", "Evidence-backed feedback and progress"],
     },
     hiring: {
         icon: <WorkOutlineRounded />,
-        label: "CompanionAI Hire",
+        label: "Evalcue AI Hire",
         headline: "Collect stronger technical signal before the live panel.",
         body: "Keep organization-owned assessments, candidate evidence, team access, and calibration inside a dedicated hiring product.",
         bullets: ["Structured adaptive assessments", "Candidate pipeline and reports", "Human review and scoring calibration"],
     },
     combined: {
         icon: <AutoAwesome />,
-        label: "CompanionAI",
+        label: "Evalcue AI",
         headline: "One account. Two purpose-built products.",
         body: "Use Practice for your own interview preparation and Hire for organization-owned candidate assessment workflows.",
         bullets: ["Private candidate practice", "Organization-owned hiring workflows", "Shared interview intelligence underneath"],

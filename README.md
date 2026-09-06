@@ -1,210 +1,268 @@
-# CompanionAI
+# Evalcue AI
 
-AI-assisted interview practice and candidate screening: candidates can build role-specific practice sessions with voice or code, while hiring teams can create structured assessments, manage candidates, and review consistent reports.
 
-See [TESTING.md](TESTING.md) for the short test-command reference.
+Evalcue AI is a full-stack platform for **software engineering interview practice** and **structured technical hiring**. Candidates can rehearse conversational, coding, and system-design interviews with adaptive AI follow-ups. Hiring teams can create role-specific assessments, invite candidates, collect technical evidence, and review scorecards while keeping employment decisions human-controlled.
 
-## Key features
-- Authentication: email verification, Google Sign-In, organization OIDC work SSO, rotating access/refresh tokens, logout, password reset, and account deletion
-- Resumes: upload to Cloudinary, type/size validation, tags/notes, search/sort, PDF inline preview
-- Resume reviews: saved AI reviews with paginated history
-- Resume matching: rank every owned resume against a JD with explainable keyword coverage and evidence, without consuming AI-review credits
-- Job-post import: paste a public job link to prefill editable role, company, and description fields in practice, resume review, and recruiter assessment flows
-- Interview rounds: AI‑suggested rounds from the JD; supports conversational, online‑assessment (OA), and system-design modes with a shared candidate experience
-- Hiring workspace: hybrid AI/manual assessments, embedded Excalidraw system-design rounds with autosaved diagrams, reusable starter templates and version duplication, bulk email invitations with invite-only access and lifecycle tracking, weighted competency scorecards, human review overrides, optional contextual follow-ups, and private interviewer-only reports
-- System-design intelligence: extracts labelled components, bound connections, element counts, and groups from the Excalidraw scene; combines that topology with written and spoken explanations; asks one bounded, design-specific AI interviewer probe; and retains the complete evidence for recruiter review
-- Assessment resilience and integrity: local draft recovery, idempotent submission, camera readiness, optional on-device sustained face-presence/multiple-face detection, configurable fullscreen/focus/clipboard/connectivity signals with explicit consent, human-only interpretation, and automatic retention cleanup
-- Question generation: per‑round question sets with de‑duplication across rounds
-- Feedback: per‑question feedback with score and improvement suggestions
-- Voice: browser TTS, server-side Whisper transcription, and Web Speech fallback
-- Experiences: search public interview experiences and save useful results
-- Progress: score trends, completion history, monthly plan usage, and goal-based recommendations
-- Reminders: timezone-aware weekly email reminders with durable delivery records, retries, history, and test delivery
-- Billing: Stripe-hosted Checkout, customer portal, signed/idempotent webhooks, dynamic pricing, and monthly usage limits
-- Monetization: Practice is user-owned (Free: 3 interviews + 3 resume reviews/month; Pro: 100 + 100 by default). Hiring is organization-owned and meters candidate interviews rather than assessment definitions (first organization trial: 5 lifetime credits; Starter: 25/month; Growth: 100/month by default).
-- Admin: role-protected feedback inbox with filtering, pagination, and status management
-- Privacy: complete account-data deletion; the incomplete JSON export remains disabled behind client and server feature flags
-- Product analytics: authenticated, allowlisted funnel events with automatic 180-day expiry
-- API docs: OpenAPI/Swagger at `/api-docs`
+## Product surfaces
+
+### Evalcue AI Practice
+
+- Role- and job-description-specific interview plans
+- Conversational interviews with hands-free voice support
+- Coding / online-assessment rounds with code execution when Judge0 is enabled
+- Live system-design discussions with an Excalidraw architecture canvas
+- Adaptive questioning based on answer evidence, competency coverage, and resume context
+- Resume upload, review, JD matching, saved interview experiences, progress tracking, and reminders
+- Post-interview feedback and improvement suggestions
+
+Canonical public route: `/practice`
+
+### Evalcue AI Hire
+
+- Organization-owned technical assessments and candidate pipelines
+- Manual or AI-generated round definitions
+- Conversational, coding, and live system-design assessment modes
+- Invite-only candidate links, invitation lifecycle tracking, and local answer recovery
+- Weighted competency scorecards, AI evaluation, human overrides, and calibration views
+- Optional consented integrity signals such as fullscreen/focus/clipboard/connectivity events and on-device face-presence checks
+- OIDC SSO support for eligible hiring organizations
+
+Canonical public route: `/hire`
 
 ## Architecture
-- Client: React (Vite), Material UI, React Router, Axios (with credentials)
-- Server: Express, Mongoose/MongoDB, Redis/BullMQ, Zod, Stripe, Cloudinary, Brevo Email API, Prometheus, and Sentry
 
-Monorepo layout
+```text
+React 19 / Vite / MUI
+        |
+        v
+Express 5 API
+  |       |        |          |
+MongoDB  Redis    AI APIs    External services
+         BullMQ   OpenAI /   Stripe, Brevo,
+                  Gemini     Cloudinary, Judge0
 ```
-client/                  # React app (Vite, MUI)
-server/                  # Express API
-  src/
-    routes/              # Auth, interviews, reviews, billing, admin, analytics, reminders, jobs, STT, and code execution
-    controllers/         # Controllers per domain
-    models/              # Mongoose models, including users, resumes, interviews, assessments, attempts, feedback, billing, and delivery records
-    utils/               # AI, code runner, mailer, parsing, etc.
-    config/swagger.js    # OpenAPI config served at /api-docs
+
+- **Client:** React, React Router, Material UI, Axios, Excalidraw, Monaco
+- **API:** Express, Zod, Mongoose, JWT-based auth, organization authorization
+- **Data:** MongoDB; production transaction support is required
+- **Async work:** Redis + BullMQ for question preparation, bulk feedback, and candidate evaluation
+- **AI:** OpenAI and/or Gemini, with optional Tavily grounding
+- **Operations:** Prometheus metrics, optional Grafana OTLP push, Sentry, structured logs
+
+## Repository layout
+
+```text
+client/                  React/Vite SPA
+  src/components/        shared UI, interview workspaces, SEO helpers
+  src/pages/             public, practice, hiring, and admin pages
+  e2e/                   Playwright browser journeys
+server/                  Express API
+  src/controllers/       request/domain controllers
+  src/models/            Mongoose models
+  src/queues/            BullMQ queues and workers
+  src/routes/            API routing and authorization composition
+  src/services/          business logic and integrations
+  src/test/              unit and API journey coverage
+observability/           dashboards, PromQL, and alert guidance
 ```
 
 ## Getting started
-Prerequisites: Node 20+, MongoDB, Cloudinary, and at least one AI provider.
 
-Production also requires Redis, Brevo transactional email, CAPTCHA, Stripe, HTTPS, and MongoDB transaction support. Judge0 is required only when code execution is enabled.
+### Prerequisites
 
-1) Install
+For local development: Node.js 20+, MongoDB, and credentials for whichever integrations you want to exercise. AI features require OpenAI or Gemini. Resume storage requires Cloudinary.
+
+Production additionally requires Redis, HTTPS, Brevo transactional email, CAPTCHA, Stripe, MongoDB transactions, and any dependencies for enabled STT/code-execution features.
+
+### Install
+
 ```bash
-cd server && npm i && cd ../client && npm i
+cd server && npm install
+cd ../client && npm install
 ```
 
-2) Configure environment
+### Configure the server
 
-- Server: copy the example and fill required values
-  - Local minimum: `MONGO_URI`, `JWT_SECRET`, `CLIENT_ORIGIN`, Cloudinary credentials, and `OPENAI_API_KEY` or `GEMINI_API_KEY`
-  - Brevo API access is required for verification, password reset, and reminders
-  - Stripe requires `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRACTICE_PRO_PRICE_ID`, `STRIPE_HIRING_STARTER_PRICE_ID`, and `STRIPE_HIRING_GROWTH_PRICE_ID`
-  - Organization OIDC SSO requires a stable `SSO_ENCRYPTION_KEY` (32+ random characters); production enablement is gated to Enterprise Hiring
-  - Production startup fails fast if Redis, metrics protection, CAPTCHA, or enabled feature dependencies are missing
-  - Full list and sane defaults live in `server/.env.example`
+The checked-in example now contains **development-safe defaults** rather than production settings:
+
 ```bash
 cp server/.env.example server/.env
 ```
 
-- Client: create `client/.env` and set your client keys
-  - Typical: `VITE_API_BASE_URL=/api`
-  - If enabling CAPTCHA or Google Sign‑In, set corresponding `VITE_*` keys
-  - See `client/README.md` for details
-  - Account-data export is hidden and blocked by default. Enable it only after the archive is complete and sanitized by setting both `VITE_ACCOUNT_DATA_EXPORT_ENABLED=true` and server-side `ACCOUNT_DATA_EXPORT_ENABLED=true`.
+At minimum, set a real `JWT_SECRET` and a reachable `MONGO_URI`. Configure `OPENAI_API_KEY` or `GEMINI_API_KEY` to use AI features. `CLIENT_ORIGIN` is the browser origin and is also the canonical base used in candidate invitation emails.
 
-3) Run locally
+For production set `NODE_ENV=production` and configure, at minimum:
+
+- `ALLOWED_ORIGINS`, `CLIENT_ORIGIN`, `SERVER_ORIGIN`
+- `REDIS_URL`
+- `METRICS_TOKEN`
+- Brevo API/sender/webhook values
+- CAPTCHA secret plus login/register gates
+- Cloudinary credentials for resume storage
+- at least one AI provider; OpenAI is required when server STT is enabled
+- Judge0 and an allowed host when code execution is enabled
+- `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and the Practice Pro + Hiring Pilot/Starter/Growth price IDs
+- a transaction-capable MongoDB replica set or sharded cluster
+
+### Configure the client
+
+```bash
+cp client/.env.example client/.env
+```
+
+Important values:
+
+- `VITE_API_BASE_URL=/api` for same-origin/proxied API calls
+- `VITE_PUBLIC_ORIGIN=https://your-public-origin.example` in production for canonical URLs, JSON-LD, `sitemap.xml`, and `robots.txt`
+- CAPTCHA and Google client IDs when those integrations are enabled
+
+### Run locally
+
 ```bash
 # terminal 1
-cd server && npm run dev
+cd server
+npm run dev
+
 # terminal 2
-cd client && npm run dev
-```
-Client: http://localhost:5173 • Server: http://localhost:5000
-
-4) Verify
-```bash
-cd client && npm run lint && npm test -- --run && npm run build
-cd ../server && npm test -- --run && npm run audit
+cd client
+npm run dev
 ```
 
-Run the browser journeys on desktop and mobile Chromium with:
+Default URLs: client `http://localhost:5173`, API `http://localhost:5000`.
+
+## Tests and CI
+
+Client:
 
 ```bash
 cd client
+npm run lint
+npm test -- --run
+npm run build
 npx playwright install chromium
 npm run test:e2e
 ```
 
-The browser suite verifies dual-audience landing content, login restoration after a full reload, recruiter pipeline management, hybrid assessment creation, candidate privacy, and movement through conversational, coding, and system-design rounds on desktop and mobile. API responses from external or stateful services are deterministic in this UI suite; the server API journeys provide the database and authorization coverage. CI retains Playwright traces, screenshots, videos, HTML output, and JUnit results when a run fails.
-
-Run the launch-critical end-to-end product journey separately with:
+Server:
 
 ```bash
-cd server && npm run test:launch
+cd server
+npm run test:unit
+npm run test:e2e
+npm run audit
 ```
 
-The journey covers authentication and single-session enforcement, profile goals and reminders, resume metadata and pagination, saved experiences, interviews and authorization, admin feedback, Stripe webhook idempotency, entitlements, assessments and candidate privacy, export, analytics, usage limits, and account deletion. External AI generation is forced into deterministic test mode so CI does not spend provider credits or depend on network availability. Use `npm run test:e2e` to run every server E2E file.
+`npm run test:launch` runs the launch-critical API journeys. GitHub Actions runs client lint/unit/build/Playwright/audit plus server unit/API/audit checks on pushes and pull requests. Failed Playwright runs retain browser diagnostics as CI artifacts.
 
-GitHub Actions runs these checks on pushes and pull requests. Dependabot checks dependencies weekly.
+See [TESTING.md](TESTING.md) for the compact command reference.
 
-## API and docs
-- OpenAPI UI: `GET /api-docs`
-- OpenAPI JSON: `GET /api-docs.json`
+## Canonical frontend routes
 
-Highlighted endpoints
-- Auth: `/api/auth/*` (register, login, logout, refresh, verify-email, password reset, profile, reminder test/history, data export, deletion)
-- Interviews: `GET /api/interviews?page&limit` (paginated) · `POST /api/interviews` · `GET /api/interviews/{id}` · `GET /api/interviews/analytics/progress`
-- Rounds: `POST /api/rounds/suggest` (AI) · `POST /api/rounds` (manual)
-- Questions: `POST /api/questions/{interviewId}/rounds/{roundId}/prepare` · `POST /api/questions/{roundId}/answer` · `POST /api/questions/{roundId}/answers` · `POST /api/questions/{roundId}/complete` · `DELETE /api/questions/{interviewId}/rounds/{roundId}`
-- Feedback: `POST /api/feedback/{questionId}` · `GET /api/feedback/{questionId}` · `POST /api/feedback/bulk` · `POST /api/feedback/attach/{roundId}`
-- Resumes: `POST /api/resumes` · `GET /api/resumes` (sort/tag/q) · `PUT /api/resumes/{id}` · `DELETE /api/resumes/{id}` · `GET /api/resumes/{id}/preview` · `POST /api/resumes/{id}/review` · `GET /api/resumes/reviews`
-- Resume matching: `POST /api/resumes/match`
-- STT: `POST /api/stt/transcribe` (multipart `audio`)
-- Run Code: `POST /api/run-code`
-- Experiences: `GET /api/experiences/search?company=&role=`
-- Job posts: `POST /api/job-posts/import` (authenticated, rate-limited public-page extraction)
-- Billing: Practice uses `/api/billing/practice/entitlements`, `/api/billing/practice/checkout-session`, and `/api/billing/practice/portal-session`; Hiring uses the corresponding organization-scoped `/api/billing/hiring/*` endpoints; Stripe webhooks remain at `/api/billing/webhook`.
-- Recommendations: `GET /api/recommendations`
-- Candidate assessments: create/list/overview/report, duplicate versions, invite/resend/revoke candidates, save answers and system-design scenes, generate contextual AI probes, save human scorecards, and record consented integrity events under `/api/assessments` and `/api/assessments/public/{shareToken}`
-- Product feedback: `POST /api/product-feedback`
-- Product events: `POST /api/events`
-- Admin: `GET /api/admin/feedback` · `PATCH /api/admin/feedback/{feedbackId}`
-- Operations: `GET /health/liveness` · `GET /health/readiness` · `GET /metrics`
+Public/indexable:
 
-## Frontend routes
-- `/login`, `/register`, `/verify-email`, `/forgot-password`, `/reset-password`
-- `/` (product landing page)
-- `/dashboard`, `/progress`
-- `/create-interview`, `/interviews/:interviewId`
-- `/assessments`, `/assessments/:assessmentId`, `/assessment/:shareToken`, `/hiring/team`
-- `/experiences`, `/saved-experiences`
-- `/resume-review`, `/resume-reviews`, `/resume-match`, `/resumes`
-- `/pricing`, `/billing/success`
-- `/profile`, `/admin/feedback`
-- `/privacy`, `/terms`
+- `/` — product overview
+- `/practice` — candidate interview-practice product
+- `/hire` — technical-hiring product
+- `/docs` and `/docs/*` — public documentation
+- `/privacy`
+- `/terms`
+
+Candidate assessment links:
+
+- `/assessment/:shareToken`
+
+Authenticated Practice:
+
+- `/practice/dashboard`
+- `/practice/new`
+- `/practice/interviews/:interviewId`
+- `/practice/company-insights`
+- `/practice/resumes`
+- `/practice/resume-review`
+- `/practice/resume-reviews`
+- `/practice/resume-match`
+- `/practice/progress`
+- `/practice/profile`
+
+Authenticated Hire:
+
+- `/hire/assessments`
+- `/hire/assessments/:assessmentId`
+- `/hire/assessments/:assessmentId/preview`
+- `/hire/team`
+- `/hire/pilot`
+- `/hire/sso`
+
+Older routes such as `/assessments`, `/create-interview`, `/dashboard`, `/interview-practice`, and `/technical-hiring` are compatibility redirects and should not be used as canonical links.
+
+## API and documentation
+
+Development/test API documentation:
+
+- `GET /api-docs`
+- `GET /api-docs.json`
+
+Swagger UI/JSON are intentionally disabled in production.
+
+Major API areas:
+
+- `/api/auth/*` — registration, login, refresh, profile, verification, password recovery, reminders, deletion
+- `/api/resumes/*` — resume CRUD, preview, AI review, history, JD matching
+- `/api/interviews/*`, `/api/rounds/*`, `/api/questions/*`, `/api/feedback/*` — Practice interview lifecycle
+- `/api/assessments/*` — hiring assessment creation, candidate pipeline, reporting, invitations, scorecards
+- `/api/assessments/public/:shareToken/*` — candidate assessment experience guarded by hashed attempt credentials
+- `/api/billing/*` — Practice/Hiring entitlements, checkout, portal, signed Stripe webhook
+- `/api/organizations/*`, `/api/sso/*` — hiring organization and SSO workflows
+- `/api/stt/*`, `/api/run-code` — optional transcription and code execution
+- `/health/liveness`, `/health/readiness`, `/metrics` — operations endpoints
+
+## Live system-design interviews
+
+System-design rounds use a single architecture problem with an Excalidraw canvas and a live discussion. During the interview Evalcue AI can issue **bounded, context-aware interviewer interjections** rather than only one fixed follow-up. The interviewer can probe requirements, capacity, consistency, reliability, security, observability, or clarification questions without revealing a solution or coaching the candidate.
+
+The system stores the final candidate transcript as the authoritative answer, the diagram/derived topology summary, and bounded discussion turns. Evaluation uses the complete final candidate transcript plus interviewer prompts and diagram context, so truncating old UI discussion turns does not discard early candidate reasoning.
+
+For hiring assessments, candidate-facing screens do not reveal private scores or recruiter feedback. AI output is advisory evidence; employment decisions remain with human reviewers.
+
+## Reliability and background processing
+
+When Redis is configured, BullMQ runs question preparation, bulk-feedback, and candidate-assessment workers. Candidate submissions atomically enter an `evaluating` state, retry failures, and recover stranded evaluation jobs on startup.
+
+The API also schedules reminder delivery, assessment opening/closing and invitation delivery, integrity-event retention, and Cloudinary cleanup. On SIGTERM/SIGINT the process stops schedulers, drains HTTP requests and BullMQ workers, closes queues, then closes MongoDB and Redis. `SHUTDOWN_TIMEOUT_MS` provides a bounded forced-exit fallback.
+
+See [RUNBOOK.md](RUNBOOK.md) for production operations and recovery.
 
 ## Security highlights
-- Short-lived bearer access tokens, HTTP-only rotating refresh cookies, CORS allowlists, and state-changing origin checks
-- Secure cookies (SameSite, domain) and JWT rotation; per‑user session caps
-- Quotas and rate limiting (Redis‑backed) across sensitive routes
-- CAPTCHA gates for auth endpoints (recommended in production)
-- Code execution via Judge0 is opt‑in and host‑allowlisted
-- File uploads validated by magic bytes, size; optional AV scanning
-- Metrics endpoint protected by token; structured JSON logging with request IDs
-- Durable reminder delivery records with idempotency and retry backoff
-- Stripe webhook signature validation and event idempotency
-- Unconditional Zod request validation plus database-level constraints
-- Unguessable assessment links plus hashed per-attempt credentials; public candidate responses never include scores or private feedback
-- System-design AI treats extracted topology as uncertain evidence, never as ground truth, and is instructed not to score visual polish or drawing quality
-- CI dependency audits and weekly Dependabot updates
 
-## System-design interview behavior
+- Short-lived access tokens with HttpOnly refresh-session cookies
+- Password/session revocation via token versioning and refresh-token records
+- CORS allowlists plus state-changing Origin/Referer checks
+- Redis-backed rate limits and quotas in production
+- CAPTCHA protection for production authentication flows
+- File magic-byte/size validation and optional antivirus scanning
+- Opt-in Judge0 execution with host allowlisting
+- Hashed candidate attempt credentials and non-indexable assessment URLs
+- Signed/idempotent Stripe webhooks
+- Organization-scoped hiring authorization
+- Explicit consent for optional integrity signals
+- Human review requirements for AI-assisted hiring evidence
 
-System-design rounds use an Excalidraw canvas alongside written and voice-enabled explanation fields. Canvas changes are retained locally and synchronized to the API. When the candidate saves a response and contextual follow-ups are enabled, CompanionAI:
+See [SECURITY.md](SECURITY.md) for reporting and policy notes.
 
-1. Extracts readable labels, element counts, groups, and bound component-to-component connections from the scene JSON.
-2. Combines that machine-readable topology with the original question and the candidate's written and spoken explanation.
-3. Generates one neutral interviewer probe about a concrete decision, missing requirement, failure mode, capacity assumption, consistency choice, security boundary, or observability gap.
-4. Speaks and displays the probe, then stores the candidate's response with the final report.
-5. Evaluates the complete evidence against role context, round focus, and the recruiter scorecard after submission.
+## SEO
 
-The AI cannot modify the canvas, reveal a solution, coach the candidate, or show scores during a recruiter assessment. Diagram extraction can be incomplete when arrows are visually positioned but not bound to shapes, so the evaluator is required to state uncertainty and recruiters should verify claims against the original canvas. Continuous autonomous conversation is intentionally avoided to preserve candidate comparability, predictable duration, and cost control.
-
-## Background processing
-
-BullMQ handles question preparation, bulk feedback, and recruiter assessment evaluation when Redis is configured. Candidate submissions are atomically moved to an evaluating state, retried by the worker, and recovered on startup if an API process stopped before enqueueing. Reminder schedules are evaluated every five minutes, persisted as delivery records, atomically claimed, and retried with exponential backoff. For initial deployments, run one worker-enabled API replica; split workers and reminder dispatch into dedicated process types before horizontal scaling. See `RUNBOOK.md`.
-
-## Billing setup
-
-1. Create a recurring Stripe Price for Practice Pro plus separate recurring Prices for Hiring Starter and Growth; set `STRIPE_PRACTICE_PRO_PRICE_ID`, `STRIPE_HIRING_STARTER_PRICE_ID`, and `STRIPE_HIRING_GROWTH_PRICE_ID`.
-2. Set the restricted or secret server key as `STRIPE_SECRET_KEY`; never expose it to the client.
-3. Forward or configure Stripe webhooks at `/api/billing/webhook` and set the signing secret.
-4. Test checkout, subscription updates, failed/recovered payments, refunds, disputes, cancellation, and portal access in Stripe test mode before using live keys.
-
-The pricing UI reads amount, currency, and interval from Stripe rather than hard-coding them.
-
-## Brevo email setup
-
-1. Create a Brevo account and add `companionai.email@gmail.com` under **Settings → Senders, Domains & Dedicated IPs → Senders**.
-2. Enter the verification code Brevo sends to that Gmail inbox.
-3. Create a Brevo API key under **Settings → SMTP & API → API Keys**.
-4. Generate a long random `BREVO_WEBHOOK_SECRET`, then add it with `BREVO_API_KEY`, `BREVO_SENDER_EMAIL=companionai.email@gmail.com`, and `BREVO_SENDER_NAME=CompanionAI` to the API service environment.
-5. In Brevo transactional webhooks, add `https://YOUR_API_HOST/api/email-webhooks/brevo?secret=YOUR_BREVO_WEBHOOK_SECRET` and subscribe to delivered, hard bounce, soft bounce, blocked, invalid email, spam, and complaint events. Treat the URL as a secret because Brevo webhook configuration does not provide CompanionAI authentication headers.
-6. Redeploy and confirm the startup log includes `Brevo API verified: transactional email ready`, then send a test reminder from Profile.
-
-Brevo accepts a verified Gmail sender, but free-email domains cannot be authenticated with DKIM/DMARC and may be rewritten or have poorer deliverability. Move to an authenticated CompanionAI-owned domain before a public launch.
+Public product and documentation pages receive route-specific titles, descriptions, canonical URLs, Open Graph/Twitter metadata, and schema.org JSON-LD. `SearchIndexPolicy` marks authenticated/candidate application routes `noindex,nofollow`. Production builds generate `sitemap.xml` and `robots.txt` from `VITE_PUBLIC_ORIGIN`; only canonical public routes are placed in the sitemap.
 
 ## Production checklist
-- Use TLS for MongoDB/Redis; enforce HTTPS, HSTS, and Helmet
-- Configure CSP allowlists via `CSP_*` envs and validate the client
-- Set up monitoring and alerts for `/health/readiness`, reminder failures, queue failures, and Stripe webhook failures
-- See `RUNBOOK.md` for deployment, rollback, health checks, backups, workers, and incident response
-- Use `observability/README.md` for Grafana panels, PromQL queries, and production alert thresholds
-- Review `SECURITY.md` and publish production-specific privacy, AI-processing, refund, and data-retention policies
-- Calibrate system-design AI scores against independent human reviewers before using them in hiring decisions; keep AI output advisory rather than an automatic rejection signal
 
-## Known dependency exception
+- Use TLS for MongoDB/Redis and HTTPS for the application
+- Set explicit browser/API origins and CSP allowlists
+- Use a secret manager; never commit `.env`
+- Configure backups and test restoration
+- Validate Stripe webhook replay and Brevo delivery/bounce handling
+- Alert on readiness, 5xx rates, auth/rate-limit spikes, queue failures, failed reminders, webhook failures, and AI cost/error anomalies
+- Calibrate AI-generated hiring scores against independent human reviewers before production hiring use
 
-The current React Router advisory concerns React Server Components action handling. CompanionAI is a client-only BrowserRouter SPA and does not enable React Router framework/RSC actions. CI still fails on critical production advisories, and this exception should be removed when a patched upstream release is available.
+## License
 
-License: MIT
+ISC. See [LICENSE](LICENSE).

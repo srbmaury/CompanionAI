@@ -28,7 +28,7 @@ export default function SsoCallbackPage() {
             .then(({ user, organizationId }) => {
                 if (!user?._id || !organizationId) throw new Error("SSO session did not include organization access");
                 setWorkspacePreference("hiring", user._id);
-                try { localStorage.setItem(`companionai:organization:user:${user._id}`, organizationId); } catch { /* optional */ }
+                try { localStorage.setItem(`evalcue:organization:user:${user._id}`, organizationId); } catch { /* optional */ }
                 // Reload once so AuthProvider and OrganizationProvider initialize from the new
                 // server session and the trusted organization preference in one deterministic pass.
                 window.location.replace("/hire/assessments");
@@ -42,7 +42,7 @@ export default function SsoCallbackPage() {
                 {error ? <Alert severity="error">{error}</Alert> : (
                     <Stack spacing={2} alignItems="center">
                         <CircularProgress />
-                        <Typography component="h1" variant="h5" fontWeight={800}>Completing CompanionAI Hire SSO sign-in…</Typography>
+                        <Typography component="h1" variant="h5" fontWeight={800}>Completing Evalcue AI Hire SSO sign-in…</Typography>
                         <Typography color="text.secondary">Verifying your organization access securely.</Typography>
                     </Stack>
                 )}

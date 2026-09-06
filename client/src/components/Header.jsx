@@ -40,7 +40,7 @@ const Brand = ({ to = "/" }) => (
         sx={{ display: "flex", alignItems: "center", gap: 1.15, textDecoration: "none", color: "inherit", fontWeight: 850, letterSpacing: "-.025em" }}
     >
         <Box component="span" sx={{ width: 34, height: 34, borderRadius: 2.5, display: "grid", placeItems: "center", color: "white", background: "linear-gradient(135deg,#5b50d6,#8f85ff)", boxShadow: "0 8px 20px rgba(91,80,214,.28)", fontSize: 16 }}>C</Box>
-        <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>CompanionAI</Box>
+        <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Evalcue AI</Box>
     </Typography>
 );
 

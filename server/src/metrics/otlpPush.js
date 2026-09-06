@@ -71,15 +71,15 @@ export const buildOtlpPayload = async (serviceName, registry = metrics.client.re
         }
     }
 
-    return { resourceMetrics: [{ resource: { attributes: [{ key: "service.name", value: { stringValue: serviceName } }] }, scopeMetrics: [{ scope: { name: "companionai.prom-client" }, metrics: exported }] }] };
+    return { resourceMetrics: [{ resource: { attributes: [{ key: "service.name", value: { stringValue: serviceName } }] }, scopeMetrics: [{ scope: { name: "evalcue.prom-client" }, metrics: exported }] }] };
 };
 
 export const startOtlpPush = () => {
     const instanceId = process.env.GRAFANA_INSTANCE_ID;
     const apiKey = process.env.GRAFANA_API_KEY;
-    if (!instanceId || !apiKey) return;
+    if (!instanceId || !apiKey) return () => {};
     const url = process.env.GRAFANA_OTLP_URL || "https://otlp-gateway-prod-ap-south-0.grafana.net/otlp/v1/metrics";
-    const serviceName = process.env.OTEL_SERVICE_NAME || "companionai-server";
+    const serviceName = process.env.OTEL_SERVICE_NAME || "evalcue-server";
     const intervalMs = Math.max(Number(process.env.OTLP_PUSH_INTERVAL_MS || 30000), 10000);
     const authHeader = `Basic ${Buffer.from(`${instanceId}:${apiKey}`).toString("base64")}`;
     const push = async () => {
@@ -93,6 +93,7 @@ export const startOtlpPush = () => {
     push();
     const timer = setInterval(push, intervalMs);
     timer.unref?.();
+    return () => clearInterval(timer);
 };
 
 export default { startOtlpPush, buildOtlpPayload };

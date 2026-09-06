@@ -6,8 +6,8 @@ import react from "@vitejs/plugin-react";
 
 const INDEXABLE_ROUTES = [
     "/",
-    "/interview-practice",
-    "/technical-hiring",
+    "/practice",
+    "/hire",
     "/docs",
     "/docs/technical-hiring/structured-technical-assessments",
     "/docs/technical-hiring/system-design-interviews",
@@ -24,21 +24,19 @@ const normalizePublicOrigin = (raw) => {
     if (!value) return "";
     const url = new URL(value);
     if (!["http:", "https:"].includes(url.protocol) || url.pathname !== "/" || url.search || url.hash) {
-        throw new Error("VITE_PUBLIC_ORIGIN must be an origin only, for example https://companionai.example");
+        throw new Error("VITE_PUBLIC_ORIGIN must be an origin only, for example https://evalcue.example");
     }
     return url.origin;
 };
 
 const seoFilesPlugin = (origin) => ({
-    name: "companionai-seo-files",
+    name: "evalcue-seo-files",
     async closeBundle() {
         if (!origin) return;
         const outDir = path.resolve(process.cwd(), "dist");
         await mkdir(outDir, { recursive: true });
         const urls = INDEXABLE_ROUTES.map((route) => `  <url><loc>${origin}${route}</loc></url>`).join("\n");
         const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
-        // Private SPA routes use a rendered noindex directive. Do not block them in
-        // robots.txt because a crawler must be able to load the page to observe noindex.
         const robots = [
             "User-agent: *",
             "Allow: /",

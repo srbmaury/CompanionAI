@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from "react";
 import { useLocation, useNavigate, useNavigationType } from "react-router-dom";
 
-const STORAGE_KEY = "companionai:navigation-history";
+const STORAGE_KEY = "evalcue:navigation-history";
 const readHistory = () => {
     try {
         const value = JSON.parse(sessionStorage.getItem(STORAGE_KEY));

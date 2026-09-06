@@ -51,7 +51,7 @@ export default function PublicUseCasePage() {
     const page = pages[pathname];
     if (!page) return <Navigate to="/" replace />;
 
-    const title = `${page.title} | CompanionAI`;
+    const title = `${page.title} | Evalcue AI`;
     const rememberWorkspace = () => setWorkspacePreference(page.workspace);
 
     return (
@@ -65,7 +65,7 @@ export default function PublicUseCasePage() {
                     "@type": "WebPage",
                     name: page.title,
                     description: page.description,
-                    isPartOf: { "@type": "WebSite", name: "CompanionAI", url: window.location.origin },
+                    isPartOf: { "@type": "WebSite", name: "Evalcue AI", url: window.location.origin },
                 }}
             />
             <Box sx={(theme) => ({

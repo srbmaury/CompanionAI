@@ -1,10 +1,10 @@
-# CompanionAI Product Architecture
+# Evalcue AI Product Architecture
 
-CompanionAI is intentionally exposed as two separate products while retaining one shared platform underneath.
+Evalcue AI is intentionally exposed as two separate products while retaining one shared platform underneath.
 
 ## Product surfaces
 
-### CompanionAI Practice
+### Evalcue AI Practice
 
 Canonical routes live under `/practice`.
 
@@ -17,7 +17,7 @@ Purpose:
 
 Primary home: `/practice/dashboard`
 
-### CompanionAI Hire
+### Evalcue AI Hire
 
 Canonical routes live under `/hire`.
 
@@ -79,7 +79,7 @@ The current route separation is designed so deployment can later move to subdoma
 
 - `practice.<domain>` -> Practice surface
 - `hire.<domain>` -> Hire surface
-- `<domain>` -> CompanionAI product-family gateway
+- `<domain>` -> Evalcue AI product-family gateway
 
 Both product deployments can use the same client build and backend API initially. If scale or enterprise isolation later justifies separate deploy artifacts, the route and product boundaries already exist and can be split at the deployment layer without rewriting interview logic.
 

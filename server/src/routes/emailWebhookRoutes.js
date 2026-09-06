@@ -11,7 +11,7 @@ const safeEqual = (left, right) => {
 router.post("/brevo", async (req, res, next) => {
     try {
         const configured = process.env.BREVO_WEBHOOK_SECRET;
-        const supplied = req.get("x-companionai-webhook-secret") || req.query.secret;
+        const supplied = req.get("x-evalcue-webhook-secret") || req.query.secret;
         if (!configured || !safeEqual(supplied, configured)) return res.status(401).json({ message: "Invalid webhook secret" });
         const event = String(req.body?.event || "").toLowerCase();
         const messageId = String(req.body?.["message-id"] || req.body?.messageId || "");

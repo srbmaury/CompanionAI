@@ -53,7 +53,7 @@ export default function HiringPilotPage() {
         <Container maxWidth="sm" sx={{ py: { xs: 4, md: 7 } }}>
             <Stack spacing={3}>
                 <Stack alignItems="center" textAlign="center">
-                    <Typography variant="overline" color="primary.main" fontWeight={850}>CompanionAI Hire</Typography>
+                    <Typography variant="overline" color="primary.main" fontWeight={850}>Evalcue AI Hire</Typography>
                     <Typography component="h1" variant="h3" fontWeight={850}>Launch Pilot</Typography>
                     <Typography color="text.secondary" mt={1}>A low-commitment paid step before moving your team to a recurring Hiring plan.</Typography>
                 </Stack>

@@ -102,7 +102,7 @@ test("Practice and Hire stay separate while profile keeps advanced settings coll
     }
 
     await page.getByRole("button", { name: "Account menu" }).click();
-    await page.getByRole("menuitem", { name: "Open CompanionAI Hire" }).click();
+    await page.getByRole("menuitem", { name: "Open Evalcue AI Hire" }).click();
     await expect(page).toHaveURL(/\/hire\/assessments$/);
     await expect(page.getByRole("heading", { name: "Hiring overview" })).toBeVisible();
 
@@ -387,8 +387,8 @@ test("supporting authenticated screens render without overflow", async ({ page }
 test("public account and legal screens have clear page titles without overflow", async ({ page }) => {
     await mockSignedOut(page);
     const screens = [
-        ["/login", "Sign in to CompanionAI"],
-        ["/register", "Create your CompanionAI account"],
+        ["/login", "Sign in to Evalcue AI"],
+        ["/register", "Create your Evalcue AI account"],
         ["/forgot-password", "Forgot your password?"],
         ["/reset-password", "Reset your password"],
         ["/verify-email", "Verify your email"],

@@ -43,7 +43,7 @@ describe("production metrics", () => {
         productionMetrics.queueWaitDurationSeconds.labels("candidate-assessment").observe(2.5);
         productionMetrics.aiTokensByPurposeTotal.labels("openai", "test-model", "feedback_evaluation", "input").inc(100);
 
-        const payload = await buildOtlpPayload("companionai-test");
+        const payload = await buildOtlpPayload("evalcue-test");
         const exported = payload.resourceMetrics[0].scopeMetrics[0].metrics.map((metric) => metric.name);
         expect(exported).toContain("queue_wait_duration_seconds");
         expect(exported).toContain("ai_tokens_by_purpose_total");

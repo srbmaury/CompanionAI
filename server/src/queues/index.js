@@ -7,13 +7,13 @@ import productionMetrics from "../metrics/production.js";
 let connection = null;
 let queues = new Map();
 let schedulers = new Map();
+let workers = new Set();
+let depthTimers = new Set();
 
 export const getConnection = async () => {
     if (connection) return connection;
     const redis = await getRedisClient();
     if (!redis) return null;
-    // bullmq expects ioredis-like options; use node-redis connection via socket
-    // Fallback to URL when available
     const url = process.env.REDIS_URL;
     if (!url) return null;
     try {
@@ -37,7 +37,6 @@ export const getConnection = async () => {
             showFriendlyErrorStack: process.env.NODE_ENV !== "production",
         };
     } catch (_e) {
-        // fallback to simple URL config
         connection = { url };
     }
     return connection;
@@ -61,17 +60,15 @@ export const getQueue = async (name) => {
         try {
             const counts = await q.getJobCounts("waiting", "active", "delayed", "failed", "completed");
             for (const [state, count] of Object.entries(counts)) metrics.queueDepth.labels(name, state).set(count);
-
             const [oldestWaiting] = await q.getWaiting(0, 0);
-            const ageSeconds = oldestWaiting?.timestamp
-                ? Math.max(0, (Date.now() - Number(oldestWaiting.timestamp)) / 1000)
-                : 0;
+            const ageSeconds = oldestWaiting?.timestamp ? Math.max(0, (Date.now() - Number(oldestWaiting.timestamp)) / 1000) : 0;
             productionMetrics.queueOldestWaitingJobAgeSeconds.labels(name).set(ageSeconds);
         } catch {}
     };
     refreshDepth();
     const depthTimer = setInterval(refreshDepth, 30000);
     depthTimer.unref?.();
+    depthTimers.add(depthTimer);
     if (!schedulers.has(name)) {
         try {
             const sch = new QueueScheduler(name, { connection: conn });
@@ -86,6 +83,7 @@ export const createWorker = async (name, processor) => {
     if (!conn) return null;
     const concurrency = Math.max(parseInt(process.env.WORKER_CONCURRENCY || "1", 10) || 1, 1);
     const worker = new Worker(name, processor, { connection: conn, concurrency });
+    workers.add(worker);
     const activeJobs = new Set();
 
     const markActive = (job) => {
@@ -121,13 +119,27 @@ export const createWorker = async (name, processor) => {
         if (job?.processedOn) metrics.queueJobDurationSeconds.labels(name, "failed").observe(Math.max(0, Date.now() - job.processedOn) / 1000);
         console.warn(`[worker:${name}] job ${job?.id} failed:`, err?.message || err);
     });
-    worker.on("stalled", (jobId) => {
-        markInactive(jobId);
-    });
-    worker.on("error", (err) => {
-        console.warn(`[worker:${name}] error:`, err?.message || err);
-    });
+    worker.on("stalled", (jobId) => { markInactive(jobId); });
+    worker.on("error", (err) => { console.warn(`[worker:${name}] error:`, err?.message || err); });
     return worker;
 };
 
-export default { getQueue, createWorker };
+export const closeQueues = async () => {
+    for (const timer of depthTimers) clearInterval(timer);
+    depthTimers.clear();
+
+    const workerList = [...workers];
+    workers.clear();
+    await Promise.allSettled(workerList.map((worker) => worker.close()));
+
+    const queueList = [...queues.values()];
+    queues = new Map();
+    await Promise.allSettled(queueList.map((queue) => queue.close()));
+
+    const schedulerList = [...schedulers.values()];
+    schedulers = new Map();
+    await Promise.allSettled(schedulerList.map((scheduler) => scheduler.close()));
+    connection = null;
+};
+
+export default { getQueue, createWorker, closeQueues };
