@@ -4,27 +4,7 @@ import metrics from "../../metrics/index.js";
 import productionMetrics from "../../metrics/production.js";
 import Assessment from "../../models/Assessment.js";
 import { summarizeSystemDesignDiagram } from "../../utils/systemDesignDiagram.js";
-
-const followUpEvidence = (item) => {
-    if (Array.isArray(item.followUps) && item.followUps.length) {
-        return item.followUps
-            .filter((followUp) => followUp?.question && followUp?.answer)
-            .map((followUp, index) => `AI interviewer follow-up ${index + 1}: ${followUp.question}\nCandidate response ${index + 1}: ${followUp.answer}`)
-            .join("\n\n");
-    }
-    return item.followUpQuestion
-        ? `AI interviewer probe: ${item.followUpQuestion}\nCandidate response: ${item.followUpAnswer}`
-        : "";
-};
-
-const liveDiscussionEvidence = (item) => {
-    const turns = Array.isArray(item?.discussionTurns) ? item.discussionTurns : [];
-    if (!turns.length) return "";
-    return ["Live interviewer discussion:", ...turns
-        .filter((turn) => turn?.text)
-        .map((turn) => `${turn.speaker === "interviewer" ? "Interviewer" : "Candidate"}: ${turn.text}`)]
-        .join("\n");
-};
+import { buildCandidateEvaluationEvidence } from "../../services/candidateEvaluationEvidence.js";
 
 export default async function candidateAssessmentProcessor(job) {
     const attempt = await CandidateAttempt.findOne({ _id: job.data?.attemptId, status: "evaluating" });
@@ -43,14 +23,9 @@ export default async function candidateAssessmentProcessor(job) {
             for (const item of round.questions) {
                 const diagramContext = item.diagramSummary || (item.diagramData ? summarizeSystemDesignDiagram(item.diagramData) : "");
                 if (diagramContext) item.diagramSummary = diagramContext;
-                const discussionContext = round.deliveryMode === "system-design" ? liveDiscussionEvidence(item) : "";
-                const combined = [
-                    discussionContext || item.answer,
-                    diagramContext,
-                    item.spokenExplanation ? `Spoken explanation:\n${item.spokenExplanation}` : "",
-                    followUpEvidence(item),
-                ].filter(Boolean).join("\n\n");
-                const feedback = await generateFeedbackForAnswer({ questionText: item.text, userAnswer: combined, evaluationContext: round.deliveryMode === "system-design" ? { mode: "system-design", jobRole: assessment?.jobRole, jobDescription: assessment?.jobDescription, roundDescription: round.description, rubric: assessment?.rubric } : undefined });
+                const systemDesign = round.deliveryMode === "system-design";
+                const combined = buildCandidateEvaluationEvidence({ item, systemDesign, diagramContext });
+                const feedback = await generateFeedbackForAnswer({ questionText: item.text, userAnswer: combined, evaluationContext: systemDesign ? { mode: "system-design", jobRole: assessment?.jobRole, jobDescription: assessment?.jobDescription, roundDescription: round.description, rubric: assessment?.rubric } : undefined });
                 item.feedbackComment = feedback.comment; item.suggestions = feedback.suggestions; item.score = feedback.score;
                 roundScores.push(feedback.score); allScores.push(feedback.score);
                 const weight = Number(item.weight) || 1; weightedTotal += feedback.score * weight; totalWeight += weight;

@@ -42,18 +42,20 @@ const bindPoolMetrics = (mongoClient) => {
     mongoClient.on("topologyClosed", resetPoolGauges);
 };
 
+export const mongoTopologyKind = (hello = {}) => {
+    if (hello?.msg === "isdbgrid") return "sharded";
+    if (hello?.setName) return "replica-set";
+    return "standalone";
+};
+
 const connectDB = async () => {
     try {
         const conn = await mongoose.connect(process.env.MONGO_URI, {
-            // Enforce TLS if URI includes ssl=true or when MONGO_TLS=true
             ssl: process.env.MONGO_TLS === "true" ? true : undefined,
-            // Validate server cert when CA provided
             sslValidate: process.env.MONGO_TLS_VALIDATE === "false" ? false : undefined,
         });
         console.log(`✅ MongoDB connected: ${conn.connection.host}`);
         bindPoolMetrics(mongoose.connection.getClient?.());
-
-        // Verify that transactions are supported (requires replica set or sharded cluster)
         await verifyTransactionsSupport();
     } catch (error) {
         console.error(`❌ Error: ${error.message}`);
@@ -61,28 +63,24 @@ const connectDB = async () => {
     }
 };
 
-const verifyTransactionsSupport = async () => {
+export const verifyTransactionsSupport = async () => {
     const requireTx = process.env.MONGO_REQUIRE_TRANSACTIONS === "false" ? false : (process.env.NODE_ENV === "production");
     try {
-        // Check topology metadata first
         const admin = mongoose.connection.db.admin();
         const hello = await admin.command({ hello: 1 }).catch(() => admin.command({ ismaster: 1 }));
-        const setName = hello?.setName || hello?.logicalSessionTimeoutMinutes || hello?.arbiterOnly ? hello?.setName : null;
-        if (!setName && requireTx) {
-            console.error("❌ MongoDB is not running as a replica set. Transactions will not work.");
-            console.error("   Configure a replica set (e.g., Atlas or single-node RS) or set MONGO_REQUIRE_TRANSACTIONS=false to bypass.");
-            process.exit(1);
-            return;
+        const topology = mongoTopologyKind(hello);
+        if (topology === "standalone") {
+            console.warn("⚠️ MongoDB topology appears standalone; verifying transaction support directly.");
         }
 
-        // Try a lightweight transaction round-trip
+        // A real read inside a transaction is a stronger capability check than
+        // topology-name heuristics and works for both replica sets and mongos.
         const session = await mongoose.startSession();
         try {
             session.startTransaction();
-            // No-op read during transaction
-            await mongoose.connection.db.command({ ping: 1 }, { session });
+            await mongoose.connection.db.collection("users").findOne({}, { session, projection: { _id: 1 } });
             await session.abortTransaction();
-            console.log("✅ MongoDB transactions supported");
+            console.log(`✅ MongoDB transactions supported (${topology})`);
         } finally {
             await session.endSession();
         }
